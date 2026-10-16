@@ -31,9 +31,10 @@ module tebalmod
 !    rest ionizes and excites H and He (rates nti, ntx in the populations)
 !
 ! f is bracketed in log T (steps of 5, 10, 20, 30 % ... from the old
-! temperature) and the root found by secant steps (Illinois); each trial
-! starts from the populations of the nearest temperature tried, solved to
-! 1e-4.  The new temperature is mixed geometrically with the old one
+! temperature) and the root found by secant steps (Illinois) to 0.1 %;
+! each trial starts from the populations of the nearest temperature tried,
+! solved to 1e-3; after the first trial only the elements with at least
+! 1 % of the heating and cooling terms are re-solved.  The new temperature is mixed geometrically with the old one
 ! (te_damp) and its change per iteration limited to a factor te_maxfac;
 ! te_step damps per cell adaptively: the weight is halved when the proposed
 ! change reverses sign (the 2-cycles of a temperature update against an
@@ -97,7 +98,7 @@ subroutine te_pisums(ng,nug,dnug,jg,pa,pb)
 end subroutine te_pisums
 !
 !
-subroutine te_terms(temp,ng,nug,dnug,jg,capabs,capem,nel,x,ne,gam_ext,terms,pa,pb)
+subroutine te_terms(temp,ng,nug,dnug,jg,capabs,capem,nel,x,ne,gam_ext,terms,pa,pb,elc)
 !-----------------------------------------------------------------------
 ! Heating and cooling terms at temperature temp for fixed populations.
 ! terms(1) LTE opacities, net cooling         terms(2) NLTE photoionization heating
@@ -111,6 +112,10 @@ subroutine te_terms(temp,ng,nug,dnug,jg,capabs,capem,nel,x,ne,gam_ext,terms,pa,p
   real*4,intent(in) :: capabs(ng),capem(ng)
   real*8,intent(out) :: terms(te_nterm)
   real*8,intent(in),optional :: pa(nxa_nlv),pb(nxa_nlv)  !te_pisums (computed if absent)
+!-- (optional) per element: sum of the magnitudes of its photoionization
+!-- heating, recombination cooling and collisional terms [erg/s/cm^3]
+  real*8,intent(out),optional :: elc(nxa_nel)
+  real*8 :: se(nxa_nel),sh0
   integer :: ig,lv,iel,o,i,j,k,n,l,u
   real*8 :: hkt,bg,s,xs,fh,jh,nu,sh,eu,sst
   real*8 :: qa(nxa_nlv),qb(nxa_nlv)
@@ -144,6 +149,7 @@ subroutine te_terms(temp,ng,nug,dnug,jg,capabs,capem,nel,x,ne,gam_ext,terms,pa,p
   endif
   s = 0d0
   sh = 0d0
+  se = 0d0
   do lv=1,nxa_nlv
      iel = nxa_lvel(lv)
      if(nel(iel) <= 0d0) cycle
@@ -160,8 +166,12 @@ subroutine te_terms(temp,ng,nug,dnug,jg,capabs,capem,nel,x,ne,gam_ext,terms,pa,p
         sst = sst + jh*exp(-hkt*(nu-nxa_lvnu0(lv)))* &
              (nxa_sgm(ig,lv)*dnug(ig) - hh*nxa_lvnu0(lv)*nxa_sgh(ig,lv))
      enddo
-     s = s + nel(iel)*(x(o+nxa_lvs(lv))*(qa(lv) + fh*qb(lv)) - xs*sst)
-     sh = sh + nel(iel)*x(o+nxa_lvc(lv))*nxa_rcool(lv,temp)
+     sh0 = nel(iel)*(x(o+nxa_lvs(lv))*(qa(lv) + fh*qb(lv)) - xs*sst)
+     s = s + sh0
+     se(iel) = se(iel) + 4d0*pi*abs(sh0)
+     sh0 = nel(iel)*x(o+nxa_lvc(lv))*nxa_rcool(lv,temp)
+     sh = sh + sh0
+     se(iel) = se(iel) + ne*abs(sh0)
   enddo
   terms(2) = 4d0*pi*s
   terms(3) = ne*sh
@@ -175,6 +185,7 @@ subroutine te_terms(temp,ng,nug,dnug,jg,capabs,capem,nel,x,ne,gam_ext,terms,pa,p
         n = nxa_ion(i)%nlev
         allocate(qup(n,n),qdn(n,n),cion(n),c3b(n))
         call nxa_coll(nxa_ion(i),temp,qup,qdn,cion,c3b)
+        sh0 = s
         do l=1,n-1
            do u=l+1,n
               eu = nxa_ion(i)%e(u) - nxa_ion(i)%e(l)
@@ -186,12 +197,14 @@ subroutine te_terms(temp,ng,nug,dnug,jg,capabs,capem,nel,x,ne,gam_ext,terms,pa,p
            s = s + nel(iel)*(x(o+nxa_ion(i)%soff+k)*cion(k) - x(o+nxa_lvc(lv))*ne*c3b(k))* &
                 hh*nxa_ion(i)%nu0(k)
         enddo
+        se(iel) = se(iel) + ne*abs(s - sh0)
         deallocate(qup,qdn,cion,c3b)
      enddo
   enddo
   terms(4) = ne*s
   if(nxa_ncx>0) terms(4) = terms(4) - nx_cx_heat(temp,nel,x)
   terms(6) = gam_ext
+  if(present(elc)) elc = se
 end subroutine te_terms
 !
 !
@@ -214,7 +227,8 @@ subroutine te_balance(told,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx,ca
   integer,intent(out) :: ierr
   real*8,intent(out),optional :: tsolout
   integer :: it,side,nwarm
-  real*8 :: a,b,c,fa,fb,fc,tsol,lo,hi,step
+  real*8 :: a,b,c,fa,fb,fc,tsol,lo,hi,step,elc(nxa_nel),scale
+  logical :: lsol(nxa_nel),lfirst
   real*8 :: pa(nxa_nlv),pb(nxa_nlv)
 !-- populations at the temperatures tried (warm starts)
   integer,parameter :: mwarm = 8
@@ -223,6 +237,11 @@ subroutine te_balance(told,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx,ca
   ierr = 0
   nwarm = 0
   call te_pisums(ng,nug,dnug,jg,pa,pb)
+!-- first evaluation with every element (Z <= te_zsolve) re-solved; then
+!-- only the elements with at least 1 % of the summed magnitudes of the
+!-- NLTE heating and cooling terms (and of the other terms) are re-solved
+  lsol = nxa_el(:)%z <= te_zsolve
+  lfirst = .true.
 !-- bracket in log T around the old temperature
   a = log(told)
   fa = fval(a)
@@ -255,7 +274,7 @@ subroutine te_balance(told,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx,ca
      do it=1,60
         c = (a*fb - b*fa)/(fb - fa)
         fc = fval(c)
-        if(abs(b - a) < 3d-4 .or. fc == 0d0) exit
+        if(abs(b - a) < 1d-3 .or. fc == 0d0) exit
         if(fc*fb < 0d0) then
            a = b
            fa = fb
@@ -296,7 +315,7 @@ contains
        if(abs(log(tw(kn)/t)) < abs(log(told/t))) xx = xw(:,kn)
     endif
     call nx_solve_cell(t,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx,xx,ne,beta,ie, &
-         lsolve=nxa_el(:)%z <= te_zsolve,tol=1d-4,maxit=100)
+         lsolve=lsol,tol=1d-3,maxit=100)
     if(ie == 1) then
        xx = x
        ne = neoth + free_el(xx)
@@ -306,8 +325,13 @@ contains
        xw(:,k) = xx
        tw(k) = t
     endif
-    call te_terms(t,ng,nug,dnug,jg,capabs,capem,nel,xx,ne,gam_ext,terms,pa,pb)
+    call te_terms(t,ng,nug,dnug,jg,capabs,capem,nel,xx,ne,gam_ext,terms,pa,pb,elc)
     fval = terms(1) - terms(2) + terms(3) + terms(4) + terms(5) - terms(6)
+    if(lfirst) then
+       lfirst = .false.
+       scale = sum(elc) + abs(terms(1)) + abs(terms(5)) + abs(terms(6))
+       lsol = lsol .and. elc >= 1d-2*scale
+    endif
   end function fval
   real*8 function free_el(xx)
     real*8,intent(in) :: xx(nxa_nst)
