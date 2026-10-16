@@ -29,7 +29,11 @@ module tebalmod
 !
 ! f is bracketed in log T and the root found by bisection/secant steps
 ! (Illinois).  The new temperature is mixed geometrically with the old one
-! (te_damp) and its change per iteration limited to a factor te_maxfac.
+! (te_damp) and its change per iteration limited to a factor te_maxfac;
+! te_step damps per cell adaptively: the weight is halved when the proposed
+! change reverses sign (the 2-cycles of a temperature update against an
+! optically thick radiation field that responds to it) and relaxes back
+! to te_damp while the changes keep their sign.
 !-----------------------------------------------------------------------
   use nltehmod
   implicit none
@@ -44,7 +48,7 @@ module tebalmod
   real*8,public :: te_ntemin = 0d0              !fast photoelectrons above [erg], 0: off
   real*8,allocatable :: sigtab(:,:)             !(nlev,ng) sigma_n at group centres
   integer :: tng = 0
-  public :: te_init,te_balance,te_terms
+  public :: te_init,te_balance,te_terms,te_step
 
 contains
 
@@ -163,12 +167,13 @@ end subroutine te_terms
 
 
 subroutine te_balance(told,trad,nh,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nonth,nonexc,capabs, &
-     capem,gam_ext,x,tnew,ierr)
+     capem,gam_ext,x,tnew,ierr,tsolout)
 !-----------------------------------------------------------------------
 ! Solve f(T) = 0 with the H populations re-solved at each trial T; x is
 ! the initial guess for the populations (unchanged on return).  tnew is
-! the damped and limited new temperature; ierr = 1 if f has no sign
-! change in [te_tmin, te_tmax] (tnew moves toward the bound).
+! the damped and limited new temperature, tsolout (optional) the root;
+! ierr = 1 if f has no sign change in [te_tmin, te_tmax] (the root is the
+! bound).
 !-----------------------------------------------------------------------
   real*8,intent(in) :: told,trad,nh,neoth,qb,qv,nonth,nonexc,gam_ext
   integer,intent(in) :: ng
@@ -178,6 +183,7 @@ subroutine te_balance(told,trad,nh,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nonth,nonex
   real*8,intent(in) :: x(0:nh_nlev)
   real*8,intent(out) :: tnew
   integer,intent(out) :: ierr
+  real*8,intent(out),optional :: tsolout
   integer :: it,side
   real*8 :: a,b,c,fa,fb,fc,tsol,lo,hi
 !
@@ -227,6 +233,7 @@ subroutine te_balance(told,trad,nh,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nonth,nonex
      enddo
      tsol = exp(c)
   endif
+  if(present(tsolout)) tsolout = tsol
 !-- damping and limiter
   tnew = told**(1d0-te_damp)*tsol**te_damp
   tnew = min(max(tnew, told/te_maxfac), told*te_maxfac)
@@ -250,6 +257,26 @@ contains
     fval = terms(1) - terms(2) + terms(3) + terms(4) + terms(5) - terms(6)
   end function fval
 end subroutine te_balance
+
+
+pure subroutine te_step(told,tsol,dprev,dloc,tnew)
+!-- adaptive damping of one cell: dprev, the previous proposed change of
+!-- ln T, and dloc, the cell's weight (start: 0 and te_damp), are updated
+  real*8,intent(in) :: told,tsol
+  real*8,intent(inout) :: dprev,dloc
+  real*8,intent(out) :: tnew
+  real*8 :: dl
+  dl = log(tsol/told)
+  if(dl*dprev < 0d0) then
+     dloc = max(0.5d0*dloc, 0.05d0)
+  else
+     dloc = min(1.25d0*dloc, te_damp)
+  endif
+  dprev = dl
+  tnew = told*exp(dloc*dl)
+  tnew = min(max(tnew, told/te_maxfac), told*te_maxfac)
+  tnew = min(max(tnew, te_tmin), te_tmax)
+end subroutine te_step
 
 end module tebalmod
 ! vim: fdm=marker

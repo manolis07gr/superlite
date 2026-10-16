@@ -23,10 +23,18 @@ subroutine te_update(it)
   real*8 :: nh,neoth,qb,qv,gext,tnew,dmax,dmin,edep,nonth,nonexc
   real*8 :: x(0:nh_nlev),ne,beta(nh_nlin),terms(6)
   real*4 :: capabs(nht_ng)
+  real*8 :: tsol
+!-- per cell: previous proposed change of ln T and damping weight
+  real*8,allocatable,save :: dprev(:),dloc(:)
   logical :: lout
   character(24) :: fname
 !
   if(.not.nht_have_mc) return
+  if(.not.allocated(dprev)) then
+     allocate(dprev(gas_ncell),dloc(gas_ncell))
+     dprev = 0d0
+     dloc = te_damp
+  endif
   lout = it==in_niter
   if(lout) then
      write(fname,'(a,i4.4)') 'output.tebal_',impi
@@ -56,7 +64,8 @@ subroutine te_update(it)
      call te_balance(gas_temp(i),gas_radtemp(i),nh,neoth,qb,qv,nht_ng,nht_nug,nht_dnug, &
           nht_jg(:,l),nht_jb(:,l),nht_ljb(:,l),nonth,nonexc,capabs,gas_capemit(:,i),gext, &
           nht_xloc(:,i), &
-          tnew,ierr)
+          tnew,ierr,tsol)
+     call te_step(gas_temp(i),tsol,dprev(i),dloc(i),tnew)
      if(ierr/=0) nfail = nfail + 1
      if(lout) then
         x = nht_xloc(:,i)
