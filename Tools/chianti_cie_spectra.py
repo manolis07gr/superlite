@@ -44,6 +44,8 @@ def main():
     ap.add_argument('--ne', type=float, default=1e10)
     ap.add_argument('--wl', default='1,3e5,0.004', help='min, max [A], bin width [dex]')
     ap.add_argument('--fmin', type=float, default=1e-6)
+    ap.add_argument('--cache', default=None,
+                    help='directory for the per-element tables (a rerun reuses them)')
     a = ap.parse_args()
     if 'XUVTOP' not in os.environ:
         sys.exit('set XUVTOP to the CHIANTI database directory')
@@ -64,8 +66,20 @@ def main():
     ioneq_all = chio.ioneqRead(ioneqName=chdata.Defaults['ioneqfile'])   # default CIE fractions
     print('ion fractions:', chdata.Defaults['ioneqfile'], file=sys.stderr)
     tab = {}
+    tag = 'logt %.4f %.4f %d ne %.4e fmin %.1e edges %.6e %.6e %d' % (
+        logt[0], logt[-1], len(logt), a.ne, a.fmin, edges[0], edges[-1], nw)
+    if a.cache:
+        os.makedirs(a.cache, exist_ok=True)
     for el in els:
         z = ZOF[el]
+        cfile = os.path.join(a.cache, el + '.txt') if a.cache else None
+        if cfile and os.path.exists(cfile):
+            with open(cfile) as f:
+                same = f.readline().strip() == '# ' + tag
+            if same:
+                tab[z] = np.loadtxt(cfile, ndmin=2)
+                print('%-3s from %s' % (el, cfile), file=sys.stderr)
+                continue
         em = np.zeros((len(temp), nw))
         tstart = time.time()
         for stage in range(1, z + 2):
@@ -119,6 +133,8 @@ def main():
                 except Exception as e:
                     print('  %s continuum: %s' % (ions, str(e)[:80]), file=sys.stderr)
         tab[z] = em
+        if cfile:
+            np.savetxt(cfile, em, fmt='%.4e', header=tag, comments='# ')
         print('%-3s done in %.0f s; emissivity per n_e n_el at log T = %s: %s' % (
             el, time.time() - tstart, logt[[0, len(logt) // 2, -1]],
             ' '.join('%.3e' % s for s in em[[0, len(logt) // 2, -1]].sum(axis=1))), file=sys.stderr)
