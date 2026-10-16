@@ -332,6 +332,8 @@ program superlite
         else
            write(6,'(2(i7,"k"))') ct_npcreate(2)/1000,ct_npflux(2)/1000
         endif
+        if(flx_lumout>0d0) write(6,'(1x,a,es10.3,a,f7.4,a)') 'escaped outside the flux bins:', &
+             flx_lumout,' erg/s (',flx_lumout/max(flx_lumout+sum(flx_luminos),1d-300),' of the total)'
         write(6,*)
      endif !impi
 !-- write timestep timing to file

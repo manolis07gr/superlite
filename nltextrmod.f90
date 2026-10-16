@@ -1143,6 +1143,8 @@ subroutine nxt_write(ncell,rcell,vcell,tempinv,radtemp)
            fr(j) = sum(nxt_x(o+nxa_ion(i)%soff+1:o+nxa_ion(i)%soff+nxa_ion(i)%nlev,ic))
         enddo
         fr(nxa_el(iel)%nion+1) = nxt_x(o+nxa_el(iel)%ns,ic)
+!-- below 1e-99 the e12.4 format drops the exponent letter
+        where(fr<1d-99) fr = 0d0
         write(4,'(1p,99e12.4)') rcell(ic),1d0/tempinv(ic),nxt_ne(ic),nxt_nel(iel,ic), &
              (fr(j),j=1,nxa_el(iel)%nion+1)
      enddo

@@ -6,8 +6,14 @@ Each segment is logarithmic (constant velocity width).  Use with
   in_grp_ng = 0              (groups from input.wlgrid)
   in_flx_ndim = -1, 1, 1     (flux bins from input.fluxwl)
 
-Example (100 km/s from 3000 to 10000 A, 1000 km/s from 1 A to 3 um):
-  python3 make_wlgrid.py -o run_dir --fine 3000 10000 100 --coarse 1 30000 1000
+Example (100 km/s from 3000 to 10000 A, 1000 km/s from 1 A to 3 um, 30 000 km/s
+from 3 to 300 um):
+  python3 make_wlgrid.py -o run_dir --fine 3000 10000 100 --coarse 1 30000 1000 \
+      --far 3000000 30000
+The far-IR segment holds the fine-structure and forbidden lines of the NLTE model
+atoms ([Fe II] 26 um, [Si II] 35 um, [O I] 63 um, [C II] 158 um, [N II] 205 um);
+a line emitted outside the grid escapes and is reported as luminosity outside
+the flux bins.  --far 0 0 omits it.
 """
 import argparse
 import os
@@ -29,12 +35,16 @@ def main():
                     metavar=('LO_A', 'HI_A', 'DV_KMS'))
     ap.add_argument('--coarse', nargs=3, type=float, default=[1.0, 30000.0, 1000.0],
                     metavar=('LO_A', 'HI_A', 'DV_KMS'))
+    ap.add_argument('--far', nargs=2, type=float, default=[3.0e6, 30000.0],
+                    metavar=('HI_A', 'DV_KMS'), help='far-IR segment from the coarse upper end')
     a = ap.parse_args()
     flo, fhi, fdv = a.fine
     clo, chi, cdv = a.coarse
     if not (clo < flo < fhi < chi):
         raise SystemExit('need coarse_lo < fine_lo < fine_hi < coarse_hi')
     edges = np.concatenate([segment(clo, flo, cdv)[:-1], segment(flo, fhi, fdv)[:-1], segment(fhi, chi, cdv)])
+    if a.far[0] > chi:
+        edges = np.concatenate([edges[:-1], segment(chi, a.far[0], a.far[1])])
     edges_cm = edges * 1e-8
     ng = len(edges) - 1
     os.makedirs(a.out, exist_ok=True)
@@ -45,7 +55,8 @@ def main():
         fh.write('#wavelength bin boundaries for flux. units: [cm]\n# nbin\n# wlbounds\n#\n')
         fh.write(f'{ng}\n{body}\n')
     print(f'{ng} groups: {clo:g}-{flo:g} A and {fhi:g}-{chi:g} A at {cdv:g} km/s, '
-          f'{flo:g}-{fhi:g} A at {fdv:g} km/s')
+          f'{flo:g}-{fhi:g} A at {fdv:g} km/s' +
+          (f', {chi:g}-{a.far[0]:g} A at {a.far[1]:g} km/s' if a.far[0] > chi else ''))
 
 
 if __name__ == '__main__':

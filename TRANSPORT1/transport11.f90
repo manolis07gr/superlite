@@ -771,9 +771,12 @@ contains
        endif
        if(ig<1) ig = binsrch(wlc,grp_wl,grp_ng+1,.false.)
        if(wlc<grp_wl(1) .or. wlc>=grp_wl(grp_ng+1)) then
-!-- outside the group grid: put it in the edge group
-          call rnd_r(rr,rndstate)
-          wlc = 1d0/((1d0-rr)*grp_wlinv(ig)+rr*grp_wlinv(ig+1))
+!-- outside the group grid (e.g. mid-IR fine-structure lines): the medium
+!-- is not described there, the photon escapes (flux tally: outside the
+!-- bins unless the flux grid is wider)
+          wl = wlc*(1d0-vx*mu*cinv)
+          ptcl2%stat = 'flux'
+          return
        elseif(kind==em_line .and. nxt_isrt(idx)>0) then
 !-- the packet sits on the (active) line it was emitted in
           ptcl2%iline = nxt_isrt(idx)

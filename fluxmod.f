@@ -19,6 +19,8 @@ c-- wavelength (wl), polar (mu), and azimuthal (om) bins
 !=================
 !-- outbound grouped luminosity
       real*8,allocatable :: flx_luminos(:,:,:) !(flx_ng,flx_nmu,flx_nom)
+c-- escaped outside the wavelength range of the flux bins (this iteration)
+      real*8 :: flx_lumout = 0d0
 !-- sampled devation of group luminosity
       real*8,allocatable :: flx_lumdev(:,:,:) !(flx_ng,flx_nmu,flx_nom)
 !-- number of escaped particles per group

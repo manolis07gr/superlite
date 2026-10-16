@@ -25,6 +25,7 @@ c-- init
       flx_luminos = 0d0
       flx_lumdev = 0d0
       flx_lumnum = 0
+      flx_lumout = 0d0
 c
 !!c$omp do schedule(static,1) !round-robin
       do ipart=1,prt_npartmax
@@ -39,14 +40,18 @@ c-- check flux status
        if(ptcl%x/=huge(help)) cycle
 c
 c-- retrieving lab frame flux group, polar, azimuthal bin
-       ig = binsrch(ptcl%wl,flx_wl,flx_ng+1,.false.)
+       ig = binsrch(ptcl%wl,flx_wl,flx_ng+1,.true.)
        imu = binsrch(ptcl%mu,flx_mu,flx_nmu+1,.false.)
        iom = binsrch(ptcl%om,flx_om,flx_nom+1,.false.)
 c
-c-- tallying outbound luminosity
-       flx_luminos(ig,imu,iom) = flx_luminos(ig,imu,iom)+ptcl%e
-       flx_lumdev(ig,imu,iom) = flx_lumdev(ig,imu,iom)+ptcl%e**2
-       flx_lumnum(ig,imu,iom) = flx_lumnum(ig,imu,iom)+1
+c-- tallying outbound luminosity (outside the bins: separate total)
+       if(ig<1 .or. ig>flx_ng) then
+        flx_lumout = flx_lumout+ptcl%e
+       else
+        flx_luminos(ig,imu,iom) = flx_luminos(ig,imu,iom)+ptcl%e
+        flx_lumdev(ig,imu,iom) = flx_lumdev(ig,imu,iom)+ptcl%e**2
+        flx_lumnum(ig,imu,iom) = flx_lumnum(ig,imu,iom)+1
+       endif
 
 c-- mark particle slot occupied or vacant
        prt_isvacant(ipart) = .true.
