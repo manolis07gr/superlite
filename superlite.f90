@@ -26,6 +26,8 @@ program superlite
   use countersmod
   use nltehmod, only:nlteh_set_collfits
   use nltehtrmod
+  use bbsobmod
+  use tebalmod, only:te_init,te_damp,te_ntemin
 
   implicit none
 !***********************************************************************
@@ -130,6 +132,29 @@ program superlite
           nlte_data(1)%i(1)%C3,nlte_data(1)%i(1)%delE)
      if(lmpi0) write(6,'(1x,a,i3,a,i5,a)') 'NLTE H:',in_nlteh_nlev,' levels,', &
           (in_nlteh_nlev*(in_nlteh_nlev-1))/2,' lines (Sobolev resonances, macro-atom)'
+  endif
+!-- fast photoelectrons from X-ray absorption
+  if(in_nlteh) nht_ntemin = in_nt_emin*pc_ev
+  te_ntemin = in_nt_emin*pc_ev
+!-- electron temperature from the thermal balance
+  if(in_tesolve) then
+     te_damp = in_te_damp
+     call te_init(grp_ng,nht_nug)
+     if(lmpi0) write(6,'(1x,a,f5.2,2a)') 'T_e from the thermal balance, damping', &
+          in_te_damp,', LTE elements at T_ion = ',in_tion
+  endif
+!-- lines of the LTE elements: Sobolev expansion opacity and line scattering
+  bbs_sobolev = in_bbsobolev
+  bbs_eps = in_bbeps
+  call bbs_init(grp_ng,grd_ncell,gas_ncell)
+  if(lmpi0 .and. bbs_on) then
+     if(bbs_eps<0d0) then
+        write(6,'(1x,a,l2,a)') 'bb lines: Sobolev opacity',bbs_sobolev, &
+             ', thermalization from van Regemorter rates'
+     else
+        write(6,'(1x,a,l2,a,f6.3)') 'bb lines: Sobolev opacity',bbs_sobolev, &
+             ', thermalization share',bbs_eps
+     endif
   endif
   call particle_alloc(lmpi0)
 

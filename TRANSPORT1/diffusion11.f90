@@ -7,6 +7,7 @@ pure subroutine diffusion11(ptcl,ptcl2,vx,vy,vz,cache,rndstate,&
   use miscmod
   use groupmod
   use gridmod
+  use bbsobmod, only:grd_capsc
   use physconstmod
   use particlemod
   use transportmod
@@ -111,7 +112,7 @@ pure subroutine diffusion11(ptcl,ptcl2,vx,vy,vz,cache,rndstate,&
      else
         do iig=1,grp_ng
            if(grd_cap(iig,ic)*dist >= trn_taulump .and. &
-                (grd_sig(ic) + grd_cap(iig,ic))*dist >= trn_tauddmc) then
+                (grd_sig(ic) + grd_cap(iig,ic)+grd_capsc(iig,ic))*dist >= trn_tauddmc) then
               llumps(iig) = .true.
               glump=glump+1
               glumps(glump) = int(iig,2)
@@ -160,7 +161,7 @@ pure subroutine diffusion11(ptcl,ptcl2,vx,vy,vz,cache,rndstate,&
   endif
 !
 !-- sanity check
-  if((grd_sig(ic) + grd_cap(ig,ic))*dist < trn_tauddmc) then
+  if((grd_sig(ic) + grd_cap(ig,ic)+grd_capsc(ig,ic))*dist < trn_tauddmc) then
      ierr = 100
      return
   endif
@@ -204,16 +205,16 @@ pure subroutine diffusion11(ptcl,ptcl2,vx,vy,vz,cache,rndstate,&
      if(ix/=1) l = grd_icell(ix-1,iy,iz)
      if(ix==1) then
         opacleak(1) = 0d0
-     elseif((grd_cap(ig,l)+ &
+     elseif((grd_cap(ig,l)+grd_capsc(ig,l)+ &
         grd_sig(l))*dx(ix-1)<trn_tauddmc) then
 !-- DDMC interface
-        mfphelp = (grd_cap(ig,ic)+grd_sig(ic))*dx(ix)
+        mfphelp = (grd_cap(ig,ic)+grd_capsc(ig,ic)+grd_sig(ic))*dx(ix)
         ppl = 4d0/(3d0*mfphelp+6d0*pc_dext)
         opacleak(1)= 1.5d0*ppl*(grd_xarr(ix))**2/dx3(ix)
      else
 !-- DDMC interior
-        mfphelp = ((grd_sig(ic)+grd_cap(ig,ic))*dx(ix)+&
-             (grd_sig(l)+grd_cap(ig,l))*dx(ix-1))
+        mfphelp = ((grd_sig(ic)+grd_cap(ig,ic)+grd_capsc(ig,ic))*dx(ix)+&
+             (grd_sig(l)+grd_cap(ig,l)+grd_capsc(ig,l))*dx(ix-1))
         opacleak(1)=2.0d0*(grd_xarr(ix))**2/(mfphelp*dx3(ix))
      endif
 !
@@ -222,19 +223,19 @@ pure subroutine diffusion11(ptcl,ptcl2,vx,vy,vz,cache,rndstate,&
         lhelp = .true.
      else
         l = grd_icell(ix+1,iy,iz)
-        lhelp = (grd_cap(ig,l)+ &
+        lhelp = (grd_cap(ig,l)+grd_capsc(ig,l)+ &
            grd_sig(l))*dx(ix+1)<trn_tauddmc
      endif
 !
      if(lhelp) then
 !-- DDMC interface
-        mfphelp = (grd_cap(ig,ic)+grd_sig(ic))*dx(ix)
+        mfphelp = (grd_cap(ig,ic)+grd_capsc(ig,ic)+grd_sig(ic))*dx(ix)
         ppr = 4d0/(3d0*mfphelp+6d0*pc_dext)
         opacleak(2)=1.5d0*ppr*(grd_xarr(ix+1))**2/dx3(ix)
      else
 !-- DDMC interior
-        mfphelp = ((grd_sig(ic)+grd_cap(ig,ic))*dx(ix)+&
-             (grd_sig(l)+grd_cap(ig,l))*dx(ix+1))
+        mfphelp = ((grd_sig(ic)+grd_cap(ig,ic)+grd_capsc(ig,ic))*dx(ix)+&
+             (grd_sig(l)+grd_cap(ig,l)+grd_capsc(ig,l))*dx(ix+1))
         opacleak(2)=2.0d0*(grd_xarr(ix+1))**2/(mfphelp*dx3(ix))
      endif
   endif
@@ -326,7 +327,7 @@ pure subroutine diffusion11(ptcl,ptcl2,vx,vy,vz,cache,rndstate,&
      endif
 
 !-- method changes to IMC
-     if((grd_sig(ic)+grd_cap(ig,ic))*dist < trn_tauddmc) then
+     if((grd_sig(ic)+grd_cap(ig,ic)+grd_capsc(ig,ic))*dist < trn_tauddmc) then
         ptcl2%itype = 1
 !-- direction sampled isotropically
         call rnd_r(r1,rndstate)
@@ -380,16 +381,16 @@ pure subroutine diffusion11(ptcl,ptcl2,vx,vy,vz,cache,rndstate,&
               specig = cache%specarr(iiig)
               !specig = specint0(grd_tempinv(ic),iiig)
 !-- calculating resolved leakage opacities
-              if((grd_cap(iiig,l)+ &
+              if((grd_cap(iiig,l)+grd_capsc(iiig,l)+ &
                    grd_sig(l))*dx(ix-1)<trn_tauddmc) then
 !-- DDMC interface
-                 mfphelp = (grd_cap(iiig,ic)+grd_sig(ic))*dx(ix)
+                 mfphelp = (grd_cap(iiig,ic)+grd_capsc(iiig,ic)+grd_sig(ic))*dx(ix)
                  ppl = 4d0/(3d0*mfphelp+6d0*pc_dext)
                  resopacleak = 1.5d0*ppl*(grd_xarr(ix))**2/dx3(ix)
               else
 !-- IMC interface
-                 mfphelp = ((grd_sig(ic)+grd_cap(iiig,ic))*dx(ix)+&
-                      (grd_sig(l)+grd_cap(iiig,l))*dx(ix-1))
+                 mfphelp = ((grd_sig(ic)+grd_cap(iiig,ic)+grd_capsc(iiig,ic))*dx(ix)+&
+                      (grd_sig(l)+grd_cap(iiig,l)+grd_capsc(iiig,l))*dx(ix-1))
                  resopacleak = 2.0d0*(grd_xarr(ix))**2/ &
                       (mfphelp*dx3(ix))
               endif
@@ -399,7 +400,7 @@ pure subroutine diffusion11(ptcl,ptcl2,vx,vy,vz,cache,rndstate,&
         endif
 !
 !-- method changes to IMC
-        if((grd_sig(l)+grd_cap(iiig,l))*dx(ix-1) < trn_tauddmc) then
+        if((grd_sig(l)+grd_cap(iiig,l)+grd_capsc(iiig,l))*dx(ix-1) < trn_tauddmc) then
            ptcl2%itype = 1
 !-- sampling wavelength
            call rnd_r(r1,rndstate)
@@ -452,7 +453,7 @@ pure subroutine diffusion11(ptcl,ptcl2,vx,vy,vz,cache,rndstate,&
               specig = cache%specarr(iiig)
               !specig = specint0(grd_tempinv(ic),iiig)
 !-- calculating resolved leakage opacities
-              mfphelp = (grd_cap(iiig,ic)+grd_sig(ic))*dx(ix)
+              mfphelp = (grd_cap(iiig,ic)+grd_capsc(iiig,ic)+grd_sig(ic))*dx(ix)
               ppr = 4d0/(3d0*mfphelp+6d0*pc_dext)
               resopacleak = 1.5d0*ppr*(grd_xarr(ix+1))**2/dx3(ix)
               denom2 = denom2+specig*resopacleak*speclump*help
@@ -493,16 +494,16 @@ pure subroutine diffusion11(ptcl,ptcl2,vx,vy,vz,cache,rndstate,&
               iiig = glumps(iig)
               specig = cache%specarr(iiig)
 !-- calculating resolved leakage opacities
-              if((grd_cap(iiig,l)+ &
+              if((grd_cap(iiig,l)+grd_capsc(iiig,l)+ &
                    grd_sig(l))*dx(ix+1)<trn_tauddmc) then
 !-- DDMC interface
-                 mfphelp = (grd_cap(iiig,ic)+grd_sig(ic))*dx(ix)
+                 mfphelp = (grd_cap(iiig,ic)+grd_capsc(iiig,ic)+grd_sig(ic))*dx(ix)
                  ppr = 4d0/(3d0*mfphelp+6d0*pc_dext)
                  resopacleak = 1.5d0*ppr*(grd_xarr(ix+1))**2/dx3(ix)
               else
 !-- IMC interface
-                 mfphelp = ((grd_sig(ic)+grd_cap(iiig,ic))*dx(ix)+&
-                      (grd_sig(l)+grd_cap(iiig,l))*dx(ix+1))
+                 mfphelp = ((grd_sig(ic)+grd_cap(iiig,ic)+grd_capsc(iiig,ic))*dx(ix)+&
+                      (grd_sig(l)+grd_cap(iiig,l)+grd_capsc(iiig,l))*dx(ix+1))
                  resopacleak = 2.0d0*(grd_xarr(ix+1))**2/ &
                       (mfphelp*dx3(ix))
               endif
@@ -512,7 +513,7 @@ pure subroutine diffusion11(ptcl,ptcl2,vx,vy,vz,cache,rndstate,&
         endif
 
 !-- method changes to IMC
-        if((grd_sig(l)+grd_cap(iiig,l))*dx(ix+1)< trn_tauddmc) then
+        if((grd_sig(l)+grd_cap(iiig,l)+grd_capsc(iiig,l))*dx(ix+1)< trn_tauddmc) then
 !
            ptcl2%itype = 1
 !-- sampling wavelength
@@ -584,7 +585,7 @@ pure subroutine diffusion11(ptcl,ptcl2,vx,vy,vz,cache,rndstate,&
         enddo
      endif
      ig = iiig
-     if((grd_sig(ic)+grd_cap(ig,ic))*dist < trn_tauddmc) then
+     if((grd_sig(ic)+grd_cap(ig,ic)+grd_capsc(ig,ic))*dist < trn_tauddmc) then
         ptcl2%itype = 1
 !-- sample wavelength
         call rnd_r(r1,rndstate)

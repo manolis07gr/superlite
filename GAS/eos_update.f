@@ -26,12 +26,12 @@ c-- loop over all gas_vals cells
        ndens = gas_natom(i)/gas_vol(i) !atom number density
        if(in_nebular.and.gas_rcell(i).gt.in_R_phot) then
          !-- experimental nebular EOS
-         call ions_nebular(gas_natomfr(1,i),gas_temp(i),
+         call ions_nebular(gas_natomfr(1,i),gas_tion(i),
      &     gas_radtemp(i),gas_rcell(i),ndens,gas_nelec(i))
        else
          !-- LTE EOS
          call ions_solve_eos(gas_natomfr(1,i),
-     &     gas_temp(i),ndens,gas_nelec(i),niter)
+     &     gas_tion(i),ndens,gas_nelec(i),niter)
        endif
 c-- electrons per atom from elements other than H (for NLTE H)
        if(in_nlteh) nht_neothloc(i) = max(0d0,

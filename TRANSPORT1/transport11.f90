@@ -15,6 +15,7 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
   use comptonmod
   use nltehmod, only:nh_nu,nh_lu,nh_wl
   use nltehtrmod
+  use bbsobmod, only:bbs_on,grd_capsc
   implicit none
 !
   type(packet),target,intent(inout) :: ptcl
@@ -38,8 +39,8 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
   logical :: lout
   integer :: ixnext
   real*8 :: r1, r2
-  real*8 :: db, dcol, dthm, ddop
-  real*8 :: darr(4)
+  real*8 :: db, dcol, dthm, ddop, dsc
+  real*8 :: darr(5)
   real*8 :: elabfact,elabfactold
   real*8 :: xold, muold
   real*8 :: help
@@ -146,6 +147,15 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
   else
      call rnd_r(r1,rndstate)
      dcol = -log(r1)/(elabfact*grd_cap(ig,ic))
+  endif
+!
+!-- line scattering distance (lines of the LTE elements)
+  dsc = far
+  if(bbs_on) then
+     if(grd_capsc(ig,ic)>0.) then
+        call rnd_r(r1,rndstate)
+        dsc = -log(r1)/(elabfact*grd_capsc(ig,ic))
+     endif
   endif
 !
 !-- Doppler shift distance
@@ -255,7 +265,7 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
 66 continue
 !
 !--finding minimum distance
-  darr = [dcol,dthm,ddop,db]
+  darr = [dcol,dthm,ddop,db,dsc]
   ptcl2%idist = minloc(darr,dim=1)
   d = minval(darr)
   if(any(darr/=darr)) then
@@ -393,7 +403,7 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
      if(nuratio/=1d0) then
 !-- new comoving group
         ig = binsrch(wl/(1d0-mu*vx*cinv),grp_wl,grp_ng+1,.false.)
-        if(((grd_sig(ic)+grd_cap(ig,ic))*dx(ix) >= trn_tauddmc) &
+        if(((grd_sig(ic)+grd_cap(ig,ic)+grd_capsc(ig,ic))*dx(ix) >= trn_tauddmc) &
              .and. .not.in_puretran) then
            ptcl2%itype = 2
            totevelo = totevelo+e*vx*mu*cinv
@@ -404,12 +414,27 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
      endif
 
 !
+!-- line scattering: isotropic and coherent in the comoving frame
+  elseif(d == dsc) then
+     call rnd_r(r1,rndstate)
+     mucmf = 1d0-2d0*r1
+     mu = (mucmf+vx*cinv)/(1d0+vx*mucmf*cinv)
+     wl = wl*(1d0-mu*vx*cinv)/elabfact
+     help = elabfact/(1d0-mu*vx*cinv)
+     totevelo = totevelo+e*(1d0-help)
+     e = e*help
+     e0 = e0*help
+
+!
 !-- effective scattering
   elseif(d == dcol) then
      if(nht_on) then
-!-- H bound-free absorption activates the macro-atom, the rest the thermal pool
+!-- H bound-free absorption activates the macro-atom, the rest the thermal pool;
+!-- X-rays make fast photoelectrons (heat, H ionization and excitation)
         call rnd_r(r1,rndstate)
-        if(r1*grd_cap(ig,ic) < grd_caphbf(ig,ic)) then
+        if(nht_ntemin>0d0 .and. pc_h*pc_c*elabfact/wl>nht_ntemin) then
+           call nlteh_nonthermal(ic,rndstate,kind,idx,wlcmf)
+        elseif(r1*grd_cap(ig,ic) < grd_caphbf(ig,ic)) then
            call nlteh_bfabs(ic,pc_c*elabfact/wl,rndstate,kind,idx,wlcmf)
         else
            call nlteh_kpacket(ic,rndstate,kind,idx,wlcmf)
@@ -443,7 +468,7 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
         call rnd_r(r1,rndstate)
         ig = emitgroup(r1,ic)
 !-- checking if DDMC in new group
-        if(((grd_sig(ic)+grd_cap(ig,ic))*dx(ix) >= trn_tauddmc) &
+        if(((grd_sig(ic)+grd_cap(ig,ic)+grd_capsc(ig,ic))*dx(ix) >= trn_tauddmc) &
             .and. .not.in_puretran) ptcl2%itype = 2
      endif
 !-- checking for DDMC in new group
@@ -469,7 +494,7 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
   elseif(d==db .and. ixnext>ix) then
 
      l = grd_icell(ix+1,iy,iz)
-     if((grd_sig(l)+grd_cap(ig,l))*dx(ix+1)<trn_tauddmc &
+     if((grd_sig(l)+grd_cap(ig,l)+grd_capsc(ig,l))*dx(ix+1)<trn_tauddmc &
           .or. in_puretran) then
 !-- IMC in adjacent cell
         x = grd_xarr(ix+1)
@@ -479,7 +504,7 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
      else
 !-- DDMC in adjacent cell
         mu = (mu-vx*cinv)/(1d0-vx*mu*cinv)
-        help= (grd_cap(ig,l)+grd_sig(l))*dx(ix+1)
+        help= (grd_cap(ig,l)+grd_capsc(ig,l)+grd_sig(l))*dx(ix+1)
         help = 4d0/(3d0*help+6d0*pc_dext)
 !-- sampling
         call rnd_r(r1,rndstate)
@@ -508,7 +533,7 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
   elseif(d==db) then
 
      l = grd_icell(ix-1,iy,iz)
-     if((grd_sig(l)+grd_cap(ig,l))*dx(ix-1) &
+     if((grd_sig(l)+grd_cap(ig,l)+grd_capsc(ig,l))*dx(ix-1) &
            < trn_tauddmc .or. &
           in_puretran) then
 !-- IMC in adjacent cell
@@ -533,7 +558,7 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
               e0 = e0*(1d0+2d0*(0.55d0*help-1.25d0*abs(mu))*vx*cinv)
               e = e*(1d0+2d0*(0.55d0*help-1.25d0*abs(mu))*vx*cinv)
         endif
-        help = (grd_cap(ig,l)+grd_sig(l))*dx(ix-1)
+        help = (grd_cap(ig,l)+grd_capsc(ig,l)+grd_sig(l))*dx(ix-1)
         help = 4d0/(3d0*help+6d0*pc_dext)
 !-- sampling
         call rnd_r(r1,rndstate)
@@ -648,7 +673,7 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
         endif
      endif
 !-- check if ddmc region
-     if (((grd_sig(ic)+grd_cap(ig,ic))*dx(ix) &
+     if (((grd_sig(ic)+grd_cap(ig,ic)+grd_capsc(ig,ic))*dx(ix) &
            >= trn_tauddmc) .and. .not.in_puretran) then
         ptcl2%itype = 2
 !-- velocity effects accounting
@@ -760,7 +785,7 @@ contains
     endif
     wl = wlc*(1d0-vx*mu*cinv)
 !-- DDMC in the new group
-    if(((grd_sig(ic)+grd_cap(ig,ic))*(grd_xarr(ix+1)-grd_xarr(ix)) >= trn_tauddmc) &
+    if(((grd_sig(ic)+grd_cap(ig,ic)+grd_capsc(ig,ic))*(grd_xarr(ix+1)-grd_xarr(ix)) >= trn_tauddmc) &
          .and. .not.in_puretran) then
        ptcl2%itype = 2
        ptcl2%iline = 0
@@ -785,7 +810,7 @@ contains
 !     !-- comoving group index
 !     ig = binsrch(wlhelp,grp_wl,grp_ng+1,.false.)
 ! !-- check for ddmc again for new ig
-!     if (((grd_sig(ic)+grd_cap(ig,ic))*dx(ix) &
+!     if (((grd_sig(ic)+grd_cap(ig,ic)+grd_capsc(ig,ic))*dx(ix) &
 !            >= trn_tauddmc) .and. .not.in_puretran) then
 !       ptcl2%itype = 2
 ! !-- velocity effects accounting

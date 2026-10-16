@@ -102,6 +102,27 @@ c-- flow, T uniform between the gas temperature and the post-shock
 c-- temperature (capped at in_shock_tmax), bremsstrahlung shape at each T
       real*8 :: in_shock_dvmin = 3d7 ![cm/s]
       real*8 :: in_shock_tmax = 1d7 ![K]
+c-- bound-bound opacity of the LTE elements: in_bbsobolev = t uses the
+c-- Sobolev expansion opacity with the local velocity gradient (saturating
+c-- thick lines) instead of line strengths smeared over the group;
+c-- in_bbeps is the share of line interactions that thermalize the photon
+c-- (1: pure absorption, the released code; <0: per line from collisional
+c-- de-excitation (van Regemorter) against Sobolev escape), the rest is
+c-- coherent scattering in the comoving frame
+      logical :: in_bbsobolev = .false.
+      real*8 :: in_bbeps = 1d0
+c-- electron temperature from the thermal balance of the gas with the
+c-- Monte Carlo radiation field (requires in_nlteh), mixed with the old one
+c-- with weight in_te_damp per iteration; the LTE elements are ionized and
+c-- excited at the input temperature (in_tion = 'hydr') or at the
+c-- electron temperature ('elec')
+      logical :: in_tesolve = .false.
+      real*8 :: in_te_damp = 0.5d0
+      character(4) :: in_tion = 'hydr'
+c-- photons above in_nt_emin [eV] absorbed by the gas make fast
+c-- photoelectrons that ionize and excite H (Shull & van Steenberg 1985;
+c-- requires in_nlteh); 0: all absorbed energy heats the gas
+      real*8 :: in_nt_emin = 0d0
 c
 c-- analytic opacities
       character(4) :: in_opacanaltype = 'none'    !none|grey|mono|line: group opacity structure type
@@ -152,6 +173,8 @@ c-- runtime parameter namelist
      & in_nlte,in_nlte_nelem,in_nlteh,in_nlteh_nlev,in_nlteh_damp,
      & in_nlteh_tau0,
      & in_srctype,in_shock_dvmin,in_shock_tmax,
+     & in_bbsobolev,in_bbeps,in_tesolve,in_te_damp,in_tion,
+     & in_nt_emin,
 !phys opac
      & in_opacmixrossel,
      & in_nobbopac,in_nobfopac,in_noffopac,in_nothmson,
@@ -271,6 +294,12 @@ c
       call insertc(in_srctype,in_c,ic)
       call insertr(in_shock_dvmin,in_r,ir)
       call insertr(in_shock_tmax,in_r,ir)
+      call insertl(in_bbsobolev,in_l,il)
+      call insertr(in_bbeps,in_r,ir)
+      call insertl(in_tesolve,in_l,il)
+      call insertr(in_te_damp,in_r,ir)
+      call insertc(in_tion,in_c,ic)
+      call insertr(in_nt_emin,in_r,ir)
       call insertl(in_nobbopac,in_l,il)
       call insertl(in_nobfopac,in_l,il)
       call insertl(in_noffopac,in_l,il)
@@ -452,6 +481,11 @@ c
       if(in_nlteh_nlev<4 .or. in_nlteh_nlev>60) stop 'in_nlteh_nlev'
       if(in_srctype/='surf' .and. in_srctype/='lumg')
      &  stop 'in_srctype must be surf or lumg'
+      if(in_bbeps>1d0) stop 'in_bbeps > 1'
+      if(in_tesolve.and..not.in_nlteh) stop 'in_tesolve: needs in_nlteh'
+      if(in_tion/='hydr'.and.in_tion/='elec') stop 'in_tion: hydr|elec'
+      if(in_te_damp<=0d0.or.in_te_damp>1d0) stop 'in_te_damp: (0,1]'
+      if(in_nt_emin>0d0.and..not.in_nlteh) stop 'in_nt_emin: in_nlteh'
 c
       if(in_nlte.and.in_nlte_nelem.ne.1) stop 'in_nlte_nelem!=1'
 c

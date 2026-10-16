@@ -654,6 +654,7 @@ c     -----------------------------
       use inputparmod, only:in_nlteh
       use nltehmod, only:nh_nlev
       use nltehtrmod
+      use bbsobmod, only:bbs_on,gas_capsc,grd_capsc
       implicit none
 ************************************************************************
 * Broadcast the data that changes with time/temperature.
@@ -726,6 +727,12 @@ c-- NLTE hydrogen populations and bound-free opacity
      &   MPI_COMM_WORLD,ierr)
        call mpi_allgatherv(gas_caphbf,grp_ng*gas_ncell,MPI_REAL,
      &   grd_caphbf,grp_ng*counts,grp_ng*displs,MPI_REAL,
+     &   MPI_COMM_WORLD,ierr)
+      endif
+c-- line scattering opacity
+      if(bbs_on) then
+       call mpi_allgatherv(gas_capsc,grp_ng*gas_ncell,MPI_REAL,
+     &   grd_capsc,grp_ng*counts,grp_ng*displs,MPI_REAL,
      &   MPI_COMM_WORLD,ierr)
       endif
 c

@@ -4,6 +4,7 @@ subroutine leakage_opacity11
 
   use miscmod
   use gridmod
+  use bbsobmod, only:grd_capsc
   use groupmod
   use transportmod
   use physconstmod
@@ -50,7 +51,7 @@ subroutine leakage_opacity11
      call specintv(grd_tempinv(l),grp_ng,specarr)
 !     endif
      speclump = sum(specarr, grd_cap(:,l)*dist>=trn_taulump .and. &
-        (grd_sig(l) + grd_cap(:,l))*dist >= trn_tauddmc)
+        (grd_sig(l) + grd_cap(:,l)+grd_capsc(:,l))*dist >= trn_tauddmc)
      if(speclump>0d0) then
         speclump = 1d0/speclump
      else
@@ -65,7 +66,7 @@ subroutine leakage_opacity11
      igemitmax = 0
      do ig=1,grp_ng
         if(grd_cap(ig,l)*dist < trn_taulump) cycle
-        if((grd_sig(l) + grd_cap(ig,l))*dist < trn_tauddmc) cycle
+        if((grd_sig(l) + grd_cap(ig,l)+grd_capsc(ig,l))*dist < trn_tauddmc) cycle
         help = specarr(ig)*grd_cap(ig,l)
         caplump = caplump + help
         if(help > emitmax) then
@@ -76,7 +77,7 @@ subroutine leakage_opacity11
 !-- capemitlump
      do ig=1,grp_ng
         if(grd_cap(ig,l)*dist < trn_taulump) cycle
-        if((grd_sig(l) + grd_cap(ig,l))*dist < trn_tauddmc) cycle
+        if((grd_sig(l) + grd_cap(ig,l)+grd_capsc(ig,l))*dist < trn_tauddmc) cycle
         help = specarr(ig)*grd_capemit(ig,l)
         capemitlump = capemitlump + help
         if(help > emitmax) then
@@ -90,7 +91,7 @@ subroutine leakage_opacity11
         do ig=1,grp_ng-1
           if(grd_cap(ig,l)*dist < trn_taulump) cycle
           if(grd_cap(ig+1,l)*dist >= trn_taulump) cycle
-          if((grd_sig(l) + grd_cap(ig,l))*dist < trn_tauddmc) cycle
+          if((grd_sig(l) + grd_cap(ig,l)+grd_capsc(ig,l))*dist < trn_tauddmc) cycle
           help = dopspeccalc(grd_tempinv(l),ig)*grd_divv(l)/(3*pc_c)
           doplump = doplump + help
         enddo
@@ -98,7 +99,7 @@ subroutine leakage_opacity11
        do ig=grp_ng,2,-1
          if(grd_cap(ig,l)*dist < trn_taulump) cycle
          if(grd_cap(ig-1,l)*dist >= trn_taulump) cycle
-         if((grd_sig(l) + grd_cap(ig,l))*dist < trn_tauddmc) cycle
+         if((grd_sig(l) + grd_cap(ig,l)+grd_capsc(ig,l))*dist < trn_tauddmc) cycle
          help = dopspeccalc(grd_tempinv(l),ig-1)*grd_divv(l)/(3*pc_c)
          doplump = doplump - help
        enddo
@@ -112,7 +113,7 @@ subroutine leakage_opacity11
 !-- lumping opacity
      do ig=1,grp_ng
         if(grd_cap(ig,l)*dist < trn_taulump) cycle
-        if((grd_sig(l) + grd_cap(ig,l))*dist < trn_tauddmc) cycle
+        if((grd_sig(l) + grd_cap(ig,l)+grd_capsc(ig,l))*dist < trn_tauddmc) cycle
 !
 !-- obtaining spectral weight
         specval = specarr(ig)
@@ -121,21 +122,21 @@ subroutine leakage_opacity11
         if(i==1) then
            lhelp = .true.
         else
-           lhelp = (grd_cap(ig,icnb(1))+ &
+           lhelp = (grd_cap(ig,icnb(1))+grd_capsc(ig,icnb(1))+ &
               grd_sig(icnb(1)))*dx(i-1)<trn_tauddmc
         endif
 !
         if(lhelp) then
 !-- DDMC interface
-           help = (grd_cap(ig,l)+grd_sig(l))*dx(i)
+           help = (grd_cap(ig,l)+grd_capsc(ig,l)+grd_sig(l))*dx(i)
            ppl = 4d0/(3d0*help+6d0*pc_dext)
            grd_opaclump(1,l)=grd_opaclump(1,l)+(specval*speclump)*&
                 1.5d0*ppl*(grd_xarr(i))**2/ &
                 (3d0*grd_vol(l)/pc_pi4)
         else
 !-- DDMC interior
-           help = ((grd_sig(l)+grd_cap(ig,l))*dx(i)+&
-                (grd_sig(icnb(1))+grd_cap(ig,icnb(1)))*dx(i-1))
+           help = ((grd_sig(l)+grd_cap(ig,l)+grd_capsc(ig,l))*dx(i)+&
+                (grd_sig(icnb(1))+grd_cap(ig,icnb(1))+grd_capsc(ig,icnb(1)))*dx(i-1))
            grd_opaclump(1,l)=grd_opaclump(1,l)+(specval*speclump)*&
                 2.0d0*(grd_xarr(i))**2/ &
                 (help*3d0*grd_vol(l)/pc_pi4)
@@ -146,21 +147,21 @@ subroutine leakage_opacity11
         if(i==grd_nx) then
            lhelp = .true.
         else
-           lhelp = (grd_cap(ig,icnb(2))+ &
+           lhelp = (grd_cap(ig,icnb(2))+grd_capsc(ig,icnb(2))+ &
               grd_sig(icnb(2)))*dx(i+1)<trn_tauddmc
         endif
 !
         if(lhelp) then
 !-- DDMC interface
-           help = (grd_cap(ig,l)+grd_sig(l))*dx(i)
+           help = (grd_cap(ig,l)+grd_capsc(ig,l)+grd_sig(l))*dx(i)
            ppr = 4d0/(3d0*help+6d0*pc_dext)
            grd_opaclump(2,l)=grd_opaclump(2,l)+(specval*speclump)*&
                 1.5d0*ppr*(grd_xarr(i+1))**2/ &
                 (3d0*grd_vol(l)/pc_pi4)
         else
 !-- DDMC interior
-           help = ((grd_sig(l)+grd_cap(ig,l))*dx(i)+&
-                (grd_sig(icnb(2))+grd_cap(ig,icnb(2)))*dx(i+1))
+           help = ((grd_sig(l)+grd_cap(ig,l)+grd_capsc(ig,l))*dx(i)+&
+                (grd_sig(icnb(2))+grd_cap(ig,icnb(2))+grd_capsc(ig,icnb(2)))*dx(i+1))
            grd_opaclump(2,l)=grd_opaclump(2,l)+(specval*speclump)*&
                 2.0d0*(grd_xarr(i+1))**2/ &
                 (help*3d0*grd_vol(l)/pc_pi4)

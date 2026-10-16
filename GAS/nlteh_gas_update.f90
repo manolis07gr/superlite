@@ -12,6 +12,7 @@ subroutine nlteh_gas_update(it)
   integer,intent(in) :: it
   integer :: i,l
   real*8 :: nh(gas_ncell),neoth(gas_ncell),qb(gas_ncell),qv(gas_ncell)
+  real*8 :: edep(gas_ncell)
 !
   do i=1,gas_ncell
      l = gas_icell1 + i - 1
@@ -24,8 +25,13 @@ subroutine nlteh_gas_update(it)
      endif
      qb(i) = (grd_vxarr(l+1)-grd_vxarr(l))/(grd_xarr(l+1)-grd_xarr(l))
      qv(i) = (grd_vxarr(l+1)+grd_vxarr(l))/(grd_xarr(l+1)+grd_xarr(l))
+!-- power absorbed from X-rays (fast photoelectrons), with the opacity of the
+!-- previous iteration
+     edep(i) = 0d0
+     if(it>1 .and. nht_have_mc .and. gas_mass(i)>0d0) &
+          edep(i) = nlteh_ntdep(nht_ng,nht_nug,nht_dnug,nht_jg(:,l),gas_cap(:,i))
   enddo
-  call nlteh_gas_solve(it,gas_ncell,gas_temp,gas_radtemp,nh,neoth,qb,qv,gas_icell1)
+  call nlteh_gas_solve(it,gas_ncell,gas_temp,gas_radtemp,nh,neoth,qb,qv,gas_icell1,edep)
 !-- electrons per atom
   do i=1,gas_ncell
      if(gas_mass(i)<=0d0) cycle

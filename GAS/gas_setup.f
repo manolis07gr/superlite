@@ -27,6 +27,7 @@ c-- volume from input.str if available
 c
 c-- temperature
       gas_temp = str_tempdd
+      gas_tion = str_tempdd
 c-- radiation temperature
       if(str_lradtemp) then
 c-- from input.str

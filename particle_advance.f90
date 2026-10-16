@@ -11,6 +11,7 @@ subroutine particle_advance
   use totalsmod
   use groupmod
   use gridmod
+  use bbsobmod, only:grd_capsc
   use physconstmod
   use inputparmod
   use timingmod
@@ -167,7 +168,7 @@ subroutine particle_advance
         stop 'particle_advance: invalid igeom'
      endselect
 !-- IMC or DDMC
-     tau = (grd_sig(ic)+grd_cap(ig,ic))*help
+     tau = (grd_sig(ic)+grd_cap(ig,ic)+grd_capsc(ig,ic))*help
      if(in_puretran .or. tau<trn_tauddmc) then
         ptcl2%itype = 1 !IMC
      else

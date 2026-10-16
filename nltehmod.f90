@@ -69,7 +69,7 @@ module nltehmod
   real*8,allocatable :: cf_de(:)            !transition energy [eV]
   logical,allocatable :: cf_have(:,:)       !(nlev,nlev) pair covered by the fits
 !
-  public :: nlteh_init,nlteh_sigma,nlteh_solve_cell,nlteh_lte,nlteh_air
+  public :: nlteh_init,nlteh_sigma,nlteh_solve_cell,nlteh_lte,nlteh_air,nlteh_svs
   public :: nlteh_alpha,nlteh_qcoll,nlteh_cion,nlteh_beta,nlteh_gbf
   public :: nlteh_twophoton_y,nlteh_set_collfits,nlteh_cell_rates,nlteh_kq,bplanck
 !
@@ -520,6 +520,23 @@ subroutine nlteh_cell_rates(temp,trad,ng,nug,dnug,jg,jb,ljb,nonth, &
 end subroutine nlteh_cell_rates
 !
 !
+pure subroutine nlteh_svs(x,fh,fi,fe)
+!-----------------------------------------------------------------------
+! Shares of the energy of a fast electron (E >~ 100 eV) in H/He gas with
+! ionized fraction x (Shull & van Steenberg 1985): H ionization fi and
+! excitation fe; the rest, fh, heats the gas (it includes the He
+! ionization share, He not being in NLTE).  x is limited to [1e-4, 1].
+!-----------------------------------------------------------------------
+  real*8,intent(in) :: x
+  real*8,intent(out) :: fh,fi,fe
+  real*8 :: xx
+  xx = min(max(x,1d-4),1d0)
+  fi = 0.3908d0*(1d0-xx**0.4092d0)**1.7592d0
+  fe = 0.4766d0*(1d0-xx**0.2735d0)**1.5221d0
+  fh = 1d0 - fi - fe
+end subroutine nlteh_svs
+!
+!
 pure function nlteh_kq(k,nh,x) result(kq)
 !-- Sobolev line strength K [1/s] of line k: tau(mu) = K/|Q(mu)|
   integer,intent(in) :: k
@@ -529,7 +546,7 @@ pure function nlteh_kq(k,nh,x) result(kq)
 end function nlteh_kq
 !
 !
-subroutine nlteh_solve_cell(temp,trad,nh,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nonth,x,ne,beta,ierr)
+subroutine nlteh_solve_cell(temp,trad,nh,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nonth,x,ne,beta,ierr,nonexc)
 !-----------------------------------------------------------------------
 ! Statistical equilibrium of H in one cell.
 !  temp   electron temperature [K]
@@ -541,6 +558,7 @@ subroutine nlteh_solve_cell(temp,trad,nh,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nonth
 !  jg     Monte Carlo mean intensity per group [erg/s/cm^2/Hz/sr]
 !  jb     resonance mean intensity per line (used where ljb), else jg of the line's group
 !  nonth  non-thermal ionization rate per H atom from the ground state [1/s]
+!  nonexc (optional) non-thermal excitation rate 1 -> 2 per ground-state atom [1/s]
 !  x      in: initial guess (fractions of nh, 0 = H II); out: solution
 !  ne     out: electron density
 !  beta   out: Sobolev escape probability per line
@@ -552,6 +570,7 @@ subroutine nlteh_solve_cell(temp,trad,nh,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nonth
   real*8,intent(inout) :: x(0:nh_nlev)
   real*8,intent(out) :: ne,beta(nh_nlin)
   integer,intent(out) :: ierr
+  real*8,intent(in),optional :: nonexc
 !
   integer :: n,l,u,k,it,info,nn
   real*8 :: gam(nh_nlev),alp(nh_nlev),alps(nh_nlev),cup(nh_nlev),c3b(nh_nlev)
@@ -580,6 +599,7 @@ subroutine nlteh_solve_cell(temp,trad,nh,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nonth
         m(l,u) = m(l,u) + beta(k)*(nh_a(k) + nh_bul(k)*jl(k)) + ne*qdn(u,l)
      enddo
      m(1,2) = m(1,2) + 0.25d0*a2s
+     if(present(nonexc)) m(2,1) = m(2,1) + nonexc
      do n=1,nn
         m(0,n) = m(0,n) + gam(n) + ne*cup(n)
         m(n,0) = m(n,0) + ne*(alp(n) + alps(n)) + ne*ne*c3b(n)

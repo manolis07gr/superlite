@@ -43,6 +43,7 @@ module nltehtrmod
   integer,public :: nht_njbmin = 30       !crossings needed to use the resonance estimator
   logical,public :: nht_have_mc = .false. !Monte Carlo estimators available
   real*8,public :: nht_tau0 = 0d0         !benchmark: pure-scattering H-alpha with this Sobolev depth
+  real*8,public :: nht_ntemin = 0d0       !photons above this energy [erg] make fast photoelectrons (0: off)
 !
   integer,public :: nht_ncell = 0, nht_ng = 0
   integer,public :: nht_nst = 0           !transient states: k-packet, levels 1..nlev, continuum
@@ -81,6 +82,7 @@ module nltehtrmod
   public :: nlteh_tr_init,nlteh_gas_solve,nlteh_store_jg,nlteh_tally_reset
   public :: nlteh_tally_finish,nlteh_tables,nlteh_neighbors,nlteh_activate
   public :: nlteh_kpacket,nlteh_bfabs,nlteh_write,nlteh_outcome
+  public :: nlteh_nonthermal,nlteh_ntdep,nlteh_ntrates
 !
 contains
 !
@@ -135,18 +137,22 @@ subroutine nlteh_tr_init(nlev,ncell,gncell,ng,wlg)
 end subroutine nlteh_tr_init
 !
 !
-subroutine nlteh_gas_solve(it,gncell,temp,trad,nh,neoth,qb,qv,icell1)
+subroutine nlteh_gas_solve(it,gncell,temp,trad,nh,neoth,qb,qv,icell1,edep)
 !-----------------------------------------------------------------------
 ! Statistical equilibrium of H in this rank's gas cells.  The first
 ! iteration uses J = B(trad); later ones the Monte Carlo estimators of the
 ! previous iteration, and the new populations are mixed geometrically with
-! the old ones (weight nht_damp).
+! the old ones (weight nht_damp).  edep: power absorbed from photons above
+! nht_ntemin [erg/s/cm^3], deposited by fast electrons (non-thermal ionization
+! and excitation of H).
 !-----------------------------------------------------------------------
   integer,intent(in) :: it,gncell,icell1
   real*8,intent(in) :: temp(gncell),trad(gncell),nh(gncell),neoth(gncell)
+  real*8,intent(in) :: edep(gncell)
   real*8,intent(in) :: qb(gncell),qv(gncell)
   integer :: i,l,ig,ierr,nfail
   real*8 :: x(0:nh_nlev),xold(0:nh_nlev),ne,beta(nh_nlin),jg(nht_ng),jb(nh_nlin)
+  real*8 :: nonth,nonexc
   logical :: ljb(nh_nlin)
 !
   nfail = 0
@@ -176,8 +182,9 @@ subroutine nlteh_gas_solve(it,gncell,temp,trad,nh,neoth,qb,qv,icell1)
         x = nht_xloc(:,i)
      endif
      xold = x
+     call nlteh_ntrates(nh(i),x,edep(i),nonth,nonexc)
      call nlteh_solve_cell(temp(i),trad(i),nh(i),neoth(i),qb(i),qv(i),nht_ng, &
-          nht_nug,nht_dnug,jg,jb,ljb,0d0,x,ne,beta,ierr)
+          nht_nug,nht_dnug,jg,jb,ljb,nonth,x,ne,beta,ierr,nonexc)
      if(ierr/=0) then
         nfail = nfail + 1
         x = xold
@@ -505,6 +512,59 @@ pure subroutine nlteh_activate(ic,ilev,state,kind,idx,wlc)
      call nlteh_outcome(ic,1+ilev,state,kind,idx,wlc)
   endif
 end subroutine nlteh_activate
+!
+!
+pure subroutine nlteh_nonthermal(ic,state,kind,idx,wlc)
+!-- energy of a fast photoelectron in cell ic: heat (k-packet), H ionization
+!-- (macro-atom in the continuum) or H excitation (macro-atom in n = 2) with
+!-- the Shull & van Steenberg (1985) shares
+  integer,intent(in) :: ic
+  type(rnd_t),intent(inout) :: state
+  integer,intent(out) :: kind,idx
+  real*8,intent(out) :: wlc
+  real*8 :: fh,fi,fe,r
+  call nlteh_svs(nht_x(0,ic),fh,fi,fe)
+  call rnd_r(r,state)
+  if(r < fh) then
+     call nlteh_kpacket(ic,state,kind,idx,wlc)
+  elseif(r < fh + fi) then
+     call nlteh_activate(ic,0,state,kind,idx,wlc)
+  else
+     call nlteh_activate(ic,2,state,kind,idx,wlc)
+  endif
+end subroutine nlteh_nonthermal
+!
+!
+pure function nlteh_ntdep(ng,nug,dnug,jg,cap) result(edep)
+!-- power absorbed from photons above nht_ntemin [erg/s/cm^3]
+  integer,intent(in) :: ng
+  real*8,intent(in) :: nug(ng),dnug(ng),jg(ng)
+  real*4,intent(in) :: cap(ng)
+  real*8 :: edep
+  integer :: ig
+  edep = 0d0
+  if(nht_ntemin <= 0d0) return
+  do ig=1,ng
+     if(hh*nug(ig) > nht_ntemin) edep = edep + cap(ig)*jg(ig)*dnug(ig)
+  enddo
+  edep = 4d0*pi*edep
+end function nlteh_ntdep
+!
+!
+pure subroutine nlteh_ntrates(nh,x,edep,nonth,nonexc)
+!-- non-thermal ionization and excitation (1 -> 2) rates per ground-state H
+!-- atom from the deposited power: chi_H and 3/4 chi_H per event
+  real*8,intent(in) :: nh,x(0:nh_nlev),edep
+  real*8,intent(out) :: nonth,nonexc
+  real*8 :: fh,fi,fe,n1
+  nonth = 0d0
+  nonexc = 0d0
+  n1 = nh*x(1)
+  if(edep <= 0d0 .or. n1 <= 1d-30) return
+  call nlteh_svs(x(0),fh,fi,fe)
+  nonth = fi*edep/(nh_chi*n1)
+  nonexc = fe*edep/(0.75d0*nh_chi*n1)
+end subroutine nlteh_ntrates
 !
 !
 pure subroutine nlteh_kpacket(ic,state,kind,idx,wlc)

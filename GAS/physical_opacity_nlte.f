@@ -17,6 +17,8 @@ c$    use omp_lib
       use mpimod
       use nltehmod, only:nh_nlev,nh_nu0,nlteh_sigma
       use nltehtrmod, only:nht_xloc,nht_nhloc,nht_neloc,gas_caphbf
+      use gridmod, only:grd_xarr,grd_vxarr
+      use bbsobmod
       implicit none
       ! integer,intent(in) :: it
 ************************************************************************
@@ -33,6 +35,8 @@ c-- subgridded wavelength
 c-- helper arrays
       real*8 :: grndlev(gas_ncell,ion_iionmax-1,gas_nelem)
       real*8 :: hckt(gas_ncell),tempinv(gas_ncell)
+c-- h c/k T_ion: LTE excitation of the lines
+      real*8 :: hckti(gas_ncell)
       real*8 :: hlparr(gas_ncell)
 c-- nlte
       integer :: llw,lup,nlte_nlev,nlte_nlin,coll_nlin ! levels and lines
@@ -65,6 +69,11 @@ c-- bbxs
       real*8 :: caphelp,emithelp
       real*8 :: wlm,B_nu,J_nu
       real*8,parameter :: ftpi4 = 15d0/pc_pi**4
+c-- Sobolev (expansion) line opacity and line scattering
+      real*8 :: kk,fq,eps
+      real*8 :: qarr(bbs_nq,gas_ncell),qavg(gas_ncell),qmin(gas_ncell)
+      real*8 :: qmax(gas_ncell),nearr(gas_ncell),warr(bbs_nq,gas_ncell)
+      real*8,allocatable :: capsc(:,:) !(gas_ncell,grp_ng*grp_ngs)
 c-- temporary cap array in the right order
       real*8,allocatable :: cap(:,:) !(gas_ncell,grp_ng*grp_ngs)
       real*8,allocatable :: capemit(:,:) !(gas_ncell,grp_ng*grp_ngs)
@@ -95,6 +104,21 @@ c-- initialize
       capemit = 0d0
       allocate(emiss(gas_ncell,ngsub)) !emissivity
       emiss = 0d0
+      allocate(capsc(gas_ncell,ngsub)) !line scattering
+      capsc = 0d0
+c
+c-- velocity gradients and electron densities for the Sobolev lines
+      if(bbs_on) then
+       do i=1,gas_ncell
+        l = gas_icell1 + i - 1
+        call bbs_quad((grd_vxarr(l+1)-grd_vxarr(l))/
+     &    (grd_xarr(l+1)-grd_xarr(l)),
+     &    (grd_vxarr(l+1)+grd_vxarr(l))/(grd_xarr(l+1)+grd_xarr(l)),
+     &    2d5/(grd_xarr(l+1)+grd_xarr(l)),
+     &    qarr(:,i),warr(:,i),qavg(i),qmin(i),qmax(i))
+        nearr(i) = gas_nelec(i)*gas_natom(i)/max(gas_vol(i),1d-300)
+       enddo
+      endif
 c
 c-- subgridded wavelength
       igs = 1
@@ -114,6 +138,7 @@ c
 c-- helper arrays
       tempinv = 1.d0/gas_temp
       hckt = pc_h*pc_c/(pc_kb*gas_temp)
+      hckti = pc_h*pc_c/(pc_kb*gas_tion)
 c
 c-- thomson scattering
       if(in_nothmson) then
@@ -359,10 +384,11 @@ c
 c-- LTE opacity calculations
 c$omp parallel default(none)
 c$omp& private(wl0,wl,wlinv,dwl,phi,ocggrnd,expfac,i,igs,iigs,
-c$omp&   caphelp,emithelp,dirty,B_nu,iz,ii)
-c$omp& shared(ngsub,gas_mass,gas_temp,grndlev,hckt,wlsub,bb_xs,
+c$omp&   caphelp,emithelp,dirty,B_nu,iz,ii,kk,fq,eps)
+c$omp& shared(ngsub,gas_mass,gas_temp,grndlev,hckt,hckti,wlsub,bb_xs,
 c$omp&   bb_nline,gas_ncell,nlte_nelem,nlte_ndens,nlte_data,
-c$omp&   cap,capemit,emiss)
+c$omp&   cap,capemit,emiss,capsc,qarr,warr,qavg,qmin,qmax,nearr,
+c$omp&   bbs_on,bbs_sobolev,bbs_eps)
        iigs = 0
        dirty = .true.
        phi = 0d0
@@ -389,7 +415,7 @@ c-- update
          wlinv = 1d0/wl
          dwl = wlsub(igs+1) - wlsub(igs)  !in cm
 c-- approximate expfac
-         expfac = 1d0 - exp(-hckt*wlinv)
+         expfac = 1d0 - exp(-hckti*wlinv)
 c-- approximate profile function
          phi = wl**2/(dwl*pc_c)
         endif
@@ -404,7 +430,23 @@ c-- evaluate cap
          if(ocggrnd<=0d0) cycle
 *        expfac = 1d0 - exp(-hckt(i)/wl0)  !exact expfac
          caphelp = phi*bb_xs(il)%gxs*ocggrnd*
-     &    exp(-bb_xs(il)%chilw*hckt(i))*expfac(i)
+     &    exp(-bb_xs(il)%chilw*hckti(i))*expfac(i)
+         if(bbs_on) then
+c-- Sobolev strength K of the line, expansion opacity, thermalized share
+          kk = caphelp/phi*wl0
+          if(kk>0d0) then
+           fq = bbs_fq(kk,qarr(:,i),warr(:,i),qavg(i),qmin(i),
+     &      qmax(i))
+           if(bbs_sobolev) caphelp = caphelp*fq/kk
+           if(bbs_eps<0d0) then
+            eps = bbs_epsl(wl0,nearr(i),gas_temp(i),ii,fq/kk)
+           else
+            eps = bbs_eps
+           endif
+           capsc(i,igs) = capsc(i,igs) + (1d0-eps)*caphelp
+           caphelp = eps*caphelp
+          endif
+         endif
          cap(i,igs) = cap(i,igs) + caphelp
 c-- emission opacity
          capemit(i,igs) = capemit(i,igs) + caphelp
@@ -478,7 +520,8 @@ c-- only: the recombination emission comes from the macro-atom.
          if(nu<nh_nu0(nh_nlev)) cycle
          caphbf = 0d0
          do n=1,nh_nlev
-          if(nu<nh_nu0(n)) exit
+c-- thresholds decrease with n: skip the levels above this frequency
+          if(nu<nh_nu0(n)) cycle
           xstar = sahaf*n*n*
      &      exp(-pc_h*(nu-nh_nu0(n))/(pc_kb*gas_temp(i)))
           caphbf = caphbf + (nht_xloc(n,i)-xstar)*nlteh_sigma(n,nu)
@@ -582,10 +625,13 @@ c-- overwrite
 c-- emissivity
         emiss(:,ig) = sum(emiss(:,i:j), dim=2, mask=emiss(:,i:j)>0d0)*
      &    help
+c-- line scattering
+        capsc(:,ig) = sum(capsc(:,i:j), dim=2)*help
        enddo !ig
       endif
 c
 c-- save
+      if(bbs_on) gas_capsc = transpose(sngl(capsc(:,:grp_ng)))
       gas_cap = transpose(sngl(cap(:,:grp_ng)))
       gas_capemit = transpose(sngl(capemit(:,:grp_ng)))
       gas_emiss = transpose(sngl(emiss(:,:grp_ng)))
@@ -692,6 +738,7 @@ c
       deallocate(cap)
       deallocate(capemit)
       deallocate(emiss)
+      deallocate(capsc)
 c
       t4 = t_time()
 c-- register timing

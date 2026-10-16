@@ -94,6 +94,7 @@ c
       use particlemod
       use inputparmod, only:in_nlteh
       use nltehtrmod
+      use bbsobmod, only:bbs_on,gas_capsc,grd_capsc
 ************************************************************************
 * Broadcast the data that changes with time.
 * - stub
@@ -120,6 +121,8 @@ c-- NLTE hydrogen
        nht_nh = nht_nhloc
        grd_caphbf = gas_caphbf
       endif
+c-- line scattering opacity
+      if(bbs_on) grd_capsc = gas_capsc
 c
       src_nvacantall(1) = count(prt_isvacant)
       end subroutine bcast_nonpermanent

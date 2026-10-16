@@ -75,6 +75,13 @@ c-- sanity check temperatures
 c
 c
 c
+c-- electron temperature from the thermal balance with the radiation
+c-- field of the previous iteration; the LTE elements are ionized at the
+c-- input temperature or at the electron temperature
+c===============================
+      if(in_tesolve .and. it>1) call te_update(it)
+      if(.not.in_tesolve .or. in_tion=='elec') gas_tion = gas_temp
+c
 c-- solve LTE/nebular EOS
 c===============================
       do_output = in_io_pdensdump=='on' .and. it==1

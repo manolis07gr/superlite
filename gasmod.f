@@ -18,6 +18,9 @@ c-- domain decomposed grid variables used to calculate the state of the material
       integer :: gas_ncell=0
       integer :: gas_icell1=0
       real*8,allocatable :: gas_temp(:)       !(ncell) !average temperature
+c-- ionization/excitation temperature of the LTE elements (= gas_temp
+c-- unless the electron temperature is solved from the thermal balance)
+      real*8,allocatable :: gas_tion(:)       !(ncell)
       real*8,allocatable :: gas_radtemp(:)    !(ncell) !radiation temperature
       real*8,allocatable :: gas_lum(:)        !(ncell) !experimental cell luminosity as source
       real*8,allocatable :: gas_eraddens(:)   !radiation energy density [erg/cm^3]
@@ -86,6 +89,7 @@ c---------------------------------------
 c
 c-- ndim=1 alloc
       allocate(gas_temp(gas_ncell))
+      allocate(gas_tion(gas_ncell))
       allocate(gas_radtemp(gas_ncell))
       allocate(gas_lum(gas_ncell))
       allocate(gas_ur(gas_ncell))
@@ -125,6 +129,7 @@ c
 c
       subroutine gas_dealloc
       deallocate(gas_temp)
+      deallocate(gas_tion)
       deallocate(gas_radtemp)
       deallocate(gas_lum)
       deallocate(gas_ur)
