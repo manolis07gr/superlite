@@ -71,7 +71,9 @@ Integration tests and the comparison with observed SNe IIn: see §4.
 Fixes: the H bound-free opacity of stage 1 stopped at the Lyman edge (the level loop
 exited at n = 1 instead of skipping levels with thresholds above the frequency), so
 the Balmer, Paschen, ... continua were missing from the transport (the rate equations
-were right); OpenMP clauses; rows 11, 12 and 13.
+were right); OpenMP clauses; rows 11, 12 and 13.  NaN in the absorption or emission
+opacity now stops the run (the released code printed a warning per cell and group and
+went on).
 
 Validation:
 
@@ -150,16 +152,17 @@ These define stage 2 below.
 ### 4.3 Stage-2 runs (A7 and A4 at day 20)
 
 Same metrics; each step adds to the previous one (10–12 iterations for the runs with
-the electron-temperature solve):
+the electron-temperature solve; final runs: all stage-2 switches as written by
+`Tools/stella2superlite_csm.py`):
 
 | Run | EW5(Hα) Å | EW5(Hβ) Å | Hα absorption share | Hα peak (km/s) |
 |---|---|---|---|---|
 | A7 stage 1 | +17 | −55 | 0.31 | 3950 |
 | A7 + Sobolev lines of the other elements, H bound-free fix | −57 | −48 | 1.00 | 5000 |
 | A7 + T_e from the thermal balance, other elements at the hydro temperature | +970 | +295 | 0.00 | −100 |
-| A7 + T_e, other elements in the nebular approximation (final) | @A7NEBHA@ | @A7NEBHB@ | @A7NEBABS@ | @A7NEBPK@ |
+| A7 + T_e, other elements in the nebular approximation (final) | +32 | −42 | 0.05 | 600 |
 | A4 stage 1 | −79 | −49 | 1.00 | 300 |
-| A4 all stage-2 physics, nebular approximation (final) | @A4NEBHA@ | @A4NEBHB@ | @A4NEBABS@ | @A4NEBPK@ |
+| A4 all stage-2 physics, nebular approximation (final) | +241 | +9 | 0.00 | −50 |
 | observed SNe IIn, 10–30 d (median) | ≈ +100 | ≈ +25 | 0 | 0 |
 
 What the runs show:
@@ -181,17 +184,28 @@ What the runs show:
   from Saha equilibrium with the next ion at T_e (Kirchhoff's law with the actual
   populations misstates it), the outer CSM settles at 6000–12 000 K, close to the
   hydro temperatures, photoionization heating balancing recombination cooling.
+* Final runs (nebular approximation): the CSM of both models is fully ionized with
+  T_e ≈ 6000–9000 K in most of it (median 8900 K for A4, 8300 K for A7; T_rad of
+  the dilute field 2400–11 000 K) and n = 2 strongly overpopulated (median b₂ ≈ 220
+  in A4, 12 in A7).  A4 (0.2 M☉ CSM) now has a clean continuum and a strong narrow
+  Hα on electron-scattering wings with no absorption — the SN IIn morphology — but
+  the core is 7× higher than the observed median and Hβ is weak (Hα/Hβ ≈ 17
+  against ≈ 3.6 observed).  A7 (2 M☉ CSM) has weak Hα (+32 Å) and Hβ in absorption.
+  The observed median lies between the two models.
 * The temperature of the shocked gas behind the cold dense shell is not converged in
-  10–12 iterations (it keeps rising toward ~4×10⁴ K): its cooling depends on metal
-  ions that the nebular approximation describes only roughly.  The cold dense shell
-  itself oscillated between iterations before the adaptive damping.
+  12 iterations (changes of ~20 % per iteration in a few cells, T_e up to
+  4–5×10⁴ K): its cooling depends on metal ions that the nebular approximation
+  describes only roughly.  The cold dense shell oscillated between iterations before
+  the adaptive damping.
 
 The line strengths of these models therefore hinge on the ionization and cooling of
 the elements heavier than He in the photoionized CSM, which LTE-based treatments
-bracket but cannot settle (EW(Hα) from ≈ 20 to ≈ 1000 Å for A7).  NLTE ionization
+bracket but cannot settle (EW(Hα) from ≈ 30 to ≈ 1000 Å for A7).  NLTE ionization
 with consistent recombination and line cooling for the abundant metals (§3, items 2
 and 6) is the next step; He I/He II (item 1) adds the main missing EUV opacity and
-coolant of the CSM.
+coolant of the CSM.  The steep decrement of A4 points to the Balmer line transfer in
+gas with b₂ ≫ 1 (Hβ optically thicker and converted to Hα + Pα), to be checked
+against an independent code (e.g. CMFGEN) on the same snapshot.
 
 ## 5. Running
 
