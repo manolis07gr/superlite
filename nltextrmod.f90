@@ -1125,7 +1125,7 @@ subroutine nxt_write(ncell,rcell,vcell,tempinv,radtemp)
   integer,intent(in) :: ncell
   real*8,intent(in) :: rcell(ncell),vcell(ncell),tempinv(ncell),radtemp(ncell)
   integer :: ic,iel,j,i,o,k,kla,kha,khb,ih
-  real*8 :: t,xl(nxa_nst),qv,b(3),fr(nxa_maxion+1)
+  real*8 :: t,xl(nxa_nst),qv,b(3),fr(nxa_maxion+1),b8(8),trw(2)
   character(16) :: hd(nxa_maxion+1)
   open(4,file='output.nltex',status='replace')
   write(4,'(a)') '# NLTE elements per cell: ion fractions (last = top ion), electron density'
@@ -1148,6 +1148,17 @@ subroutine nxt_write(ncell,rcell,vcell,tempinv,radtemp)
         write(4,'(1p,99e12.4)') rcell(ic),1d0/tempinv(ic),nxt_ne(ic),nxt_nel(iel,ic), &
              (fr(j),j=1,nxa_el(iel)%nion+1)
      enddo
+  enddo
+  close(4)
+!-- Monte Carlo mean intensity in bands: 4 pi Int J dnu [erg/s/cm^2]
+  open(4,file='output.nltexj',status='replace')
+  write(4,'(a)') '# Monte Carlo radiation field per cell: 4 pi Int J dnu [erg/s/cm^2] in bands, '// &
+       'T_R from the mean frequency and dilution W (Mazzali & Lucy 1993)'
+  write(4,'(a1,a11,10a12)') '#','r[cm]','T[K]','<228A','228-504','504-912','912-2000', &
+       '2000-4000','4000-1e4','1e4-3e4','>3e4A','T_R[K]','W'
+  do ic=1,ncell
+     call bands(nxt_jg(:,ic),b8)
+     write(4,'(1p,12e12.4)') rcell(ic),1d0/tempinv(ic),b8,trw(1),trw(2)
   enddo
   close(4)
 !-- hydrogen in the format of the H-only treatment
@@ -1177,6 +1188,30 @@ subroutine nxt_write(ncell,rcell,vcell,tempinv,radtemp)
           nxt_jb(kha,ic)/max(bplanck(nxa_lnu(kha),t),1d-300),merge(1d0,0d0,nxt_ljb(kha,ic))
   enddo
   close(4)
+contains
+  subroutine bands(jg,bo)
+    real*8,intent(in) :: jg(nxt_ng)
+    real*8,intent(out) :: bo(8)
+    real*8,parameter :: edge(9) = [0d0,228d-8,504d-8,912d-8,2000d-8,4000d-8,1d-4,3d-4,1d99]
+    real*8 :: wl,j0,j1
+    integer :: ig,ib
+    bo = 0d0
+    j0 = 0d0
+    j1 = 0d0
+    do ig=1,nxt_ng
+       wl = cc/nxt_nug(ig)
+       do ib=1,8
+          if(wl>=edge(ib) .and. wl<edge(ib+1)) bo(ib) = bo(ib) + 4d0*pi*jg(ig)*nxt_dnug(ig)
+       enddo
+       j0 = j0 + jg(ig)*nxt_dnug(ig)
+       j1 = j1 + nxt_nug(ig)*jg(ig)*nxt_dnug(ig)
+    enddo
+    trw = 0d0
+    if(j0>0d0) then
+       trw(1) = hh*(j1/j0)/(3.832d0*kb)
+       trw(2) = pi*j0/(5.670400d-5*trw(1)**4)
+    endif
+  end subroutine bands
 end subroutine nxt_write
 !
 end module nltextrmod
