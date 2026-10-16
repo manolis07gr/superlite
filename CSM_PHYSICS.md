@@ -71,7 +71,44 @@ Integration tests and the comparison with observed SNe IIn: see §4.
 
 ## 4. Results
 
-(see the comparison figures and table produced by the integration runs)
+### 4.1 Transport benchmark
+
+`Tests/benchmarks/pcygni/`: pure-scattering line (τ = 3 at the photosphere,
+τ ∝ r⁻⁷, homologous), photosphere as a Lambertian inner boundary
+(`in_innerbc = 'thrm'`), against the analytic Sobolev profile (`analytic.py`):
+χ²/dof = 1.21 over 32 velocity bins, largest deviation 2.9σ.
+
+### 4.2 Stage-1 integration runs (STELLA A4 and A7 at day 20)
+
+Line metrics on the common ±5000 km/s window (EW positive = net emission), measured
+with the same code as the observations (`balmer_validation`):
+
+| Run | L_out (erg/s) | EW5(Hα) Å | EW5(Hβ) Å | Hα absorption share | Hα peak (km/s) |
+|---|---|---|---|---|---|
+| legacy (A4) | 1.1e42 | +1.5 | +2.8 | 0.46 | 50 |
+| exact Doppler only | 1.1e42 | −15.6 | −9.3 | 0.78 | 300 |
+| + NLTE H, legacy surface source | 1.1e42 | −95 | −79 | 1.00 | −5000 |
+| stage 1, all switches (A4, 0.2 M☉ CSM) | 2.2e42 | −79 | −49 | 1.00 | 300 |
+| stage 1, all switches (A7, 2 M☉ CSM) | 1.0e43 | +17 | −55 | 0.31 | 3950 |
+| observed SNe IIn, 10–30 d (median, n = 21/20) | — | ≈ +100 | ≈ +25 | 0 | 0 |
+
+What the runs show:
+* The exact Doppler treatment moves the A4 Hα absorption trough from −1000 to
+  −3000…−5000 km/s, where the line-forming ejecta are.
+* With NLTE H the CSM of A7 is photoionized by the shock radiation out to
+  4.35×10¹⁵ cm (n_e ≈ 10⁹–10¹⁰ cm⁻³, τ_es ≈ 5); b₃/b₂ grows outward to ≈ 3, so
+  the Hα source function exceeds B(T_gas). The cold dense shell stays neutral.
+* Hα is still far too weak. A slow (300 km/s) optically thick CSM can emit an
+  optically thick Sobolev line only at a rate ∝ S·|dv/dr|; with the hydro gas
+  temperature (12 000 → 4700 K) this gives EW ≈ 10–20 Å. The observed ≈ 100 Å
+  needs the CSM electron temperature from heating by the shock radiation instead of
+  the hydro temperature (B_Hα rises 27× from 6000 to 25 000 K).
+* The shock luminosity absorbed by metals is re-emitted as LTE metal lines (Ca II,
+  Si II 6355, Fe II), broadened by electron scattering. Two causes: metal line
+  opacity is smeared over the group without Sobolev saturation, which overestimates
+  it by up to τ_line in the slow CSM, and lines are pure absorbers (ε = 1).
+
+These define stage 2 below.
 
 ## 5. Running
 
