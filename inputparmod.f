@@ -135,6 +135,9 @@ c-- temperature ('elec'), or in the modified nebular approximation with
 c-- the temperature and dilution of the Monte Carlo radiation field ('nebu')
       logical :: in_tesolve = .false.
       real*8 :: in_te_damp = 0.5d0
+c-- NLTE elements re-solved at each trial temperature of the thermal balance:
+c-- Z <= in_te_zsolve (99: all; 2: H and He, the others held)
+      integer :: in_te_zsolve = 99
       character(4) :: in_tion = 'hydr'
 c-- photons above in_nt_emin [eV] absorbed by the gas make fast
 c-- photoelectrons that ionize and excite H (Shull & van Steenberg 1985;
@@ -194,7 +197,8 @@ c-- runtime parameter namelist
      & in_nlte,in_nlte_nelem,in_nlteh,in_nlteh_nlev,in_nlteh_damp,
      & in_nlteh_tau0,in_nltex_atoms,in_nltex_dir,in_nltex_chgexch,
      & in_srctype,in_shock_dvmin,in_shock_tmax,
-     & in_bbsobolev,in_bbeps,in_tesolve,in_te_damp,in_tion,
+     & in_bbsobolev,in_bbeps,in_tesolve,in_te_damp,in_te_zsolve,
+     & in_tion,
      & in_nt_emin,in_fflegacy,
 !phys opac
      & in_opacmixrossel,
@@ -321,6 +325,7 @@ c
       call insertr(in_bbeps,in_r,ir)
       call insertl(in_tesolve,in_l,il)
       call insertr(in_te_damp,in_r,ir)
+      call inserti(in_te_zsolve,in_i,ii)
       call insertc(in_tion,in_c,ic)
       call insertr(in_nt_emin,in_r,ir)
       call insertl(in_fflegacy,in_l,il)

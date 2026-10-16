@@ -12,9 +12,10 @@ module tebalmod
 !    and emission (bound-free emission from ground states in Saha
 !    equilibrium with the next ion at T_e):
 !      4 pi sum_g (kem_g B_g(T) - kabs_g J_g) dnu_g
-!  * NLTE elements (nlteatommod); the populations of H and He (Z <= te_zsolve)
-!    are re-solved at each trial T, those of heavier elements held (their
-!    rate coefficients follow T):
+!  * NLTE elements (nlteatommod), re-solved at each trial T (all elements by
+!    default; with te_zsolve < 99 only Z <= te_zsolve, the others held: a
+!    held population gives the wrong temperature dependence of the
+!    collisional term of radiatively pumped levels):
 !      photoionization heating of every level l (edge nu_l)
 !        4 pi n_el sum_l sum_g (x_l - x_l* e^{-h(nu-nu_l)/kT}) J_g Int_g sigma_l (1 - nu_l/nu) dnu
 !      recombination cooling  n_e sum_l n_c(l) rc_l(T)  (kinetic energy, Milne)
@@ -29,8 +30,10 @@ module tebalmod
 !    fh (Shull & van Steenberg 1985) of their absorption heats the gas, the
 !    rest ionizes and excites H and He (rates nti, ntx in the populations)
 !
-! f is bracketed in log T and the root found by bisection/secant steps
-! (Illinois).  The new temperature is mixed geometrically with the old one
+! f is bracketed in log T (steps of 5, 10, 20, 30 % ... from the old
+! temperature) and the root found by secant steps (Illinois); each trial
+! starts from the populations of the nearest temperature tried, solved to
+! 1e-4.  The new temperature is mixed geometrically with the old one
 ! (te_damp) and its change per iteration limited to a factor te_maxfac;
 ! te_step damps per cell adaptively: the weight is halved when the proposed
 ! change reverses sign (the 2-cycles of a temperature update against an
@@ -51,7 +54,7 @@ module tebalmod
   real*8,public :: te_ntemin = 0d0              !fast photoelectrons above [erg], 0: off
 !-- elements with Z <= te_zsolve are re-solved at each trial temperature;
 !-- the populations of the heavier ones are held (their rates still follow T)
-  integer,public :: te_zsolve = 2
+  integer,public :: te_zsolve = 99
   integer,parameter,public :: te_nterm = 6
   public :: te_balance,te_terms,te_step,te_heatshare
 !
@@ -210,11 +213,15 @@ subroutine te_balance(told,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx,ca
   real*8,intent(out) :: tnew
   integer,intent(out) :: ierr
   real*8,intent(out),optional :: tsolout
-  integer :: it,side
-  real*8 :: a,b,c,fa,fb,fc,tsol,lo,hi
+  integer :: it,side,nwarm
+  real*8 :: a,b,c,fa,fb,fc,tsol,lo,hi,step
   real*8 :: pa(nxa_nlv),pb(nxa_nlv)
+!-- populations at the temperatures tried (warm starts)
+  integer,parameter :: mwarm = 8
+  real*8 :: xw(nxa_nst,mwarm),tw(mwarm)
 !
   ierr = 0
+  nwarm = 0
   call te_pisums(ng,nug,dnug,jg,pa,pb)
 !-- bracket in log T around the old temperature
   a = log(told)
@@ -223,17 +230,19 @@ subroutine te_balance(told,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx,ca
   fb = fa
   lo = log(te_tmin)
   hi = log(te_tmax)
+  step = 0.05d0
   do it=1,40
      if(fa < 0d0) then
-        b = min(a + 0.3d0, hi)
+        b = min(a + step, hi)
      else
-        b = max(a - 0.3d0, lo)
+        b = max(a - step, lo)
      endif
      fb = fval(b)
      if(fa*fb <= 0d0) exit
      if(b <= lo .or. b >= hi) exit
      a = b
      fa = fb
+     step = min(2d0*step, 0.3d0)
   enddo
   c = b
   if(fa*fb > 0d0) then
@@ -246,7 +255,7 @@ subroutine te_balance(told,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx,ca
      do it=1,60
         c = (a*fb - b*fa)/(fb - fa)
         fc = fval(c)
-        if(abs(b - a) < 1d-4 .or. fc == 0d0) exit
+        if(abs(b - a) < 3d-4 .or. fc == 0d0) exit
         if(fc*fb < 0d0) then
            a = b
            fa = fb
@@ -271,14 +280,31 @@ contains
   real*8 function fval(lt)
     real*8,intent(in) :: lt
     real*8 :: t,xx(nxa_nst),ne,beta(nxa_nlin),terms(te_nterm)
-    integer :: ie
+    integer :: ie,k,kn
     t = exp(lt)
+!-- start from the populations of the nearest temperature tried
     xx = x
+    kn = 0
+    do k=1,nwarm
+       if(kn == 0) then
+          kn = k
+       elseif(abs(log(tw(k)/t)) < abs(log(tw(kn)/t))) then
+          kn = k
+       endif
+    enddo
+    if(kn > 0) then
+       if(abs(log(tw(kn)/t)) < abs(log(told/t))) xx = xw(:,kn)
+    endif
     call nx_solve_cell(t,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx,xx,ne,beta,ie, &
-         lsolve=nxa_el(:)%z <= te_zsolve)
+         lsolve=nxa_el(:)%z <= te_zsolve,tol=1d-4,maxit=100)
     if(ie == 1) then
        xx = x
        ne = neoth + free_el(xx)
+    else
+       k = mod(nwarm, mwarm) + 1
+       nwarm = min(nwarm + 1, mwarm)
+       xw(:,k) = xx
+       tw(k) = t
     endif
     call te_terms(t,ng,nug,dnug,jg,capabs,capem,nel,xx,ne,gam_ext,terms,pa,pb)
     fval = terms(1) - terms(2) + terms(3) + terms(4) + terms(5) - terms(6)

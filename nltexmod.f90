@@ -360,7 +360,8 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,cq,ci,c3,gam,gst,ar,nti,ntx,it,x,
 end subroutine nx_el_step
 !
 !
-subroutine nx_solve_cell(temp,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx,x,ne,beta,ierr,lsolve)
+subroutine nx_solve_cell(temp,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx,x,ne,beta,ierr,lsolve, &
+     tol,maxit)
 !-----------------------------------------------------------------------
 ! Statistical equilibrium of all NLTE elements in one cell.
 !  temp, trad   electron and radiation temperature [K] (trad: shape of J
@@ -375,6 +376,9 @@ subroutine nx_solve_cell(temp,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx
 !  ierr         1: singular rate matrix, 2: not converged
 !  lsolve       (optional) elements to solve; the others keep x (and
 !               their electrons)
+!  tol, maxit   (optional) convergence: largest relative change of the
+!               populations (default 1e-6; n_e to 1e-2 tol) and iterations
+!               (default 300)
 ! The escape probabilities, populations and electron density are iterated
 ! together (each iteration: one linear solve per element).
 !-----------------------------------------------------------------------
@@ -386,7 +390,10 @@ subroutine nx_solve_cell(temp,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx
   real*8,intent(out) :: ne,beta(nxa_nlin)
   integer,intent(out) :: ierr
   logical,intent(in),optional :: lsolve(nxa_nel)
-  integer :: iel,ns,o,l0,l1,it,ie,k,ncx
+  real*8,intent(in),optional :: tol
+  integer,intent(in),optional :: maxit
+  integer :: iel,ns,o,l0,l1,it,ie,k,ncx,mit
+  real*8 :: dtol
   real*8 :: neold,nenew,d,dmax,dne,dold,jl(nxa_nlin),btab(0:nx_nbt)
   integer,parameter :: mcx = 4096
   integer :: cxf(mcx),cxt(mcx)
@@ -401,6 +408,10 @@ subroutine nx_solve_cell(temp,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx
   beta = 1d0
   lsol = .true.
   if(present(lsolve)) lsol = lsolve
+  dtol = 1d-6
+  if(present(tol)) dtol = tol
+  mit = 300
+  if(present(maxit)) mit = maxit
   call nx_beta_table(qb,qv,btab)
   do iel=1,nxa_nel
      if(.not.lsol(iel)) cycle
@@ -414,7 +425,7 @@ subroutine nx_solve_cell(temp,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx
   enddo
   ne = neoth + chg(x)
   dold = 0d0
-  do it=1,300
+  do it=1,mit
      dmax = 0d0
      do iel=1,nxa_nel
         if(nel(iel) <= 0d0 .or. .not.lsol(iel)) cycle
@@ -445,9 +456,9 @@ subroutine nx_solve_cell(temp,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx
         ne = nenew
      endif
      dold = dne
-     if(dmax < 1d-6 .and. abs(dne) < 1d-8) exit
+     if(dmax < dtol .and. abs(dne) < 1d-2*dtol) exit
   enddo
-  if(it>300) ierr = 2
+  if(it>mit) ierr = 2
 contains
   real*8 function chg(xx)
 !-- free electrons from the NLTE elements [cm^-3]

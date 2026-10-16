@@ -28,7 +28,7 @@ program superlite
   use nlteatommod, only:nxa_nel,nxa_nion,nxa_ion,nxa_nlin,nxa_nst,nxa_read_cx
   use nltextrmod
   use bbsobmod
-  use tebalmod, only:te_damp,te_ntemin
+  use tebalmod, only:te_damp,te_ntemin,te_zsolve
 
   implicit none
 !***********************************************************************
@@ -165,6 +165,7 @@ program superlite
 !-- electron temperature from the thermal balance
   if(in_tesolve) then
      te_damp = in_te_damp
+     te_zsolve = in_te_zsolve
      if(lmpi0) write(6,'(1x,a,f5.2,2a)') 'T_e from the thermal balance, damping', &
           in_te_damp,', LTE elements at T_ion = ',in_tion
   endif
