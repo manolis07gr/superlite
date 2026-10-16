@@ -99,6 +99,7 @@ c
       allocate(flx_wl(n+1))
       read(4,*) flx_wl(:)
       close(4)
+      flx_ng = n
 c-- check monotonicity
       help = 0d0
       do l=1,n+1
