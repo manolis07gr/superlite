@@ -92,6 +92,8 @@ c-- NLTE model-atom files (long string)
      &  impi0,MPI_COMM_WORLD,ierr)
       call mpi_bcast(in_nltex_dir,len(in_nltex_dir),MPI_CHARACTER,
      &  impi0,MPI_COMM_WORLD,ierr)
+      call mpi_bcast(in_nltex_chgexch,len(in_nltex_chgexch),
+     &  MPI_CHARACTER,impi0,MPI_COMM_WORLD,ierr)
       in_nltex = in_nlteh .or. len_trim(in_nltex_atoms)>0
       deallocate(csndvec)
 c

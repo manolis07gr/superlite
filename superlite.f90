@@ -25,7 +25,7 @@ program superlite
   use timingmod
   use countersmod
   use nltehmod, only:nlteh_set_collfits,nlteh_init
-  use nlteatommod, only:nxa_nel,nxa_nion,nxa_ion,nxa_nlin,nxa_nst
+  use nlteatommod, only:nxa_nel,nxa_nion,nxa_ion,nxa_nlin,nxa_nst,nxa_read_cx
   use nltextrmod
   use bbsobmod
   use tebalmod, only:te_damp,te_ntemin
@@ -143,6 +143,12 @@ program superlite
         enddo
      endif
      call nxt_init(grd_ncell,gas_ncell,grp_ng,grp_wl,nfatom,fatom(:nfatom),merge(in_nlteh_nlev,0,in_nlteh))
+!-- charge exchange among the NLTE elements
+     if(trim(in_nltex_chgexch)/='none' .and. len_trim(in_nltex_chgexch)>0) then
+        fatom(1) = in_nltex_chgexch
+        if(len_trim(in_nltex_dir)>0 .and. fatom(1)(1:1)/='/') fatom(1) = trim(in_nltex_dir)//'/'//trim(fatom(1))
+        call nxa_read_cx(fatom(1),lmpi0)
+     endif
      nxt_damp = in_nlteh_damp
      nxt_tau0 = in_nlteh_tau0
      nxt_ntemin = in_nt_emin*pc_ev
@@ -214,6 +220,12 @@ program superlite
      if(lmpi0) then !NLTE
       write(6,*)
       write(6,'(1x,a4,1x,i2)') 'it: ',it
+     endif
+!-- source particles of this iteration
+     if(it<=in_niter_early) then
+        src_ns = int(int(2,8)**in_src_n2s_early/nmpi)
+     else
+        src_ns = int(max(int(2,8)**in_src_n2s/nmpi,int(in_src_ns/nmpi,8)))
      endif
 !-- update all non-permanent variables
      call gas_update(it)

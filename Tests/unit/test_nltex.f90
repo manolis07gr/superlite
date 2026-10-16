@@ -274,8 +274,10 @@ contains
 !-- Planck field (detailed balance of the converted atomic data)
     character(*), intent(in) :: dir
     character(256) :: files(80), line
-    integer :: nf, ios, iel, s, o, j, nbad
-    real*8 :: devel
+    integer :: nf, ios, iel, s, o, j, nbad, ncx
+    real*8 :: devel, dmax
+    integer :: cxf(4096), cxt(4096)
+    real*8 :: cxr(4096), fnet(2000), fabs(2000)
     nf = 0
     open(9, file=dir//'/atoms.txt', status='old', iostat=ios)
     if(ios /= 0) then
@@ -291,6 +293,7 @@ contains
     enddo
     close(9)
     call nxt_init(1, 1, ng, wlg, nf, files(:nf), nlev)
+    call nxa_read_cx(dir//'/chgexch.dat', .true.)
     if(allocated(x)) deallocate(x, xl, beta, jb, ljb, nti, ntx, nel)
     allocate(x(nxa_nst), xl(nxa_nst), beta(nxa_nlin), jb(nxa_nlin), ljb(nxa_nlin), nti(nxa_nst), ntx(nxa_nst))
     allocate(nel(nxa_nel))
@@ -312,6 +315,26 @@ contains
        nti = 0d0; ntx = 0d0
        call nx_solve_cell(t, t, nel, 0d0, 1d0/1.7d6, 1d0/1.7d6, ng, nug, dnug, jg, jb, ljb, nti, ntx, x, ne, beta, ierr)
        call nx_lte(t, ne, xl)
+!-- charge exchange: no net flow into any state at LTE (detailed balance)
+       if(nxa_ncx > 0) then
+          dmax = 0d0
+          do iel = 1, nxa_nel
+             o = nxa_el(iel)%xoff
+             call nx_cx_rates(iel, t, nel, xl, ncx, cxf, cxt, cxr)
+             fnet = 0d0; fabs = 0d0
+             do k = 1, ncx
+                fnet(cxt(k)) = fnet(cxt(k)) + xl(o+cxf(k))*cxr(k)
+                fnet(cxf(k)) = fnet(cxf(k)) - xl(o+cxf(k))*cxr(k)
+                fabs(cxf(k)) = fabs(cxf(k)) + xl(o+cxf(k))*cxr(k)
+             enddo
+             do k = 1, nxa_el(iel)%ns
+                if(fabs(k) > 0d0) dmax = max(dmax, abs(fnet(k))/fabs(k))
+             enddo
+          enddo
+          write(*,'(a,f7.0,a,i3,a,es9.2)') '  charge exchange at LTE, T=', t, ':', nxa_ncx, &
+               ' reactions, max |net/out| per state =', dmax
+          if(dmax > 1d-8) nbad = nbad + 1
+       endif
        do iel = 1, nxa_nel
           o = nxa_el(iel)%xoff
           devel = 0d0

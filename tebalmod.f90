@@ -38,7 +38,7 @@ module tebalmod
 ! to te_damp while the changes keep their sign.
 !-----------------------------------------------------------------------
   use nlteatommod
-  use nltexmod, only:nx_solve_cell
+  use nltexmod, only:nx_solve_cell,nx_cx_heat
   use nltextrmod, only:nxt_shares,nxt_elh,nxt_elhe
   implicit none
   private
@@ -99,6 +99,7 @@ subroutine te_terms(temp,ng,nug,dnug,jg,capabs,capem,nel,x,ne,gam_ext,terms,pa,p
 ! Heating and cooling terms at temperature temp for fixed populations.
 ! terms(1) LTE opacities, net cooling         terms(2) NLTE photoionization heating
 ! terms(3) NLTE recombination cooling         terms(4) NLTE collisional net cooling
+!                                              (electrons, and charge exchange)
 ! terms(5) Compton net cooling                terms(6) external heating
 ! f = t1 - t2 + t3 + t4 + t5 - t6
 !-----------------------------------------------------------------------
@@ -186,6 +187,7 @@ subroutine te_terms(temp,ng,nug,dnug,jg,capabs,capem,nel,x,ne,gam_ext,terms,pa,p
      enddo
   enddo
   terms(4) = ne*s
+  if(nxa_ncx>0) terms(4) = terms(4) - nx_cx_heat(temp,nel,x)
   terms(6) = gam_ext
 end subroutine te_terms
 !

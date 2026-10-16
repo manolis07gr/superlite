@@ -42,6 +42,10 @@ c
 c-- interior source
       integer :: in_src_ns = 0     !number of source particles generated per time step (total over all ranks)
       integer :: in_src_n2s = -1   !2^n source particles generated per time step (total over all ranks)
+c-- the first in_niter_early iterations with 2^in_src_n2s_early source
+c-- particles (fast convergence of the gas state before the final ones)
+      integer :: in_niter_early = 0
+      integer :: in_src_n2s_early = -1
       real*8 :: in_srcepwr = 1d0  !source particle number-energy slope, 1 is linear, equal number of packets per erg.
       real*8 :: in_L_bol = 1d0 ![erg/s] !bolometric luminosity
       real*8 :: in_L_inner = 0d0 ![erg/s] !experimental inner boundary source
@@ -97,6 +101,10 @@ c-- All NLTE elements share the macro-atom and statistical equilibrium.
       character(1024) :: in_nltex_atoms = ' '
 c-- directory of the model-atom files (prefixed to relative names)
       character(256) :: in_nltex_dir = ' '
+c-- charge-exchange reactions among the NLTE elements
+c-- (Tools/cmfgen2superlite_chgexch.py; relative to in_nltex_dir; 'none':
+c-- no charge exchange)
+      character(256) :: in_nltex_chgexch = 'chgexch.dat'
 c-- NLTE treatment active (in_nlteh or model atoms; set, not read)
       logical :: in_nltex = .false.
 c-- interior source: 'surf' blackbody surfaces at T_rad (legacy),
@@ -173,6 +181,7 @@ c-- runtime parameter namelist
      & in_flx_ndim,in_flx_wlmin,in_flx_wlmax,
 !src
      & in_src_ns,in_src_n2s,in_srcepwr,in_srcmax,in_surfsrcmu,
+     & in_niter_early,in_src_n2s_early,
      & in_L_bol,in_L_inner,
 !trn
      & in_trn_errorfatal,in_puretran,
@@ -183,7 +192,7 @@ c-- runtime parameter namelist
      & in_noeos,
      & in_nebular,in_R_phot,
      & in_nlte,in_nlte_nelem,in_nlteh,in_nlteh_nlev,in_nlteh_damp,
-     & in_nlteh_tau0,in_nltex_atoms,in_nltex_dir,
+     & in_nlteh_tau0,in_nltex_atoms,in_nltex_dir,in_nltex_chgexch,
      & in_srctype,in_shock_dvmin,in_shock_tmax,
      & in_bbsobolev,in_bbeps,in_tesolve,in_te_damp,in_tion,
      & in_nt_emin,in_fflegacy,
@@ -264,6 +273,8 @@ c
       call insertl(in_io_dogrdtally,in_l,il)
       call inserti(in_src_ns,in_i,ii)
       call inserti(in_src_n2s,in_i,ii)
+      call inserti(in_niter_early,in_i,ii)
+      call inserti(in_src_n2s_early,in_i,ii)
       call insertr(in_L_bol,in_r,ir)
       call insertr(in_L_inner,in_r,ir)
       call insertl(in_puretran,in_l,il)
@@ -446,6 +457,9 @@ c
       if(in_srcepwr<=0d0) stop 'in_srcpwr <= 0'
       if(in_src_ns<=0 .eqv. in_src_n2s<0) stop
      &  'use in_src_ns or in_src_n2s'
+      if(in_niter_early>0 .and. (in_src_n2s_early<0 .or.
+     &  in_src_n2s_early>in_src_n2s)) stop
+     &  'in_niter_early: 0 <= in_src_n2s_early <= in_src_n2s'
 c
       if(in_L_bol.le.0) stop 'in_L_bol<=0'
 c

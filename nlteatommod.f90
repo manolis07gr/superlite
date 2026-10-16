@@ -107,8 +107,24 @@ module nlteatommod
   real*8,allocatable,public :: nxa_lalp(:,:)  !(ntt,nlv) ln alpha [cm^3/s]
   real*8,allocatable,public :: nxa_lrc(:,:)   !(ntt,nlv) ln recombination cooling [erg cm^3/s]
 !
+!-- charge exchange  A + B -> C + D:  A = X^(n+1) and C = X^n of element X,
+!-- B = Y^m and D = Y^(m+1) of element Y (CMFGEN data, Kingdon & Ferland
+!-- 1996 fits); participant k = 1..4 (A, B, C, D) is a term of an NLTE ion
+!-- (its levels, element-local states s) or the top state.  The reverse
+!-- rate follows from detailed balance with the model levels.
+  integer,parameter,public :: nxa_cxml = 16
+  type,public :: nxcx
+     integer :: el(4) = 0, ion(4) = 0          !element; NLTE ion (0: top state)
+     integer :: nl(4) = 0, s(nxa_cxml,4) = 0   !states of the term
+     integer :: typ = 2
+     real*8 :: c(4) = 0d0, tlo = 0d0, thi = 1d2 !fit coefficients; T range [1e4 K]
+     real*8 :: q = 0d0                          !energy released (forward), lowest levels [erg]
+  end type nxcx
+  integer,public :: nxa_ncx = 0
+  type(nxcx),allocatable,public :: nxa_cx(:)
+!
   public :: nxa_read,nxa_builtin_h,nxa_setup,nxa_groups,nxa_sigma,nxa_alpha,nxa_rcool
-  public :: nxa_coll,nxa_air
+  public :: nxa_coll,nxa_air,nxa_read_cx,nxa_cx_coef
 !
 contains
 !
@@ -890,6 +906,213 @@ pure subroutine nxa_coll(ion,temp,qup,qdn,cion,c3b)
      endif
   enddo
 end subroutine nxa_coll
+!
+subroutine nxa_read_cx(fname,lprint)
+!-----------------------------------------------------------------------
+! Charge-exchange reactions (Tools/cmfgen2superlite_chgexch.py) among the
+! NLTE elements; call after nxa_setup.  A participant's term is matched by
+! name (no '_', no J; alternatives separated by '/') with the levels of its
+! NLTE ion, else it is the ground term; 'ION' or a stage above the NLTE
+! ions is the top state.  Reactions with a participant outside the model
+! are dropped.
+!-----------------------------------------------------------------------
+  character(*),intent(in) :: fname
+  logical,intent(in) :: lprint
+  integer,parameter :: mx = 200
+  type(nxcx) :: t(mx)
+  integer :: iu,ios,n,k,iel,i,j,z(4),st(4),nt,lv
+  character(512) :: s
+  character(64) :: w(20),nm(4)
+  logical :: ok,lgr
+  real*8 :: e(4)
+  if(allocated(nxa_cx)) deallocate(nxa_cx)
+  nxa_ncx = 0
+  open(newunit=iu,file=fname,status='old',action='read',iostat=ios)
+  if(ios/=0) then
+     if(lprint) write(6,'(1x,2a)') 'NLTE: no charge-exchange data: ',trim(fname)
+     allocate(nxa_cx(0))
+     return
+  endif
+  n = 0
+  do
+     call getrec(iu,s,ios)
+     if(ios/=0) exit
+     call words(s,w,nt)
+     if(nt<19) stop 'nxa_read_cx: short record'
+     do k=1,4
+        read(w(3*k-2),*) z(k)
+        read(w(3*k-1),*) st(k)
+        nm(k) = w(3*k)
+     enddo
+     if(n>=mx) stop 'nxa_read_cx: too many reactions'
+     n = n + 1
+     read(w(13),*) t(n)%typ
+     read(w(14:17),*) t(n)%c
+     read(w(18),*) t(n)%tlo
+     read(w(19),*) t(n)%thi
+     ok = z(1)==z(3) .and. z(2)==z(4) .and. z(1)/=z(2)
+     do k=1,4
+        if(.not.ok) exit
+        call participant(z(k),st(k),nm(k),t(n),k,ok,lgr)
+        if(ok.and.lgr.and.lprint) write(6,'(1x,a,i3,i2,1x,2a)') 'NLTE charge exchange: no level ', &
+             z(k),st(k),trim(nm(k)),' (ground term taken)'
+     enddo
+     if(.not.ok) then
+        n = n - 1
+        cycle
+     endif
+!-- energy released by the forward reaction, lowest level of each term
+     do k=1,4
+        iel = t(n)%el(k)
+        e(k) = minval(nxa_el(iel)%eps(t(n)%s(1:t(n)%nl(k),k)))
+     enddo
+     t(n)%q = e(1) - e(3) + e(2) - e(4)
+  enddo
+  close(iu)
+  nxa_ncx = n
+  allocate(nxa_cx(n))
+  nxa_cx = t(1:n)
+  if(lprint) then
+     do j=1,n
+        write(6,'(1x,a)',advance='no') 'NLTE charge exchange:'
+        do k=1,4
+           i = nxa_cx(j)%ion(k)
+           if(k==3) write(6,'(a)',advance='no') ' ->'
+           if(k==2.or.k==4) write(6,'(a)',advance='no') ' +'
+           if(i>0) then
+              lv = nxa_cx(j)%s(1,k) - nxa_ion(i)%soff
+              write(6,'(1x,a,1x,a,a,i0,a)',advance='no') trim(nxa_ion(i)%name), &
+                   trim(nxa_ion(i)%lname(lv)),'(',nxa_cx(j)%nl(k),')'
+           else
+              write(6,'(1x,a,i0,a)',advance='no') 'top(Z=',nxa_el(nxa_cx(j)%el(k))%z,')'
+           endif
+        enddo
+        write(6,'(a,f7.3,a)') '  Q =',nxa_cx(j)%q/ev,' eV'
+     enddo
+  endif
+contains
+  subroutine words(str,wd,nw)
+    character(*),intent(in) :: str
+    character(64),intent(out) :: wd(:)
+    integer,intent(out) :: nw
+    integer :: p,q
+    nw = 0
+    p = 1
+    do while(p<=len_trim(str))
+       if(str(p:p)==' ') then
+          p = p + 1
+          cycle
+       endif
+       q = index(str(p:),' ')
+       if(q==0) q = len_trim(str(p:)) + 1
+       if(nw<size(wd)) then
+          nw = nw + 1
+          wd(nw) = str(p:p+q-2)
+       endif
+       p = p + q
+    enddo
+  end subroutine words
+  subroutine participant(zz,stg,name,r,kk,found,lground)
+    integer,intent(in) :: zz,stg,kk
+    character(*),intent(in) :: name
+    type(nxcx),intent(inout) :: r
+    logical,intent(out) :: found,lground
+    integer :: je,jj,ji,l,m,a0,a1
+    character(64) :: alt,lnm,gnm
+    found = .false.
+    lground = .false.
+    je = 0
+    do jj=1,nxa_nel
+       if(nxa_el(jj)%z==zz) je = jj
+    enddo
+    if(je==0) return
+    r%el(kk) = je
+    ji = 0
+    do jj=1,nxa_el(je)%nion
+       if(nxa_ion(nxa_el(je)%ion(jj))%stage==stg) ji = nxa_el(je)%ion(jj)
+    enddo
+    if(ji==0) then
+!-- the top state
+       if(stg/=nxa_ion(nxa_el(je)%ion(nxa_el(je)%nion))%stage+1) return
+       r%ion(kk) = 0
+       r%nl(kk) = 1
+       r%s(1,kk) = nxa_el(je)%ns
+       found = .true.
+       return
+    endif
+    r%ion(kk) = ji
+    m = 0
+    if(name/='ION') then
+       a0 = 1
+       do
+          a1 = index(name(a0:),'/')
+          if(a1==0) then
+             alt = name(a0:)
+          else
+             alt = name(a0:a0+a1-2)
+          endif
+          do l=1,nxa_ion(ji)%nlev
+             lnm = normname(nxa_ion(ji)%lname(l))
+             if(lnm==alt .and. m<nxa_cxml .and. .not.any(r%s(1:m,kk)==nxa_ion(ji)%soff+l)) then
+                m = m + 1
+                r%s(m,kk) = nxa_ion(ji)%soff + l
+             endif
+          enddo
+          if(a1==0) exit
+          a0 = a0 + a1
+       enddo
+    endif
+    if(m==0) then
+!-- ground term
+       lground = name/='ION'
+       gnm = normname(nxa_ion(ji)%lname(1))
+       do l=1,nxa_ion(ji)%nlev
+          if(normname(nxa_ion(ji)%lname(l))==gnm .and. m<nxa_cxml) then
+             m = m + 1
+             r%s(m,kk) = nxa_ion(ji)%soff + l
+          endif
+       enddo
+    endif
+    r%nl(kk) = m
+    found = m>0
+  end subroutine participant
+  function normname(a) result(b)
+!-- level name without '_' and the J value in brackets
+    character(*),intent(in) :: a
+    character(64) :: b
+    integer :: p,q
+    b = ' '
+    q = 0
+    do p=1,len_trim(a)
+       if(a(p:p)=='[') exit
+       if(a(p:p)=='_') cycle
+       q = q + 1
+       b(q:q) = a(p:p)
+    enddo
+  end function normname
+end subroutine nxa_read_cx
+!
+!
+pure function nxa_cx_coef(k,temp) result(alpha)
+!-- forward rate coefficient of charge-exchange reaction k [cm^3/s]
+  integer,intent(in) :: k
+  real*8,intent(in) :: temp
+  real*8 :: alpha,t4
+  t4 = min(max(temp*1d-4,nxa_cx(k)%tlo),nxa_cx(k)%thi)
+  t4 = max(t4,1d-4)
+  select case(nxa_cx(k)%typ)
+  case(1)
+     alpha = nxa_cx(k)%c(1)*t4**nxa_cx(k)%c(2)
+  case(2)
+     alpha = nxa_cx(k)%c(1)*t4**nxa_cx(k)%c(2)*(1d0 + nxa_cx(k)%c(3)*exp(nxa_cx(k)%c(4)*t4))
+  case(3)
+     alpha = nxa_cx(k)%c(1)*t4**nxa_cx(k)%c(2)*exp(nxa_cx(k)%c(3)*t4)
+  case default
+     alpha = 0d0
+  end select
+  alpha = max(alpha,0d0)
+end function nxa_cx_coef
+!
 !
 end module nlteatommod
 ! vim: fdm=marker

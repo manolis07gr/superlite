@@ -66,3 +66,7 @@ echo "$table" | while read -r name z stage dir nlev osc phot col; do
     --osc "$d/$osc" --phot "$d/$phot" --col "$d/$col" --hyd "$A/HYD/I/5dec96" \
     --nlev "$nlev" -o "$out/$name.atom" 2>&1 | grep -v "^note:"
 done
+# charge-exchange reactions among the NLTE elements (SuperLite reads
+# chgexch.dat from the model-atom directory, see in_nltex_chgexch)
+cx="$A/misc/chg_exch_data.30oct14"
+[ -f "$cx" ] && python3 -I "$here/cmfgen2superlite_chgexch.py" "$cx" "$out/chgexch.dat"

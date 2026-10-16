@@ -16,6 +16,8 @@ module nltexmod
 !    recombination from the Milne relation (nxa_alpha)
 !  - two-photon decays
 !  - non-thermal ionization and excitation of ground states (rates given)
+!  - charge exchange with the other NLTE elements (nxa_cx; the partner's
+!    populations of the current iteration)
 ! The electron density is iterated with the ionization of all elements;
 ! electrons of the other elements (neoth) come from the LTE/nebular EOS.
 ! Populations are fractions x of the element's number density.
@@ -28,7 +30,7 @@ module nltexmod
   real*8,parameter :: cc = 2.99792458d10, hh = 6.6260693d-27, kb = 1.3806505d-16
 !
   public :: nx_el_rates,nx_el_matrix,nx_el_step,nx_solve_cell,nx_lte,nx_kq,nx_jline
-  public :: nx_beta_table,nx_beta
+  public :: nx_beta_table,nx_beta,nx_cx_rates,nx_cx_heat
 !-- escape probability table of one cell: beta against ln(K/qs) on
 !-- [nx_blt0, nx_blt0 + (nx_nbt-1) nx_bdlt], qs = max(|dv/dr|,|v/r|)
   integer,parameter,public :: nx_nbt = 401
@@ -297,14 +299,16 @@ subroutine nx_el_matrix(iel,ne,cq,ci,c3,gam,gst,ar,jl,beta,nti,ntx,m)
 end subroutine nx_el_matrix
 !
 !
-subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,cq,ci,c3,gam,gst,ar,nti,ntx,it,x,beta,d,ierr)
+subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,cq,ci,c3,gam,gst,ar,nti,ntx,it,x,beta,d,ierr, &
+     ncx,cxf,cxt,cxr)
 !-----------------------------------------------------------------------
 ! One iteration for the populations x of element iel (number density nel)
 ! at electron density ne: escape probabilities from x, then the linear
 ! statistical equilibrium; the first three iterations take the new
 ! solution, later ones its geometric mean with x.  d: largest relative
 ! change.  jl, beta: incident intensity and escape probability of the
-! element's lines.
+! element's lines.  Optional: ncx further transitions cxf -> cxt at the
+! rates cxr per particle [1/s] (charge exchange).
 !-----------------------------------------------------------------------
   integer,intent(in) :: iel,it
   real*8,intent(in) :: nel,ne,qb,qv,btab(0:nx_nbt),jl(:)
@@ -312,6 +316,8 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,cq,ci,c3,gam,gst,ar,nti,ntx,it,x,
   real*8,intent(inout) :: x(:)
   real*8,intent(out) :: beta(:),d
   integer,intent(out) :: ierr
+  integer,intent(in),optional :: ncx,cxf(:),cxt(:)
+  real*8,intent(in),optional :: cxr(:)
   integer :: ns,nl,k,kg,k0,info,ir
   real*8 :: m(nxa_el(iel)%ns,nxa_el(iel)%ns),xn(nxa_el(iel)%ns)
   integer :: ipiv(nxa_el(iel)%ns)
@@ -326,6 +332,12 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,cq,ci,c3,gam,gst,ar,nti,ntx,it,x,
      beta(k) = nx_beta(nx_kq(kg,nel,x),qb,qv,btab)
   enddo
   call nx_el_matrix(iel,ne,cq,ci,c3,gam,gst,ar,jl,beta,nti,ntx,m)
+  if(present(ncx)) then
+     do k=1,ncx
+        m(cxt(k),cxf(k)) = m(cxt(k),cxf(k)) + cxr(k)
+        m(cxf(k),cxf(k)) = m(cxf(k),cxf(k)) - cxr(k)
+     enddo
+  endif
 !-- particle conservation replaces the equation of the most populated state
   ir = maxloc(x,1)
   m(ir,:) = 1d0
@@ -374,8 +386,11 @@ subroutine nx_solve_cell(temp,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx
   real*8,intent(out) :: ne,beta(nxa_nlin)
   integer,intent(out) :: ierr
   logical,intent(in),optional :: lsolve(nxa_nel)
-  integer :: iel,ns,o,l0,l1,it,ie,k
+  integer :: iel,ns,o,l0,l1,it,ie,k,ncx
   real*8 :: neold,nenew,d,dmax,dne,dold,jl(nxa_nlin),btab(0:nx_nbt)
+  integer,parameter :: mcx = 4096
+  integer :: cxf(mcx),cxt(mcx)
+  real*8 :: cxr(mcx)
   logical :: lsol(nxa_nel)
   type rt
      real*8,allocatable :: cq(:,:),ci(:),c3(:),gam(:),gst(:),ar(:)
@@ -408,9 +423,12 @@ subroutine nx_solve_cell(temp,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx
         l0 = nxa_ion(nxa_el(iel)%ion(1))%loff + 1
         l1 = nxa_ion(nxa_el(iel)%ion(nxa_el(iel)%nion))%loff + &
              nxa_ion(nxa_el(iel)%ion(nxa_el(iel)%nion))%nlin
+        ncx = 0
+        if(nxa_ncx>0) call nx_cx_rates(iel,temp,nel,x,ncx,cxf,cxt,cxr)
         call nx_el_step(iel,nel(iel),ne,qb,qv,btab,jl(l0:l1), &
              r(iel)%cq,r(iel)%ci,r(iel)%c3,r(iel)%gam,r(iel)%gst,r(iel)%ar, &
-             nti(o+1:o+ns),ntx(o+1:o+ns),it,x(o+1:o+ns),beta(l0:l1),d,ie)
+             nti(o+1:o+ns),ntx(o+1:o+ns),it,x(o+1:o+ns),beta(l0:l1),d,ie, &
+             ncx,cxf,cxt,cxr)
         if(ie/=0) then
            ierr = ie
            return
@@ -442,6 +460,107 @@ contains
     enddo
   end function chg
 end subroutine nx_solve_cell
+!
+subroutine cx_reaction(j,temp,nel,x,af,ar,np,w)
+!-----------------------------------------------------------------------
+! Charge-exchange reaction j at temperature temp: forward and reverse rate
+! coefficients af, ar [cm^3/s], participant densities np(1:4) [cm^-3] and
+! the shares w(l,k) of the levels in each participant (Boltzmann).  The
+! reverse rate from LTE, n_A n_B/(n_C n_D) = G_A G_B/(G_C G_D)
+! exp((chi_B - chi_C)/kT), G = sum g exp(-E/kT) over the term (E above the
+! ion's ground level; the top state has g = gtop), chi the ionization
+! energies of the ions of B and C.
+!-----------------------------------------------------------------------
+  integer,intent(in) :: j
+  real*8,intent(in) :: temp,nel(nxa_nel),x(nxa_nst)
+  real*8,intent(out) :: af,ar,np(4),w(nxa_cxml,4)
+  integer :: k,l,m,ie,io,lv
+  real*8 :: kt,g(4),emin(4),ex
+  kt = kb*temp
+  do k=1,4
+     ie = nxa_cx(j)%el(k)
+     io = nxa_cx(j)%ion(k)
+     emin(k) = 0d0
+     if(io>0) emin(k) = minval(nxa_ion(io)%e(nxa_cx(j)%s(1:nxa_cx(j)%nl(k),k)-nxa_ion(io)%soff))
+     g(k) = 0d0
+     np(k) = 0d0
+     do l=1,nxa_cx(j)%nl(k)
+        m = nxa_cx(j)%s(l,k)
+        if(io>0) then
+           lv = m - nxa_ion(io)%soff
+           w(l,k) = nxa_ion(io)%g(lv)*exp(-(nxa_ion(io)%e(lv)-emin(k))/kt)
+        else
+           w(l,k) = nxa_el(ie)%gtop
+        endif
+        g(k) = g(k) + w(l,k)
+        np(k) = np(k) + nel(ie)*x(nxa_el(ie)%xoff+m)
+     enddo
+     w(1:nxa_cx(j)%nl(k),k) = w(1:nxa_cx(j)%nl(k),k)/g(k)
+  enddo
+  af = nxa_cx_coef(j,temp)
+  ex = (nxa_ion(nxa_cx(j)%ion(2))%chi - nxa_ion(nxa_cx(j)%ion(3))%chi &
+       - emin(1) - emin(2) + emin(3) + emin(4))/kt
+  ar = af*g(1)*g(2)/(g(3)*g(4))*exp(min(max(ex,-700d0),700d0))
+end subroutine cx_reaction
+!
+!
+subroutine nx_cx_rates(iel,temp,nel,x,n,sf,st,rt)
+!-----------------------------------------------------------------------
+! Charge-exchange transitions of element iel with the populations x of
+! the partner elements: n transitions sf -> st at the rates rt per
+! particle in sf [1/s].  Products are distributed over the levels of a
+! term with Boltzmann weights.
+!-----------------------------------------------------------------------
+  integer,intent(in) :: iel
+  real*8,intent(in) :: temp,nel(nxa_nel),x(nxa_nst)
+  integer,intent(out) :: n,sf(:),st(:)
+  real*8,intent(out) :: rt(:)
+  integer :: j
+  real*8 :: af,ar,np(4),w(nxa_cxml,4)
+  n = 0
+  do j=1,nxa_ncx
+     if(nxa_cx(j)%el(1)/=iel .and. nxa_cx(j)%el(2)/=iel) cycle
+     call cx_reaction(j,temp,nel,x,af,ar,np,w)
+     if(nxa_cx(j)%el(1)==iel) then
+        call add(1,3,af*np(2))     !A -> C: alpha_f n_B
+        call add(3,1,ar*np(4))     !C -> A: alpha_r n_D
+     else
+        call add(2,4,af*np(1))     !B -> D: alpha_f n_A
+        call add(4,2,ar*np(3))     !D -> B: alpha_r n_C
+     endif
+  enddo
+contains
+  subroutine add(kf,kd,r)
+    integer,intent(in) :: kf,kd
+    real*8,intent(in) :: r
+    integer :: a,b
+    if(r<=0d0) return
+    do a=1,nxa_cx(j)%nl(kf)
+       do b=1,nxa_cx(j)%nl(kd)
+          if(n>=size(sf)) stop 'nx_cx_rates: too many transitions'
+          n = n + 1
+          sf(n) = nxa_cx(j)%s(a,kf)
+          st(n) = nxa_cx(j)%s(b,kd)
+          rt(n) = r*w(b,kd)
+       enddo
+    enddo
+  end subroutine add
+end subroutine nx_cx_rates
+!
+!
+function nx_cx_heat(temp,nel,x) result(h)
+!-- net heating by charge exchange [erg/s/cm^3]: (forward - reverse) rate
+!-- times the energy released by the forward reaction
+  real*8,intent(in) :: temp,nel(nxa_nel),x(nxa_nst)
+  real*8 :: h,af,ar,np(4),w(nxa_cxml,4)
+  integer :: j
+  h = 0d0
+  do j=1,nxa_ncx
+     call cx_reaction(j,temp,nel,x,af,ar,np,w)
+     h = h + (af*np(1)*np(2) - ar*np(3)*np(4))*nxa_cx(j)%q
+  enddo
+end function nx_cx_heat
+!
 !
 end module nltexmod
 ! vim: fdm=marker
