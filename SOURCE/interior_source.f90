@@ -14,6 +14,7 @@ subroutine interior_source!(it)
   use countersmod
   use nltextrmod
   use shockciemod, only:shc_on,shc_sample,shc_tmin,shc_tmax
+  use xraysrcmod, only:xs_on,xs_px,xs_sample
 
   implicit none
   ! integer, intent(in) :: it !experimental iterative approach
@@ -39,6 +40,7 @@ subroutine interior_source!(it)
 !-- lumg source: emission with the local emissivity (macro-atom with NLTE H)
   integer :: kind,idx
   real*8 :: wlc,thelp
+  logical :: lxr,lrel
   type(packet),pointer :: ptcl
 !-- statement functions
   integer :: l
@@ -100,7 +102,21 @@ subroutine interior_source!(it)
 !-- lumg source: thermal energy of the gas, emitted isotropically from a
 !-- uniform position in the cell with the local emissivity
      if(in_srctype=='lumg') then
-        if(src_tsh(l)>0d0) then
+!-- X-rays of wind shocks (xraysrcmod), their share of the cell's emission
+        lxr = .false.
+        if(xs_on) then
+           if(xs_px(l)>0d0) then
+              call rnd_r(r1,rnd_state)
+              lxr = r1<xs_px(l)
+           endif
+        endif
+        if(lxr) then
+           call rnd_r(r1,rnd_state)
+           call rnd_r(r2,rnd_state)
+           call rnd_r(r3,rnd_state)
+           call xs_sample(l,r1,r2,r3,wlc)
+           kind = em_line  !wavelength set
+        elseif(src_tsh(l)>0d0) then
 !-- shock cell: radiatively cooling post-shock gas, T uniform between the gas
 !-- temperature and the post-shock temperature; the CIE spectrum at T
 !-- (shockciemod) within its table, bremsstrahlung shape otherwise
@@ -117,7 +133,20 @@ subroutine interior_source!(it)
            endif
            kind = em_line  !not thermal: wavelength set
         elseif(nxt_on) then
-           call nxt_kpacket(l,rnd_state,kind,idx,wlc)
+!-- (time-dependent NLTE: the share nxt_prel released by the recombining gas
+!-- activates the macro-atom in a state that empties)
+           lrel = .false.
+           if(nxt_dtinv>0d0) then
+              if(nxt_prel(l)>0d0) then
+                 call rnd_r(r1,rnd_state)
+                 lrel = r1<nxt_prel(l)
+              endif
+           endif
+           if(lrel) then
+              call nxt_activate_rel(l,rnd_state,kind,idx,wlc)
+           else
+              call nxt_kpacket(l,rnd_state,kind,idx,wlc)
+           endif
         else
            kind = em_thermal
         endif
@@ -129,7 +158,7 @@ subroutine interior_source!(it)
         endif
         wlc = min(max(wlc,grp_wl(1)),grp_wl(grp_ng+1)*(1d0-1d-12))
         ptcl%wl = wlc
-        if(src_tsh(l)>0d0) then
+        if(src_tsh(l)>0d0 .or. lxr) then
            ptcl%em = 6
         elseif(nxt_on) then
            ptcl%em = nxt_emcode(kind,idx)

@@ -23,7 +23,7 @@ c-- loop over all gas_vals cells
       t0 = t_time()
       do i=1,gas_ncell
        if(gas_mass(i)<=0d0) cycle
-       ndens = gas_natom(i)/gas_vol(i) !atom number density
+       ndens = gas_natom(i)/gas_volcl(i) !atom number density
        if(in_tion=='nebu'.and.nxt_have_mc) then
 c-- modified nebular approximation with the Monte Carlo radiation field
          call ions_nebular_mc(gas_natomfr(1,i),gas_temp(i),
@@ -61,7 +61,7 @@ c-- store occupation numbers of each ion's ground states
          ion_grndlev(iz,i)%oc(ii) =
      &     gas_natom(i)*gas_natomfr(iz,i)*
      &     ion_el(iz)%i(ii)%glev(1) * ion_el(iz)%i(ii)%n /
-     &     (ion_el(iz)%i(ii)%q * gas_vol(i)) !number density, not number
+     &     (ion_el(iz)%i(ii)%q * gas_volcl(i)) !number density, not number
          enddo !ii
        enddo !iz
 c
@@ -74,7 +74,7 @@ c-- store partial densities
           if(do_output) pdens(iion,i) = ion_el(iz)%i(ii)%n
           if(in_nlte.and.(iz.le.nlte_nelem)) then
             nlte_ndens(i,ii,iz) = ion_el(iz)%i(ii)%n*
-     &        gas_natom(i)*gas_natomfr(iz,i)/gas_vol(i) ! number density of atoms in the ionization state
+     &        gas_natom(i)*gas_natomfr(iz,i)/gas_volcl(i) ! number density of atoms in the ionization state
           endif
          enddo
         enddo
@@ -106,7 +106,7 @@ c-- electron density
        write(4,'(3a12)') '# rcell','nelec','elec_dens' ![atom^-1],[cm^-3]
        do i=1,gas_ncell
         write(4,'(1p,3e12.4)') gas_rcell(i),gas_nelec(i),
-     &    gas_nelec(i)*gas_natom(i)/gas_vol(i)
+     &    gas_nelec(i)*gas_natom(i)/gas_volcl(i)
        enddo !i
 c
 c-- partial densities

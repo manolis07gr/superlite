@@ -83,7 +83,7 @@ c-- velocity gradients and electron densities for the Sobolev lines
      &    (grd_vxarr(l+1)+grd_vxarr(l))/(grd_xarr(l+1)+grd_xarr(l)),
      &    2d5/(grd_xarr(l+1)+grd_xarr(l)),
      &    qarr(:,i),warr(:,i),qavg(i),qmin(i),qmax(i))
-        nearr(i) = gas_nelec(i)*gas_natom(i)/max(gas_vol(i),1d-300)
+        nearr(i) = gas_nelec(i)*gas_natom(i)/max(gas_volcl(i),1d-300)
        enddo
       endif
 c
@@ -110,7 +110,7 @@ c-- thomson scattering
       if(in_nothmson) then
        gas_sig = 0d0
       else
-       gas_sig = cthomson*gas_nelec*gas_natom/gas_vol
+       gas_sig = cthomson*gas_nelec*gas_natom/gas_volcl
        where(gas_mass<=0d0) gas_sig = 0d0
       endif
 c
@@ -244,7 +244,7 @@ c-- free-free
       if(.not. in_noffopac) then
 c
 c-- simple variant: nearest data grid point
-       hlparr = (gas_natom/gas_vol)**2*gas_nelec
+       hlparr = (gas_natom/gas_volcl)**2*gas_nelec
        lwarn = .true.
 c$omp parallel do default(none)
 c$omp& schedule(static)

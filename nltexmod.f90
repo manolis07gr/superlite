@@ -363,7 +363,7 @@ end subroutine nx_el_matrix
 !
 !
 subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
-     ncx,cxf,cxt,cxr)
+     ncx,cxf,cxt,cxr,xp,dti)
 !-----------------------------------------------------------------------
 ! One iteration for the populations x of element iel (number density nel)
 ! at electron density ne: escape probabilities from x, then the linear
@@ -371,7 +371,11 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
 ! solution, later ones its geometric mean with x.  d: largest relative
 ! change.  jl, beta: incident intensity and escape probability of the
 ! element's lines.  Optional: ncx further transitions cxf -> cxt at the
-! rates cxr per particle [1/s] (charge exchange).
+! rates cxr per particle [1/s] (charge exchange); xp, dti: the fractions
+! of the previous model at the same mass coordinate and 1/dt [1/s] for the
+! time-dependent equations (backward Euler in the Lagrangian frame,
+! dx/dt = M x: (M - 1/dt) x = -xp/dt; particle conservation holds since
+! sum xp = 1).
 !-----------------------------------------------------------------------
   integer,intent(in) :: iel,it
   real*8,intent(in) :: nel,ne,qb,qv,btab(0:nx_nbt),jl(:)
@@ -381,10 +385,11 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
   real*8,intent(out) :: beta(:),d
   integer,intent(out) :: ierr
   integer,intent(in),optional :: ncx,cxf(:),cxt(:)
-  real*8,intent(in),optional :: cxr(:)
+  real*8,intent(in),optional :: cxr(:),xp(:),dti
   integer :: ns,nl,k,kg,k0,info,ir
   real*8 :: m(nxa_el(iel)%ns,nxa_el(iel)%ns),xn(nxa_el(iel)%ns)
   integer :: ipiv(nxa_el(iel)%ns)
+  logical :: ltd
 !
   ierr = 0
   d = 0d0
@@ -402,10 +407,18 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
         m(cxf(k),cxf(k)) = m(cxf(k),cxf(k)) - cxr(k)
      enddo
   endif
+  ltd = .false.
+  if(present(xp) .and. present(dti)) ltd = dti > 0d0
+  if(ltd) then
+     do k=1,ns
+        m(k,k) = m(k,k) - dti
+     enddo
+  endif
 !-- particle conservation replaces the equation of the most populated state
   ir = maxloc(x,1)
   m(ir,:) = 1d0
   xn = 0d0
+  if(ltd) xn = -dti*xp
   xn(ir) = 1d0
   call dgesv(ns,1,m,ns,ipiv,xn,ns,info)
   if(info/=0) then
@@ -425,7 +438,7 @@ end subroutine nx_el_step
 !
 !
 subroutine nx_solve_cell(temp,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx,x,ne,beta,ierr,lsolve, &
-     tol,maxit)
+     tol,maxit,xprev,dtinv)
 !-----------------------------------------------------------------------
 ! Statistical equilibrium of all NLTE elements in one cell.
 !  temp, trad   electron and radiation temperature [K] (trad: shape of J
@@ -443,6 +456,9 @@ subroutine nx_solve_cell(temp,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx
 !  tol, maxit   (optional) convergence: largest relative change of the
 !               populations (default 1e-6; n_e to 1e-2 tol) and iterations
 !               (default 300)
+!  xprev, dtinv (optional) time-dependent equations: the populations of
+!               the previous model at the same mass coordinate and 1/dt
+!               [1/s] (nx_el_step)
 ! The escape probabilities, populations and electron density are iterated
 ! together (each iteration: one linear solve per element).
 !-----------------------------------------------------------------------
@@ -456,6 +472,7 @@ subroutine nx_solve_cell(temp,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx
   logical,intent(in),optional :: lsolve(nxa_nel)
   real*8,intent(in),optional :: tol
   integer,intent(in),optional :: maxit
+  real*8,intent(in),optional :: xprev(nxa_nst),dtinv
   integer :: iel,ns,o,l0,l1,it,ie,k,ncx,mit
   real*8 :: dtol
   real*8 :: neold,nenew,d,dmax,dne,dold,jl(nxa_nlin),btab(0:nx_nbt),wg(nxa_nlv)
@@ -495,9 +512,15 @@ subroutine nx_solve_cell(temp,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx
              nxa_ion(nxa_el(iel)%ion(nxa_el(iel)%nion))%nlin
         ncx = 0
         if(nxa_ncx>0) call nx_cx_rates(iel,temp,nel,x,wg,ncx,cxf,cxt,cxr)
-        call nx_el_step(iel,nel(iel),ne,qb,qv,btab,jl(l0:l1),r(iel), &
-             nti(o+1:o+ns),ntx(o+1:o+ns),it,x(o+1:o+ns),beta(l0:l1),d,ie, &
-             ncx,cxf,cxt,cxr)
+        if(present(xprev) .and. present(dtinv)) then
+           call nx_el_step(iel,nel(iel),ne,qb,qv,btab,jl(l0:l1),r(iel), &
+                nti(o+1:o+ns),ntx(o+1:o+ns),it,x(o+1:o+ns),beta(l0:l1),d,ie, &
+                ncx,cxf,cxt,cxr,xprev(o+1:o+ns),dtinv)
+        else
+           call nx_el_step(iel,nel(iel),ne,qb,qv,btab,jl(l0:l1),r(iel), &
+                nti(o+1:o+ns),ntx(o+1:o+ns),it,x(o+1:o+ns),beta(l0:l1),d,ie, &
+                ncx,cxf,cxt,cxr)
+        endif
         if(ie/=0) then
            ierr = ie
            return

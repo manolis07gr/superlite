@@ -22,12 +22,16 @@ subroutine nltex_gas_update(it)
         neoth(i) = 0d0
      else
         do iel=1,nxa_nel
-           nelv(iel,i) = gas_natom(i)*gas_natomfr(nxa_el(iel)%z,i)/gas_vol(i)
+           nelv(iel,i) = gas_natom(i)*gas_natomfr(nxa_el(iel)%z,i)/gas_volcl(i)
         enddo
-        neoth(i) = nxt_neothloc(i)*gas_natom(i)/gas_vol(i)
+        neoth(i) = nxt_neothloc(i)*gas_natom(i)/gas_volcl(i)
      endif
      qb(i) = (grd_vxarr(l+1)-grd_vxarr(l))/(grd_xarr(l+1)-grd_xarr(l))
      qv(i) = (grd_vxarr(l+1)+grd_vxarr(l))/(grd_xarr(l+1)+grd_xarr(l))
+!-- microclumping: the Sobolev depths of the clump populations with the
+!-- volume-mean opacity, K f/Q
+     qb(i) = qb(i)/gas_fcl(i)
+     qv(i) = qv(i)/gas_fcl(i)
 !-- power absorbed from X-rays (fast photoelectrons), with the opacity of the
 !-- previous iteration
      edep(i) = 0d0
@@ -38,7 +42,7 @@ subroutine nltex_gas_update(it)
 !-- electrons per atom
   do i=1,gas_ncell
      if(gas_mass(i)<=0d0) cycle
-     gas_nelec(i) = nxt_neloc(i)*gas_vol(i)/gas_natom(i)
+     gas_nelec(i) = nxt_neloc(i)*gas_volcl(i)/gas_natom(i)
   enddo
 end subroutine nltex_gas_update
 ! vim: fdm=marker

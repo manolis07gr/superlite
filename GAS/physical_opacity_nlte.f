@@ -137,15 +137,19 @@ c-- initialize
       capsc = 0d0
 c
 c-- velocity gradients and electron densities for the Sobolev lines
+c-- (microclumping: gradients over f, so that the Sobolev depths of the
+c-- clump populations are those of the volume-mean opacity and the
+c-- expansion opacity is per unit clump volume)
       if(bbs_on) then
        do i=1,gas_ncell
         l = gas_icell1 + i - 1
         call bbs_quad((grd_vxarr(l+1)-grd_vxarr(l))/
-     &    (grd_xarr(l+1)-grd_xarr(l)),
-     &    (grd_vxarr(l+1)+grd_vxarr(l))/(grd_xarr(l+1)+grd_xarr(l)),
-     &    2d5/(grd_xarr(l+1)+grd_xarr(l)),
+     &    (grd_xarr(l+1)-grd_xarr(l))/gas_fcl(i),
+     &    (grd_vxarr(l+1)+grd_vxarr(l))/(grd_xarr(l+1)+grd_xarr(l))/
+     &    gas_fcl(i),
+     &    2d5/(grd_xarr(l+1)+grd_xarr(l))/gas_fcl(i),
      &    qarr(:,i),warr(:,i),qavg(i),qmin(i),qmax(i))
-        nearr(i) = gas_nelec(i)*gas_natom(i)/max(gas_vol(i),1d-300)
+        nearr(i) = gas_nelec(i)*gas_natom(i)/max(gas_volcl(i),1d-300)
        enddo
       endif
 c
@@ -173,7 +177,7 @@ c-- thomson scattering
       if(in_nothmson) then
        gas_sig = 0d0
       else
-       gas_sig = cthomson*gas_nelec*gas_natom/gas_vol
+       gas_sig = cthomson*gas_nelec*gas_natom/gas_volcl
        where(gas_mass<=0d0) gas_sig = 0d0
       endif
 c
@@ -256,7 +260,7 @@ c$omp parallel do schedule(static) default(none)
 c$omp& private(l,ll,x_coll,f_coll,gamma,llw,lup,g_llw,g_lup,
 c$omp&    gamma_d,Clu,Cul)
 c$omp& shared(i,iz,ii,coll_nlin,gas_ncell,gas_mass,gas_temp,
-c$omp&   gas_nelec,gas_natom,gas_vol,tempinv,nlte_ndens,nlte_data,
+c$omp&   gas_nelec,gas_natom,gas_volcl,tempinv,nlte_ndens,nlte_data,
 c$omp&   nlte_nlev)
 c$omp& reduction(+:rcoeff)
           do il=1,coll_nlin
@@ -275,8 +279,8 @@ c-- de-excitation rates
            g_lup = nlte_data(iz)%i(ii)%glev(lup)
            gamma_d = g_llw*gamma*exp(x_coll)/g_lup
 c-- collisional rate coefficients
-           Clu = gamma*gas_nelec(i)*gas_natom(i)/gas_vol(i)
-           Cul = gamma_d*gas_nelec(i)*gas_natom(i)/gas_vol(i)
+           Clu = gamma*gas_nelec(i)*gas_natom(i)/gas_volcl(i)
+           Cul = gamma_d*gas_nelec(i)*gas_natom(i)/gas_volcl(i)
 c-- update rate coefficients r(u->l) and r(l->u) for collision
            do l=1,nlte_nlev
             do ll=1,nlte_nlev
@@ -561,7 +565,7 @@ c-- ground state of the next ion at T_e (identical in LTE at T_e).
          if(nxt_isel(iz)) cycle
          do i=1,gas_ncell
           if(gas_mass(i)<=0d0) cycle
-          nedens = gas_nelec(i)*gas_natom(i)/gas_vol(i)
+          nedens = gas_nelec(i)*gas_natom(i)/gas_volcl(i)
           do ii=1,min(iz,ion_el(iz)%ni - 1)
            argx = min(ion_el(iz)%i(ii)%e/(pc_kb*gas_temp(i)),650d0)
            grndst(i,ii,iz) = ion_grndlev(iz,i)%oc(ii+1)*nedens*
@@ -570,7 +574,7 @@ c-- ground state of the next ion at T_e (identical in LTE at T_e).
      &       4.1412d-16*gas_temp(i)**(-1.5d0)*exp(argx)
 c-- not more than all atoms of the element in this ground state
            grndst(i,ii,iz) = min(grndst(i,ii,iz),
-     &       gas_natom(i)*gas_natomfr(iz,i)/gas_vol(i))
+     &       gas_natom(i)*gas_natomfr(iz,i)/gas_volcl(i))
           enddo !ii
          enddo !i
         enddo !iz
@@ -712,7 +716,7 @@ c-- free-free
       if(.not. in_noffopac) then
 c
 c-- simple variant: nearest data grid point
-       hlparr = (gas_natom/gas_vol)**2*gas_nelec
+       hlparr = (gas_natom/gas_volcl)**2*gas_nelec
        lwarn = .true.
 c$omp parallel do default(none)
 c$omp& schedule(static)

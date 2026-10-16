@@ -122,6 +122,21 @@ module nltextrmod
 !-- NLTE ion of (Z, stage); -1: the top ion of an NLTE element; 0: none
   integer,public :: nxt_ionzs(0:99,30) = 0
   real*8,allocatable,public :: nxt_etop(:)    !(nion) highest level of the model atom [cm^-1]
+!-- time-dependent statistical equilibrium (in_nltex_prev): 1/dt to the
+!-- previous model (0: steady state), its populations at the same mass
+!-- coordinate, and per cell the power released by the change of the
+!-- ionization and excitation energy, sum n_el eps_s (x_prev - x)/dt V
+!-- [erg/s] (negative: stored), and the share of the cell's 'lumg' energy
+!-- emitted by macro-atom activation in the states that empty
+  real*8,public :: nxt_dtinv = 0d0
+  real*8,allocatable,public :: nxt_xprev(:,:) !(nst,ncell)
+  real*8,allocatable,public :: nxt_erel(:)    !(ncell)
+  real*8,allocatable,public :: nxt_prel(:)    !(ncell)
+  real*8,allocatable :: nxt_rcum(:,:)         !(nst,ncell) cumulative weight of the activation states
+!-- microclumping: volume filling factor per cell (not allocated: smooth).
+!-- The populations are those of the clumps; the Sobolev strengths K of
+!-- the transport and of the escape probabilities are volume means, f K
+  real*8,allocatable,public :: nxt_fcl(:)    !(ncell)
 !-- emission kinds returned by the macro-atom
   integer,parameter,public :: em_line = 1, em_bf = 2, em_thermal = 3, em_2ph = 4
 !
@@ -129,6 +144,7 @@ module nltextrmod
   public :: nxt_tables,nxt_neighbors,nxt_activate,nxt_activate_line,nxt_kpacket
   public :: nxt_bfabs,nxt_nonthermal,nxt_ntdep,nxt_ntrates,nxt_write,nxt_bffreq
   public :: nxt_shares,nxt_dealloc,nxt_emcode
+  public :: nxt_write_state,nxt_read_prev,nxt_release,nxt_activate_rel
 !
 contains
 !
@@ -381,6 +397,10 @@ subroutine nxt_dealloc
   if(allocated(nxt_kcum)) deallocate(nxt_kcum)
   if(allocated(nxt_cmax)) deallocate(nxt_cmax,nxt_cmoff)
   if(allocated(nxt_etop)) deallocate(nxt_etop)
+  if(allocated(nxt_xprev)) deallocate(nxt_xprev)
+  if(allocated(nxt_fcl)) deallocate(nxt_fcl)
+  if(allocated(nxt_erel)) deallocate(nxt_erel,nxt_prel,nxt_rcum)
+  nxt_dtinv = 0d0
   nxt_elh = 0; nxt_elhe = 0; nxt_kha = 0
   nxt_sh1 = 0; nxt_sh2 = 0; nxt_shc = 0; nxt_she1 = 0; nxt_she2 = 0; nxt_shec = 0
 end subroutine nxt_dealloc
@@ -500,8 +520,13 @@ subroutine nxt_gas_solve(it,gncell,temp,trad,nelv,neoth,qb,qv,icell1,edep)
      endif
      xold = x
      call nxt_ntrates(nelv(:,i),x,edep(i),nti,ntx)
-     call nx_solve_cell(temp(i),trad(i),nelv(:,i),neoth(i),qb(i),qv(i),nxt_ng, &
-          nxt_nug,nxt_dnug,jg,jb,ljb,nti,ntx,x,ne,beta,ierr)
+     if(nxt_dtinv>0d0) then
+        call nx_solve_cell(temp(i),trad(i),nelv(:,i),neoth(i),qb(i),qv(i),nxt_ng, &
+             nxt_nug,nxt_dnug,jg,jb,ljb,nti,ntx,x,ne,beta,ierr,xprev=nxt_xprev(:,l),dtinv=nxt_dtinv)
+     else
+        call nx_solve_cell(temp(i),trad(i),nelv(:,i),neoth(i),qb(i),qv(i),nxt_ng, &
+             nxt_nug,nxt_dnug,jg,jb,ljb,nti,ntx,x,ne,beta,ierr)
+     endif
      if(ierr==1) then
         nfail = nfail + 1
         x = xold
@@ -612,6 +637,7 @@ subroutine nxt_tables(ncell,tempinv,radtemp,capemitgrey,xarr,vxarr)
         lo = nxa_el(iel)%lvoff
         nxt_kq(k,ic) = nx_kq(k,nxt_nel(iel,ic),nxt_x(o+1:o+nxa_el(iel)%ns,ic), &
              nxt_w(lo+1:lo+nxa_el(iel)%nlv,ic))
+        if(allocated(nxt_fcl)) nxt_kq(k,ic) = nxt_fcl(ic)*nxt_kq(k,ic)
         nxt_beta(k,ic) = nx_beta(nxt_kq(k,ic),qb,qv,btab)
      enddo
      if(nxt_tau0>0d0 .and. nxt_kha>0) then
@@ -1292,6 +1318,182 @@ contains
     endif
   end subroutine bands
 end subroutine nxt_write
+!
+!
+subroutine nxt_write_state(ncell,mass,vol,tempinv)
+!-----------------------------------------------------------------------
+! output.nltex_state: the populations of all NLTE states per cell, with
+! the exterior mass coordinate of the cell centre, for the time-dependent
+! statistical equilibrium of a later model (in_nltex_prev).
+!-----------------------------------------------------------------------
+  integer,intent(in) :: ncell
+  real*8,intent(in) :: mass(ncell),vol(ncell),tempinv(ncell)
+  integer :: ic,iel
+  real*8 :: mext(ncell)
+  mext(ncell) = 0.5d0*mass(ncell)
+  do ic=ncell-1,1,-1
+     mext(ic) = mext(ic+1) + 0.5d0*(mass(ic+1) + mass(ic))
+  enddo
+  open(4,file='output.nltex_state',status='replace')
+  write(4,'(a)') '# SuperLite NLTE state populations per cell (in_nltex_prev of a later model)'
+  write(4,'(a,3i9)') 'nel nst ncell',nxa_nel,nxa_nst,ncell
+  write(4,'(a,99(1x,i3,1x,i5))') 'elements Z ns',(nxa_el(iel)%z,nxa_el(iel)%ns,iel=1,nxa_nel)
+  write(4,'(a)') '# per cell: exterior mass of the cell centre [g], mass [g], density [g/cm^3], '// &
+       'T_e [K], n_e [cm^-3]; then the fractions of the states of each element'
+  do ic=1,ncell
+     write(4,'(1p,5es16.7e3)') mext(ic),mass(ic),mass(ic)/max(vol(ic),1d-300),1d0/tempinv(ic),nxt_ne(ic)
+     write(4,'(1p,8es16.7e3)') max(nxt_x(:,ic),0d0)
+  enddo
+  close(4)
+end subroutine nxt_write_state
+!
+!
+subroutine nxt_read_prev(fname,ncell,mass,dt,lprint)
+!-----------------------------------------------------------------------
+! Populations of the previous model (its output.nltex_state) at the
+! exterior mass coordinate of each cell centre, linear in that coordinate
+! between the previous cell centres (the end values beyond), for the
+! time-dependent statistical equilibrium with dt [s] since that model.
+! The exterior mass is Lagrangian when both models end at the same mass
+! shell (the outer edge of the CSM); the model atoms must be the same.
+!-----------------------------------------------------------------------
+  character(*),intent(in) :: fname
+  integer,intent(in) :: ncell
+  real*8,intent(in) :: mass(ncell),dt
+  logical,intent(in) :: lprint
+  integer :: iu,ios,nel,nst,npc,ic,iel,a,b,m,k,o
+  integer :: zs(200)
+  character(4096) :: line
+  real*8,allocatable :: mp(:),xp(:,:)
+  real*8 :: mext(ncell),rd(5),w
+!
+  if(dt<=0d0) stop 'nxt_read_prev: in_nltex_dtprev must be > 0'
+  open(newunit=iu,file=fname,status='old',action='read',iostat=ios)
+  if(ios/=0) stop 'nxt_read_prev: cannot open in_nltex_prev'
+  call nextrec
+  if(index(line,'nel nst ncell')/=1) stop 'nxt_read_prev: not an output.nltex_state file'
+  read(line(14:),*) nel,nst,npc
+  if(nel/=nxa_nel .or. nst/=nxa_nst) stop 'nxt_read_prev: other model atoms than this model'
+  call nextrec
+  if(nel>100) stop "nxt_read_prev: too many elements"
+  read(line(14:),*) zs(:2*nel)
+  do iel=1,nel
+     if(zs(2*iel-1)/=nxa_el(iel)%z .or. zs(2*iel)/=nxa_el(iel)%ns) &
+          stop 'nxt_read_prev: other model atoms than this model'
+  enddo
+  allocate(mp(npc),xp(nst,npc))
+  do ic=1,npc
+     call nextrec
+     read(line,*) rd
+     read(iu,*) xp(:,ic)
+     mp(ic) = rd(1)
+  enddo
+  close(iu)
+!-- exterior mass of the cell centres of this model
+  mext(ncell) = 0.5d0*mass(ncell)
+  do ic=ncell-1,1,-1
+     mext(ic) = mext(ic+1) + 0.5d0*(mass(ic+1) + mass(ic))
+  enddo
+  if(allocated(nxt_xprev)) deallocate(nxt_xprev)
+  allocate(nxt_xprev(nst,ncell))
+!-- mp decreases outward (index npc: the outermost cell)
+  do ic=1,ncell
+     if(mext(ic) >= mp(1)) then
+        nxt_xprev(:,ic) = xp(:,1)
+     elseif(mext(ic) <= mp(npc)) then
+        nxt_xprev(:,ic) = xp(:,npc)
+     else
+        a = 1
+        b = npc
+        do while(b-a>1)
+           m = (a+b)/2
+           if(mp(m) >= mext(ic)) then
+              a = m
+           else
+              b = m
+           endif
+        enddo
+        w = (mp(a) - mext(ic))/(mp(a) - mp(b))
+        nxt_xprev(:,ic) = (1d0-w)*xp(:,a) + w*xp(:,b)
+     endif
+     do iel=1,nxa_nel
+        o = nxa_el(iel)%xoff
+        k = nxa_el(iel)%ns
+        w = sum(nxt_xprev(o+1:o+k,ic))
+        if(w>0d0) nxt_xprev(o+1:o+k,ic) = nxt_xprev(o+1:o+k,ic)/w
+     enddo
+  enddo
+  nxt_dtinv = 1d0/dt
+  if(lprint) write(6,'(1x,a,a,a,es10.3,a,i5,a,es10.3,a,es10.3,a)') 'NLTE time-dependent: previous model ', &
+       trim(fname),', dt =',dt,' s;',npc,' cells, exterior mass',mp(1),' g (this model',mext(1),' g)'
+  deallocate(mp,xp)
+contains
+  subroutine nextrec
+!-- next record that is not a comment
+    do
+       read(iu,'(a)',iostat=ios) line
+       if(ios/=0) stop 'nxt_read_prev: file truncated'
+       if(line(1:1)/='#' .and. len_trim(line)>0) exit
+    enddo
+  end subroutine nextrec
+end subroutine nxt_read_prev
+!
+!
+subroutine nxt_release(ncell,vol)
+!-----------------------------------------------------------------------
+! Power released by the change of the ionization and excitation energy of
+! the NLTE elements since the previous model (time-dependent statistical
+! equilibrium), per cell [erg/s]:
+!   nxt_erel = V/dt sum_el n_el sum_s eps_s (x_prev,s - x_s)
+! (negative: energy stored), and the cumulative activation weights of the
+! states that empty, n_el eps_s (x_prev,s - x_s) > 0.
+!-----------------------------------------------------------------------
+  integer,intent(in) :: ncell
+  real*8,intent(in) :: vol(ncell)
+  integer :: ic,iel,o,s
+  real*8 :: e,c,w
+  if(.not.allocated(nxt_erel)) allocate(nxt_erel(ncell),nxt_prel(ncell),nxt_rcum(nxa_nst,ncell))
+  nxt_erel = 0d0
+  nxt_prel = 0d0
+  nxt_rcum = 0d0
+  if(nxt_dtinv<=0d0 .or. .not.allocated(nxt_xprev)) return
+  do ic=1,ncell
+     e = 0d0
+     c = 0d0
+     do iel=1,nxa_nel
+        o = nxa_el(iel)%xoff
+        do s=1,nxa_el(iel)%ns
+           w = nxt_nel(iel,ic)*nxa_el(iel)%eps(s)*(nxt_xprev(o+s,ic) - nxt_x(o+s,ic))
+           e = e + w
+           c = c + max(w,0d0)
+           nxt_rcum(o+s,ic) = c
+        enddo
+     enddo
+     nxt_erel(ic) = e*nxt_dtinv*vol(ic)
+  enddo
+end subroutine nxt_release
+!
+!
+pure subroutine nxt_activate_rel(ic,state,kind,idx,wlc)
+!-- packet of the energy released by the recombining gas (nxt_release):
+!-- macro-atom activated in a state that empties, with its share
+  integer,intent(in) :: ic
+  type(rnd_t),intent(inout) :: state
+  integer,intent(out) :: kind,idx
+  real*8,intent(out) :: wlc
+  real*8 :: r
+  integer :: g,iel
+  if(nxt_rcum(nxa_nst,ic) <= 0d0) then
+     call nxt_kpacket(ic,state,kind,idx,wlc)
+     return
+  endif
+  call rnd_r(r,state)
+  call pick(nxt_rcum(:,ic),max(r,1d-300)*nxt_rcum(nxa_nst,ic),g)
+  do iel=nxa_nel,1,-1
+     if(g > nxa_el(iel)%xoff) exit
+  enddo
+  call nxt_activate(ic,iel,g-nxa_el(iel)%xoff,state,kind,idx,wlc)
+end subroutine nxt_activate_rel
 !
 end module nltextrmod
 ! vim: fdm=marker

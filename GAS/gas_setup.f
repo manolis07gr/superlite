@@ -39,6 +39,9 @@ c-- equal to gas_temp
 c-- luminosity (experimental volume source)
       gas_lum = 0.d0
       if(str_llum) gas_lum = str_lumdd
+c-- clumping
+      gas_fcl = 1d0
+      if(str_lfcl) gas_fcl = str_fcldd
 c
 c
 c-- initial radiation

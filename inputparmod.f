@@ -123,6 +123,21 @@ c-- CIE emissivity table (Tools/chianti_cie_spectra.py): the spectrum at
 c-- each T of the cooling flow is the CIE spectrum of the cell's
 c-- composition instead of bremsstrahlung ('none': bremsstrahlung)
       character(256) :: in_shock_cie = 'none'
+c-- time-dependent statistical equilibrium of the NLTE elements (lumg
+c-- source): output.nltex_state of the previous model of the sequence
+c-- ('none': steady state), matched by the exterior mass coordinate, and
+c-- the time since that model [s]
+      character(256) :: in_nltex_prev = 'none'
+      real*8 :: in_nltex_dtprev = 0d0
+c-- X-ray emission of wind shocks as CMFGEN's INC_XRAYS (xraysrcmod):
+c-- plasma table in CMFGEN's RS_XRAY_FLUXES format ('none': off); two
+c-- components: filling factor, shock temperature [K], onset velocity
+c-- [km/s]; smooth-wind densities (CMFGEN's X_SM_WIND)
+      character(256) :: in_xray_table = 'none'
+      real*8 :: in_xray_ff1 = 0d0, in_xray_ff2 = 0d0
+      real*8 :: in_xray_t1 = 0d0, in_xray_t2 = 0d0
+      real*8 :: in_xray_v1 = 0d0, in_xray_v2 = 0d0
+      logical :: in_xray_smooth = .true.
 c-- bound-bound opacity of the LTE elements: in_bbsobolev = t uses the
 c-- Sobolev expansion opacity with the local velocity gradient (saturating
 c-- thick lines) instead of line strengths smeared over the group;
@@ -202,6 +217,9 @@ c-- runtime parameter namelist
      & in_nlte,in_nlte_nelem,in_nlteh,in_nlteh_nlev,in_nlteh_damp,
      & in_nlteh_tau0,in_nltex_atoms,in_nltex_dir,in_nltex_chgexch,
      & in_srctype,in_shock_dvmin,in_shock_tmax,in_shock_cie,
+     & in_nltex_prev,in_nltex_dtprev,
+     & in_xray_table,in_xray_ff1,in_xray_ff2,in_xray_t1,in_xray_t2,
+     & in_xray_v1,in_xray_v2,in_xray_smooth,
      & in_bbsobolev,in_bbeps,in_tesolve,in_te_damp,in_te_zsolve,
      & in_tion,
      & in_nt_emin,in_fflegacy,
@@ -326,6 +344,14 @@ c
       call insertc(in_srctype,in_c,ic)
       call insertr(in_shock_dvmin,in_r,ir)
       call insertr(in_shock_tmax,in_r,ir)
+      call insertr(in_nltex_dtprev,in_r,ir)
+      call insertr(in_xray_ff1,in_r,ir)
+      call insertr(in_xray_ff2,in_r,ir)
+      call insertr(in_xray_t1,in_r,ir)
+      call insertr(in_xray_t2,in_r,ir)
+      call insertr(in_xray_v1,in_r,ir)
+      call insertr(in_xray_v2,in_r,ir)
+      call insertl(in_xray_smooth,in_l,il)
       call insertl(in_bbsobolev,in_l,il)
       call insertr(in_bbeps,in_r,ir)
       call insertl(in_tesolve,in_l,il)
@@ -525,6 +551,11 @@ c
      &  stop 'in_tion: hydr|elec|nebu'
       if(in_tion=='nebu'.and..not.in_nltex) stop 'in_tion: NLTE ions'
       if(in_te_damp<=0d0.or.in_te_damp>1d0) stop 'in_te_damp: (0,1]'
+      if(trim(in_nltex_prev)/='none') then
+       if(in_srctype/='lumg') stop 'in_nltex_prev: needs lumg'
+       if(len_trim(in_nltex_atoms)==0) stop 'in_nltex_prev: no atoms'
+       if(in_nltex_dtprev<=0d0) stop 'in_nltex_dtprev: must be > 0'
+      endif
       if(in_nt_emin>0d0.and..not.in_nltex) stop 'in_nt_emin: NLTE'
 c
       if(in_nlte.and.in_nlte_nelem.ne.1) stop 'in_nlte_nelem!=1'

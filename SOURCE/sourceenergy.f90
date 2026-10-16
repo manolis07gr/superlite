@@ -8,6 +8,8 @@ subroutine sourceenergy
   use physconstmod
   use inputparmod
   use groupmod
+  use nltextrmod, only:nxt_on,nxt_dtinv,nxt_release,nxt_erel,nxt_prel
+  use xraysrcmod, only:xs_on,xs_pow,xs_px
   implicit none
 !##################################################
 !This subroutine computes the distribution of source particles
@@ -39,6 +41,38 @@ subroutine sourceenergy
      if(help<=0d0) stop 'sourceenergy: lumg source needs a lum column'
      grd_emit = grd_emit*in_L_bol/help
      tot_esurf = tot_esurf*in_L_bol/help
+!-- time-dependent NLTE statistical equilibrium: the power released by the
+!-- recombining gas (nxt_release) is emitted by macro-atom activation in the
+!-- states that empty.  It is part of the injected energy (the hydro L(r)
+!-- contains the energy the gas releases), added where it is larger; stored
+!-- energy (ionizing gas) reduces the emission.  Shock cells keep theirs.
+     if(nxt_on .and. nxt_dtinv>0d0) then
+        call nxt_release(grd_ncell,grd_vol*grd_fcl)
+        do i=1,grd_ncell
+           if(src_tsh(i)>0d0) then
+              nxt_prel(i) = 0d0
+           elseif(nxt_erel(i)>=0d0) then
+              grd_emit(i) = max(grd_emit(i),nxt_erel(i))
+              if(grd_emit(i)>0d0) nxt_prel(i) = nxt_erel(i)/grd_emit(i)
+           else
+              grd_emit(i) = max(0d0,grd_emit(i) + nxt_erel(i))
+              nxt_prel(i) = 0d0
+           endif
+        enddo
+     endif
+!-- X-ray emission of wind shocks (xraysrcmod): mechanical energy beyond
+!-- the injected energy
+     if(xs_on) then
+        do i=1,grd_ncell
+           help = grd_emit(i)
+           grd_emit(i) = grd_emit(i) + xs_pow(i)
+           xs_px(i) = 0d0
+           if(grd_emit(i)>0d0) then
+              xs_px(i) = xs_pow(i)/grd_emit(i)
+              if(nxt_on .and. nxt_dtinv>0d0) nxt_prel(i) = nxt_prel(i)*help/grd_emit(i)
+           endif
+        enddo
+     endif
      tot_sthermal = sum(grd_emit) + tot_esurf
      return
   endif

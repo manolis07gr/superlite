@@ -12,6 +12,8 @@ c     ------------------
       logical :: str_lradtemp=.false.,str_lvol=.false.
       logical :: str_lye=.false.
       logical :: str_llum=.false.
+c-- volume filling factor of clumps (microclumping; 'fcl' column)
+      logical :: str_lfcl=.false.
       integer,allocatable :: str_iabund(:) !(nabund)
 c
       real*8,allocatable :: str_xleft(:) !(nx+1)
@@ -25,6 +27,7 @@ c
       real*8,allocatable :: str_temp(:,:,:) !(nx,ny,nz)
       real*8,allocatable :: str_radtemp(:,:,:) !(nx,ny,nz)
       real*8,allocatable :: str_lum(:,:,:) !(nx,ny,nz)
+      real*8,allocatable :: str_fcl(:,:,:) !(nx,ny,nz)
       real*8,allocatable :: str_ye(:,:,:) !(nx,ny,nz)
       real*8,allocatable :: str_massfr(:,:,:,:) !(nabund,nx,ny,nz)
 c
@@ -37,6 +40,7 @@ c-- domain compression
       real*8,allocatable :: str_tempdc(:) !(nc)
       real*8,allocatable :: str_radtempdc(:) !(nc)
       real*8,allocatable :: str_lumdc(:) !(nc)
+      real*8,allocatable :: str_fcldc(:) !(nc)
       real*8,allocatable :: str_yedc(:) !(nc)
 c
 c-- domain decomposition
@@ -46,6 +50,7 @@ c-- domain decomposition
       real*8,allocatable :: str_tempdd(:) !(gas_ncell)
       real*8,allocatable :: str_radtempdd(:) !(gas_ncell)
       real*8,allocatable :: str_lumdd(:) !(gas_ncell)
+      real*8,allocatable :: str_fcldd(:) !(gas_ncell)
       real*8,allocatable :: str_yedd(:) !(gas_ncell)
 c
       character(8),allocatable,private :: str_abundlabl(:) !(nabund)
@@ -77,6 +82,7 @@ c     ---------------------------
       if(str_lvol) deallocate(str_voldc,str_voldd)
       if(str_lradtemp) deallocate(str_radtempdc,str_radtempdd)
       if(str_llum) deallocate(str_lumdc,str_lumdd)
+      if(str_lfcl) deallocate(str_fcldc,str_fcldd)
       if(str_lye) deallocate(str_yedc,str_yedd)
       end subroutine inputstr_dealloc
 c
@@ -94,7 +100,7 @@ c     --------------------------------------------------------
 ************************************************************************
       integer :: i,j,k,l,ierr,nx_r,ny_r,nz_r,nvar,ncol
       integer :: jmass,jxleft,jye,jtemp
-      integer :: jradtemp,jvol,jvxleft,jlum
+      integer :: jradtemp,jvol,jvxleft,jlum,jfcl
       integer :: ncell,ncpr
       character(2) :: dmy
       character(8),allocatable :: labl(:)
@@ -138,6 +144,7 @@ c-- var pointers
       jtemp = 0
       jradtemp = 0
       jlum = 0
+      jfcl = 0
       do i=1,nvar
        if(lcase(trim(labl(i)))=='x_left') jxleft = i
        if(lcase(trim(labl(i)))=='vx_left') jvxleft = i
@@ -147,12 +154,14 @@ c-- var pointers
        if(lcase(trim(labl(i)))=='temp') jtemp = i
        if(lcase(trim(labl(i)))=='rad_temp') jradtemp = i
        if(lcase(trim(labl(i)))=='lum') jlum = i
+       if(lcase(trim(labl(i)))=='fcl') jfcl = i
       enddo
       if(jmass==0) stop 'read_inputstr: mass label not found'
       if(jtemp==0) stop 'read_inputstr: temp label not found'
       if(jvol>0) str_lvol = .true.
       if(jradtemp>0) str_lradtemp = .true.
       if(jlum>0) str_llum = .true.
+      if(jfcl>0) str_lfcl = .true.
       if(jye>0) str_lye = .true.
 c
 c-- allocate data arrays
@@ -168,6 +177,7 @@ c-- allocate data arrays
       if(str_lvol) allocate(str_vol(nx,ny,nz))
       if(str_lradtemp) allocate(str_radtemp(nx,ny,nz))
       if(str_llum) allocate(str_lum(nx,ny,nz))
+      if(str_lfcl) allocate(str_fcl(nx,ny,nz))
       if(str_lye) allocate(str_ye(nx,ny,nz))
       allocate(raw(ncol,nx*ny*nz))
 c
@@ -229,12 +239,17 @@ c-- if available in the input.str file
        if(str_lvol) str_vol(i,j,k) = raw(jvol,l)
        if(str_lradtemp) str_radtemp(i,j,k)=raw(jradtemp,l)
        if(str_llum) str_lum(i,j,k)=raw(jlum,l)
+       if(str_lfcl) str_fcl(i,j,k)=raw(jfcl,l)
        if(str_lye) str_ye(i,j,k)=raw(jye,l)
       enddo
       enddo
       enddo
 c-- sanity check
       if(any(str_mass<0d0)) stop 'read_inputstr: mass<0'
+      if(str_lfcl) then
+       if(any(str_fcl<=0d0.or.str_fcl>1d0))
+     &   stop 'read_inputstr: fcl not in (0,1]'
+      endif
 c
 c-- abundances
       l = 0
@@ -312,6 +327,7 @@ c
       if(str_lvol) allocate(str_voldc(str_nc))
       if(str_lradtemp) allocate(str_radtempdc(str_nc))
       if(str_llum) allocate(str_lumdc(str_nc))
+      if(str_lfcl) allocate(str_fcldc(str_nc))
       if(str_lye) allocate(str_yedc(str_nc))
 c-- zero all, including the dummy cell
       str_idcell = 0
@@ -320,6 +336,7 @@ c-- void temp [K]
       str_tempdc = 1000d0
       if(str_lradtemp) str_radtempdc = 1000d0
       if(str_llum) str_lumdc = 0.d0
+      if(str_lfcl) str_fcldc = 1.d0
       if(str_lye) str_yedc = .5d0
 c
       l = 0
@@ -340,6 +357,7 @@ c
        if(str_lvol) str_voldc(l) = str_vol(i,j,k)
        if(str_lradtemp) str_radtempdc(l) = str_radtemp(i,j,k)
        if(str_llum) str_lumdc(l) = str_lum(i,j,k)
+       if(str_lfcl) str_fcldc(l) = str_fcl(i,j,k)
        if(str_lye) str_yedc(l) = str_ye(i,j,k)
       enddo !i
       enddo !j
@@ -353,6 +371,7 @@ c-- deallocate full grid
       if(allocated(str_vol)) deallocate(str_vol)
       if(allocated(str_radtemp)) deallocate(str_radtemp)
       if(allocated(str_lum)) deallocate(str_lum)
+      if(allocated(str_fcl)) deallocate(str_fcl)
       if(allocated(str_massfr)) deallocate(str_massfr)
       if(allocated(str_temp)) deallocate(str_temp)
 c

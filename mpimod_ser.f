@@ -56,6 +56,10 @@ c
        allocate(str_lumdd(ncell))
        str_lumdd = reshape(str_lumdc,[ncell])
       endif
+      if(str_lfcl) then
+       allocate(str_fcldd(ncell))
+       str_fcldd = reshape(str_fcldc,[ncell])
+      endif
       if(str_lye) then
        allocate(str_yedd(ncell))
        str_yedd = reshape(str_yedc,[ncell])

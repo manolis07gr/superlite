@@ -63,6 +63,8 @@ c-- For output
       real*8,allocatable :: grd_mass(:) !(ncell)
       real*8,allocatable :: grd_radtemp(:) !(ncell)
       real*8,allocatable :: grd_lum(:) !(ncell)
+c-- microclumping: volume filling factor of the clumps (1: smooth)
+      real*8,allocatable :: grd_fcl(:) !(ncell)
       real*8,allocatable :: grd_ye(:) !(ncell) !electron fraction
       real*8,allocatable :: grd_massfr(:,:) !(nelem,ncell)
 c-- cell centered radii
@@ -168,6 +170,8 @@ c-- ndim=3 alloc
       allocate(grd_mass(grd_ncell))
       allocate(grd_radtemp(grd_ncell))
       allocate(grd_lum(grd_ncell))
+      allocate(grd_fcl(grd_ncell))
+      grd_fcl = 1d0
       allocate(grd_ye(grd_ncell))
       allocate(grd_rcell(grd_ncell))
       allocate(grd_divv(grd_ncell))
@@ -218,7 +222,7 @@ c-- gasmod
       deallocate(grd_rho)
       deallocate(grd_mass)
       deallocate(grd_radtemp)
-      deallocate(grd_lum)
+      deallocate(grd_lum,grd_fcl)
       deallocate(grd_ye)
       deallocate(grd_rcell)
       deallocate(grd_divv)

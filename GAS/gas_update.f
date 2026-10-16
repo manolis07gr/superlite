@@ -39,6 +39,8 @@ c========================================
            gas_vol(i) = grd_vol(l)
           enddo !l
         endif
+c-- clump volume (microclumping)
+        gas_volcl = gas_vol*gas_fcl
 c
 c-- velocity divergence
 c========================================

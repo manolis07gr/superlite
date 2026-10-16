@@ -16,6 +16,7 @@ subroutine te_update(it)
   use nltexmod, only:nx_solve_cell,nx_jline
   use nltextrmod
   use tebalmod
+  use xraysrcmod, only:xs_on,xs_px
   use mpimod, only:lmpi0,impi
   implicit none
   integer,intent(in) :: it
@@ -51,27 +52,50 @@ subroutine te_update(it)
      if(gas_mass(i)<=0d0) cycle
      l = gas_icell1 + i - 1
      do iel=1,nxa_nel
-        nel(iel) = gas_natom(i)*gas_natomfr(nxa_el(iel)%z,i)/gas_vol(i)
+        nel(iel) = gas_natom(i)*gas_natomfr(nxa_el(iel)%z,i)/gas_volcl(i)
      enddo
-     neoth = nxt_neothloc(i)*gas_natom(i)/gas_vol(i)
-     qb = (grd_vxarr(l+1)-grd_vxarr(l))/(grd_xarr(l+1)-grd_xarr(l))
-     qv = (grd_vxarr(l+1)+grd_vxarr(l))/(grd_xarr(l+1)+grd_xarr(l))
+     neoth = nxt_neothloc(i)*gas_natom(i)/gas_volcl(i)
+     qb = (grd_vxarr(l+1)-grd_vxarr(l))/(grd_xarr(l+1)-grd_xarr(l))/gas_fcl(i)
+     qv = (grd_vxarr(l+1)+grd_vxarr(l))/(grd_xarr(l+1)+grd_xarr(l))/gas_fcl(i)
+!-- (per unit clump volume: microclumping)
      gext = 0d0
-     if(in_srctype=='lumg' .and. src_tsh(l)<=0d0) gext = grd_emit(l)/grd_vol(l)
+     if(in_srctype=='lumg' .and. src_tsh(l)<=0d0) gext = grd_emit(l)/gas_volcl(i)
+!-- (time-dependent NLTE: the share released by the recombining gas is
+!-- emitted by the macro-atom, not by the thermal pool)
+     if(nxt_dtinv>0d0) then
+        if(allocated(nxt_prel)) gext = gext*(1d0 - nxt_prel(l))
+     endif
+!-- (and the X-rays of wind shocks are mechanical, not thermal)
+     if(xs_on) then
+        if(allocated(xs_px)) gext = gext - grd_emit(l)*xs_px(l)/gas_volcl(i)
+     endif
+     gext = max(gext,0d0)
 !-- fast photoelectrons: non-thermal ionization and excitation of H and He
      edep = nxt_ntdep(nxt_ng,nxt_nug,nxt_dnug,nxt_jg(:,l),gas_cap(:,i))
      call nxt_ntrates(nel,nxt_xloc(:,i),edep,nti,ntx)
 !-- absorption by the LTE elements (NLTE bound-free is in the NLTE terms)
      capabs = gas_cap(:,i) - gas_capnbf(:,i)
-     call te_balance(gas_temp(i),gas_radtemp(i),nel,neoth,qb,qv,nxt_ng,nxt_nug,nxt_dnug, &
-          nxt_jg(:,l),nxt_jb(:,l),nxt_ljb(:,l),nti,ntx,capabs,gas_capemit(:,i),gext, &
-          nxt_xloc(:,i),tnew,ierr,tsol)
+     if(nxt_dtinv>0d0) then
+        call te_balance(gas_temp(i),gas_radtemp(i),nel,neoth,qb,qv,nxt_ng,nxt_nug,nxt_dnug, &
+             nxt_jg(:,l),nxt_jb(:,l),nxt_ljb(:,l),nti,ntx,capabs,gas_capemit(:,i),gext, &
+             nxt_xloc(:,i),tnew,ierr,tsol,xprev=nxt_xprev(:,l),dtinv=nxt_dtinv)
+     else
+        call te_balance(gas_temp(i),gas_radtemp(i),nel,neoth,qb,qv,nxt_ng,nxt_nug,nxt_dnug, &
+             nxt_jg(:,l),nxt_jb(:,l),nxt_ljb(:,l),nti,ntx,capabs,gas_capemit(:,i),gext, &
+             nxt_xloc(:,i),tnew,ierr,tsol)
+     endif
      call te_step(gas_temp(i),tsol,dprev(i),dloc(i),tnew)
      if(ierr/=0) nfail = nfail + 1
      if(lout) then
         x = nxt_xloc(:,i)
-        call nx_solve_cell(tnew,gas_radtemp(i),nel,neoth,qb,qv,nxt_ng,nxt_nug,nxt_dnug, &
-             nxt_jg(:,l),nxt_jb(:,l),nxt_ljb(:,l),nti,ntx,x,ne,beta,ierr)
+        if(nxt_dtinv>0d0) then
+           call nx_solve_cell(tnew,gas_radtemp(i),nel,neoth,qb,qv,nxt_ng,nxt_nug,nxt_dnug, &
+                nxt_jg(:,l),nxt_jb(:,l),nxt_ljb(:,l),nti,ntx,x,ne,beta,ierr, &
+                xprev=nxt_xprev(:,l),dtinv=nxt_dtinv)
+        else
+           call nx_solve_cell(tnew,gas_radtemp(i),nel,neoth,qb,qv,nxt_ng,nxt_nug,nxt_dnug, &
+                nxt_jg(:,l),nxt_jb(:,l),nxt_ljb(:,l),nti,ntx,x,ne,beta,ierr)
+        endif
         do k=1,nxa_nlin
            jl(k) = nx_jline(k,nxt_ng,nxt_nug,nxt_jg(:,l),nxt_jb(k,l),nxt_ljb(k,l))
         enddo

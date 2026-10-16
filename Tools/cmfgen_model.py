@@ -10,9 +10,11 @@ comparison.
   cmfgen_model.py ions <model dir> [element ...]
       table of r, v, T, n_e and the ion fractions of each element (POP files).
 
-Clumping (volume filling factor f < 1) is not representable in SuperLite;
-the converter stops unless --allow-clumping is given (then the mean density
-is used).  Run with python3 -I on downloaded data.
+Clumped models (volume filling factor f < 1; CMFGEN's RVTJ gives the clump
+density): the cell mass is that of the mean density f rho and the 'fcl'
+column the volume-averaged filling factor (SuperLite's microclumping);
+--smooth writes the mean density without the column.  Run with python3 -I
+on downloaded data.
 """
 import argparse
 import os
@@ -189,12 +191,16 @@ def abundances(moddir):
             continue
         if started:
             f = s.split()
-            if len(f) >= 3 and f[0] in ELEMENTS:
-                try:
-                    x[ELEMENTS[f[0]][0]] = float(f[2].replace('D', 'E'))
-                except ValueError:
-                    pass
-            elif f and not f[0] in ELEMENTS and x:
+            if len(f) >= 3 and f[0].isalpha() and f[0].isupper():
+                # species of the table (those unknown here, e.g. FLU, are skipped)
+                if f[0] in ELEMENTS:
+                    try:
+                        v = float(f[2].replace('D', 'E'))
+                    except ValueError:
+                        continue
+                    if v > 0:
+                        x[ELEMENTS[f[0]][0]] = v
+            elif x:
                 break
     return x
 
@@ -209,10 +215,10 @@ def cmd_input(a):
         clump = sec_get(sec, 'Clumping Factor')
     except KeyError:
         clump = np.ones_like(r)
-    if np.any(clump < 0.999) and not a.allow_clumping:
-        raise SystemExit('clumped model (min filling factor %.3g): not representable' % clump.min())
+    lclump = bool(np.any(clump < 0.999))
     o = np.argsort(r)
-    r, v, t, rho = r[o], v[o], t[o], rho[o]
+    r, v, t, rho, clump = r[o], v[o], t[o], rho[o], clump[o]
+    rho = rho*clump                       # mean density (RVTJ: in the clumps)
     lstar = hdr['L(Lsun)'] * LSUN
     xab = abundances(a.model)
     labels = sorted(xab, key=lambda k: [e[1] for e in ELEMENTS.values() if e[0] == k][0])
@@ -230,22 +236,33 @@ def cmd_input(a):
     dm = 4 * np.pi * rr**2 * rhor
     cum = np.concatenate([[0.0], np.cumsum(0.5 * (dm[1:] + dm[:-1]) * np.diff(rr))])
     mass = np.diff(np.interp(edges, rr, cum))
+    # volume-averaged filling factor of each cell
+    fr = np.interp(np.log(rr), np.log(r), clump)
+    dv = 4 * np.pi * rr**2
+    cv = np.concatenate([[0.0], np.cumsum(0.5 * (dv[1:] + dv[:-1]) * np.diff(rr))])
+    cf = np.concatenate([[0.0], np.cumsum(0.5 * (dv[1:]*fr[1:] + dv[:-1]*fr[:-1]) * np.diff(rr))])
+    fcell = np.diff(np.interp(edges, rr, cf)) / np.diff(np.interp(edges, rr, cv))
+    wfcl = lclump and not a.smooth
     rmid = np.sqrt(edges[1:] * edges[:-1])
     tmid = np.interp(rmid, r, t)
     os.makedirs(a.out, exist_ok=True)
     n = len(edges) - 1
     with open(os.path.join(a.out, 'input.str'), 'w') as f:
         f.write('# 1D spherical\n')
-        f.write('# %8d %10d %d %d %d\n' % (n, 1, 1, 8 + len(labels), len(labels)))
-        f.write('# x_left  x_right  vx_left  vx_right  mass  rad_temp  temp  lum  ' + '  '.join(labels) + '\n')
+        f.write('# %8d %10d %d %d %d\n' % (n, 1, 1, 8 + wfcl + len(labels), len(labels)))
+        f.write('# x_left  x_right  vx_left  vx_right  mass  rad_temp  temp  lum  ' + ('fcl  ' if wfcl else '') +
+                '  '.join(labels) + '\n')
         for i in range(n):
             row = [edges[i], edges[i + 1], vedges[i], vedges[i + 1], mass[i], tmid[i], tmid[i], lstar] + \
-                  [xab[k] / tot for k in labels]
+                  ([min(fcell[i], 1.0)] if wfcl else []) + [xab[k] / tot for k in labels]
             f.write('  '.join('%.6e' % x for x in row) + '\n')
     print(f'{n} cells, r = {edges[0]:.4e} - {edges[-1]:.4e} cm, v = {vedges[0]/1e5:.3g} - {vedges[-1]/1e5:.4g} km/s, '
           f'M = {mass.sum()/MSUN:.4e} Msun, L* = {lstar:.4e} erg/s, T(R*) = {t[0]:.0f} K')
     print('mass fractions: ' + ', '.join(f'{k} {xab[k]/tot:.3e}' for k in labels))
     print(f'in_L_bol = {lstar:.7e};  rad_temp of cell 1 (inner boundary) {tmid[0]:.0f} K')
+    if lclump:
+        print(f'clumped: filling factor {fcell.min():.3f} - {fcell.max():.3f}' +
+              (' (smooth mean density written)' if a.smooth else ' (fcl column)'))
 
 
 def cmd_ions(a):
@@ -271,7 +288,7 @@ def main():
     p = sp.add_parser('input')
     p.add_argument('model'); p.add_argument('out')
     p.add_argument('--ncell', type=int, default=200)
-    p.add_argument('--allow-clumping', action='store_true')
+    p.add_argument('--smooth', action='store_true', help='clumped model: mean density, no fcl column')
     p = sp.add_parser('ions')
     p.add_argument('model'); p.add_argument('elements', nargs='*')
     a = ap.parse_args()

@@ -96,6 +96,10 @@ c-- NLTE model-atom files (long string)
      &  MPI_CHARACTER,impi0,MPI_COMM_WORLD,ierr)
       call mpi_bcast(in_shock_cie,len(in_shock_cie),
      &  MPI_CHARACTER,impi0,MPI_COMM_WORLD,ierr)
+      call mpi_bcast(in_nltex_prev,len(in_nltex_prev),
+     &  MPI_CHARACTER,impi0,MPI_COMM_WORLD,ierr)
+      call mpi_bcast(in_xray_table,len(in_xray_table),
+     &  MPI_CHARACTER,impi0,MPI_COMM_WORLD,ierr)
       in_nltex = in_nlteh .or. len_trim(in_nltex_atoms)>0
       deallocate(csndvec)
 c
@@ -107,10 +111,10 @@ c-- everything else
 c==================
 c-- broadcast constants
 c-- logical
-      n = 4
+      n = 5
       allocate(lsndvec(n))
       if(lmpi0) lsndvec = [str_lvol,str_lye,str_lradtemp,
-     &                     str_llum]
+     &                     str_llum,str_lfcl]
       call mpi_bcast(lsndvec,n,MPI_LOGICAL,
      &  impi0,MPI_COMM_WORLD,ierr)
 c-- copy back
@@ -118,6 +122,7 @@ c-- copy back
       str_lye = lsndvec(2)
       str_lradtemp = lsndvec(3)
       str_llum = lsndvec(4)
+      str_lfcl = lsndvec(5)
       deallocate(lsndvec)
 c
 c-- integer
@@ -591,6 +596,14 @@ c-- luminosity structure if available
        allocate(str_lumdd(ncell))
        call mpi_scatterv(str_lumdc,counts,displs,MPI_REAL8,
      &  str_lumdd,ncell,MPI_REAL8,
+     &  impi0,MPI_COMM_WORLD,ierr)
+      endif
+c-- clumping (volume filling factor) if available
+      if(str_lfcl) then
+       if(impi/=impi0) allocate(str_fcldc(str_nc))
+       allocate(str_fcldd(ncell))
+       call mpi_scatterv(str_fcldc,counts,displs,MPI_REAL8,
+     &  str_fcldd,ncell,MPI_REAL8,
      &  impi0,MPI_COMM_WORLD,ierr)
       endif
 c-- ye structure if available

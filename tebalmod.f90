@@ -237,13 +237,14 @@ end subroutine te_terms
 !
 !
 subroutine te_balance(told,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx,capabs, &
-     capem,gam_ext,x,tnew,ierr,tsolout)
+     capem,gam_ext,x,tnew,ierr,tsolout,xprev,dtinv)
 !-----------------------------------------------------------------------
 ! Solve f(T) = 0 with the NLTE populations re-solved at each trial T; x is
 ! the initial guess for the populations (unchanged on return).  tnew is
 ! the damped and limited new temperature, tsolout (optional) the root;
 ! ierr = 1 if f has no sign change in [te_tmin, te_tmax] (the root is the
-! bound).
+! bound).  xprev, dtinv (optional): time-dependent statistical equilibrium
+! (nx_solve_cell).
 !-----------------------------------------------------------------------
   real*8,intent(in) :: told,trad,nel(nxa_nel),neoth,qb,qv,gam_ext
   integer,intent(in) :: ng
@@ -254,6 +255,7 @@ subroutine te_balance(told,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx,ca
   real*8,intent(out) :: tnew
   integer,intent(out) :: ierr
   real*8,intent(out),optional :: tsolout
+  real*8,intent(in),optional :: xprev(nxa_nst),dtinv
   integer :: it,side,nwarm
   real*8 :: a,b,c,fa,fb,fc,tsol,lo,hi,step,elc(nxa_nel),scale
   logical :: lsol(nxa_nel),lfirst
@@ -345,8 +347,13 @@ contains
     if(kn > 0) then
        if(abs(log(tw(kn)/t)) < abs(log(told/t))) xx = xw(:,kn)
     endif
-    call nx_solve_cell(t,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx,xx,ne,beta,ie, &
-         lsolve=lsol,tol=1d-3,maxit=100)
+    if(present(xprev) .and. present(dtinv)) then
+       call nx_solve_cell(t,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx,xx,ne,beta,ie, &
+            lsolve=lsol,tol=1d-3,maxit=100,xprev=xprev,dtinv=dtinv)
+    else
+       call nx_solve_cell(t,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx,xx,ne,beta,ie, &
+            lsolve=lsol,tol=1d-3,maxit=100)
+    endif
     if(ie == 1) then
        xx = x
        ne = neoth + free_el(xx)

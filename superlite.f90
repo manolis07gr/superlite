@@ -27,6 +27,7 @@ program superlite
   use nltehmod, only:nlteh_set_collfits,nlteh_init
   use nlteatommod, only:nxa_nel,nxa_nion,nxa_ion,nxa_nlin,nxa_nst,nxa_read_cx
   use nltextrmod
+  use xraysrcmod
   use bbsobmod
   use tebalmod, only:te_damp,te_ntemin,te_zsolve
   use shockciemod, only:shc_read,shc_setup,shc_nel,shc_elz
@@ -42,7 +43,9 @@ program superlite
 !-- NLTE model-atom files
   integer :: i, nfatom, j, l
   real*8,allocatable :: shcx(:,:)
-  character(256) :: fatom(60)
+  real*8,allocatable :: mcell(:),xh(:),xhe(:)
+  logical :: lclump = .false.
+  character(256) :: fatom(150)
 !
 !-- mpi initialization
   call mpi_init(ierr) !MPI
@@ -112,6 +115,16 @@ program superlite
 !-- setup gas
   call gasmod_init(lmpi0,icell1,ncell,grp_ng)
   call gas_setup
+!-- microclumping: volume filling factors of all cells
+  allocate(mcell(grd_ncell))
+  mcell = 0d0
+  mcell(icell1:icell1+ncell-1) = gas_fcl
+  call allreduce_sum(grd_ncell,mcell)
+  where(mcell>0d0) grd_fcl = mcell
+  deallocate(mcell)
+  lclump = any(grd_fcl<1d0)
+  if(lclump .and. lmpi0) write(6,'(1x,a,f7.4,a,f7.4)') 'microclumping: volume filling factor', &
+       minval(grd_fcl),' -',maxval(grd_fcl)
 !-- inputstr no longer needed
   call inputstr_dealloc
 
@@ -168,7 +181,20 @@ program superlite
         if(len_trim(in_nltex_dir)>0 .and. fatom(1)(1:1)/='/') fatom(1) = trim(in_nltex_dir)//'/'//trim(fatom(1))
         call nxa_read_cx(fatom(1),lmpi0)
      endif
+!-- time-dependent statistical equilibrium: populations of the previous model
+     if(trim(in_nltex_prev)/='none') then
+        allocate(mcell(grd_ncell))
+        mcell = 0d0
+        mcell(icell1:icell1+ncell-1) = gas_mass
+        call allreduce_sum(grd_ncell,mcell)
+        call nxt_read_prev(in_nltex_prev,grd_ncell,mcell,in_nltex_dtprev,lmpi0)
+        deallocate(mcell)
+     endif
      nxt_damp = in_nlteh_damp
+     if(lclump) then
+        allocate(nxt_fcl(grd_ncell))
+        nxt_fcl = grd_fcl
+     endif
      nxt_tau0 = in_nlteh_tau0
      nxt_ntemin = in_nt_emin*pc_ev
      if(lmpi0) then
@@ -222,6 +248,23 @@ program superlite
 
 !-- gather initial radiation temperature
   call allgather_radtemp
+!-- X-ray emission of wind shocks (CMFGEN's INC_XRAYS)
+  if(trim(in_xray_table)/='none') then
+     call xs_read(in_xray_table,[in_xray_t1,in_xray_t2])
+     allocate(mcell(grd_ncell),xh(grd_ncell),xhe(grd_ncell))
+     mcell = 0d0; xh = 0d0; xhe = 0d0
+     mcell(icell1:icell1+ncell-1) = gas_natom
+     xh(icell1:icell1+ncell-1) = gas_natomfr(1,:)
+     xhe(icell1:icell1+ncell-1) = gas_natomfr(2,:)
+     call allreduce_sum(grd_ncell,mcell)
+     call allreduce_sum(grd_ncell,xh)
+     call allreduce_sum(grd_ncell,xhe)
+     call xs_setup(grd_ncell,0.5d0*(grd_vxarr(:grd_ncell)+grd_vxarr(2:)),grd_vol,grd_fcl,mcell,xh,xhe, &
+          [in_xray_ff1,in_xray_ff2],1d5*[in_xray_v1,in_xray_v2],in_xray_smooth)
+     deallocate(mcell,xh,xhe)
+     if(lmpi0) write(6,'(1x,a,es10.3,a,2(f6.3,es9.2,a))') 'X-ray emission of wind shocks:',sum(xs_pow), &
+          ' erg/s (f, T:',in_xray_ff1,in_xray_t1,' K;',in_xray_ff2,in_xray_t2,' K)'
+  endif
 
 
 !-- memory usage
@@ -263,6 +306,8 @@ program superlite
 !-- NLTE elements: Sobolev strengths, macro-atom and k-packet tables
      if(in_nltex) call nxt_tables(grd_ncell,grd_tempinv,grd_radtemp, &
           grd_capemitgrey,grd_xarr,grd_vxarr)
+!-- microclumping: the transport sees the volume-mean opacities
+     if(lclump) call clump_scale
 
 !-- source energy
      call sourceenergy
@@ -346,6 +391,7 @@ program superlite
         if(it==in_niter.and.in_io_profdump) call output_profile
         if(it==in_niter.and.in_nltex) call nxt_write(grd_ncell,grd_rcell, &
              0.5d0*(grd_vxarr(:grd_ncell)+grd_vxarr(2:)),grd_tempinv,grd_radtemp)
+        if(it==in_niter.and.in_nltex) call nxt_write_state(grd_ncell,grd_mass,grd_vol,grd_tempinv)
 
 !-- write stdout
         write(6,*)
@@ -397,6 +443,29 @@ program superlite
   call mpi_finalize(ierr) !MPI
 
 contains
+!
+subroutine clump_scale
+!-- microclumping (volume filling factor f): the opacities and emissivities
+!-- of the gas are per unit clump volume (clump densities, Sobolev depths
+!-- of the mean opacity); the transport takes their volume means, f times
+!-- these (the NLTE Sobolev strengths are means already, nxt_tables)
+  use bbsobmod, only:bbs_on,grd_capsc
+  integer :: l
+  real*4 :: f4
+  do l=1,grd_ncell
+     if(grd_fcl(l)>=1d0) cycle
+     f4 = real(grd_fcl(l))
+     grd_cap(:,l) = f4*grd_cap(:,l)
+     grd_capemit(:,l) = f4*grd_capemit(:,l)
+     grd_emiss(:,l) = f4*grd_emiss(:,l)
+     grd_sig(l) = grd_fcl(l)*grd_sig(l)
+     grd_capgrey(l) = grd_fcl(l)*grd_capgrey(l)
+     grd_capemitgrey(l) = grd_fcl(l)*grd_capemitgrey(l)
+     grd_capross(l) = grd_fcl(l)*grd_capross(l)
+     if(in_nltex) grd_capnbf(:,l) = f4*grd_capnbf(:,l)
+     if(bbs_on) grd_capsc(:,l) = f4*grd_capsc(:,l)
+  enddo
+end subroutine clump_scale
 !
 subroutine write_emitchan
 !-- escaped luminosity by last emission process and element, per band

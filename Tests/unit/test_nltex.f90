@@ -112,6 +112,7 @@ program test_nltex
         if(ierr /= 0 .or. abs(w/2.86d0 - 1d0) > 0.05d0) nfail = nfail + 1
      endif
   enddo
+  call td_tests
   deallocate(x, xl, beta, jb, ljb, nti, ntx, nel)
 !
 !-- 2. He model atoms
@@ -129,6 +130,49 @@ program test_nltex
   endif
   write(*,'(a)') 'test_nltex: PASS'
 contains
+!
+  subroutine td_tests
+!-- time-dependent statistical equilibrium (built-in H, Case B nebula):
+!-- the steady state is a solution for any dt; dt -> 0 keeps the previous
+!-- populations; one backward-Euler step of recombination in the dark,
+!-- x = x0/(1 + alpha nH x dt), against its root
+    real*8 :: xss(nxa_nst), xp(nxa_nst), at, a, xa, d1, d2, d3
+    integer :: lv
+    t = 1d4; nh = 1d4; w = 1d-15; t2 = 5d4; q = 1d-9
+    jg = 0d0
+    do k = 1, ng
+       if(nug(k) > nh_nu0(1)) jg(k) = w*bplanck(nug(k), t2)
+    enddo
+    jb = 0d0; ljb = .true.; nti = 0d0; ntx = 0d0; nel = nh
+    xss = 0d0; xss(1) = 0.5d0; xss(nxa_nst) = 0.5d0
+    call nx_solve_cell(t, t2, nel, 0d0, q, q, ng, nug, dnug, jg, jb, ljb, nti, ntx, xss, ne, beta, ierr)
+    x = 0d0; x(1) = 0.3d0; x(nxa_nst) = 0.7d0
+    call nx_solve_cell(t, t2, nel, 0d0, q, q, ng, nug, dnug, jg, jb, ljb, nti, ntx, x, ne, beta, ierr, &
+         xprev=xss, dtinv=1d-6)
+    d1 = maxval(abs(x/xss - 1d0), mask=xss>1d-20)
+!-- dt = 1e-3 s from an ionized state: frozen
+    xp = 0d0; xp(1) = 1d-3; xp(nxa_nst) = 1d0 - 1d-3
+    x = xp
+    call nx_solve_cell(t, t2, nel, 0d0, q, q, ng, nug, dnug, jg, jb, ljb, nti, ntx, x, ne, beta, ierr, &
+         xprev=xp, dtinv=1d3)
+    d2 = abs(x(nxa_nst)/xp(nxa_nst) - 1d0)
+!-- recombination in the dark from x(H II) = 1 - 1e-3 over dt = 1e8 s
+    jg = 0d0
+    at = 0d0
+    do lv = 1, nlev
+       at = at + nxa_alpha(lv, t)
+    enddo
+    a = at*nh*1d8
+    call nx_solve_cell(t, t2, nel, 0d0, q, q, ng, nug, dnug, jg, jb, ljb, nti, ntx, x, ne, beta, ierr, &
+         xprev=xp, dtinv=1d-8)
+!-- x = xp/(1 + a x): a x^2 + x - xp = 0
+    xa = (-1d0 + sqrt(1d0 + 4d0*a*xp(nxa_nst)))/(2d0*a)
+    d3 = abs(x(nxa_nst)/xa - 1d0)
+    write(*,'(a,es9.2,a,es9.2,a,f7.4,a,f7.4,a)') '  time-dependent SE: steady state kept to', d1, &
+         ', dt -> 0 frozen to', d2, ', recombination in the dark x(H II) =', x(nxa_nst), &
+         ' (backward Euler', xa, ')'
+    if(d1 > 1d-6 .or. d2 > 1d-5 .or. d3 > 1d-2) nfail = nfail + 1
+  end subroutine td_tests
 !
   subroutine he_tests(dir)
     character(*), intent(in) :: dir

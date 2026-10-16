@@ -29,6 +29,11 @@ c-- dilution factor of the radiation field (nebular ionization, in_tion='nebu')
       real*8,allocatable :: gas_ur(:)         !radiation energy [erg]
       real*8,allocatable :: gas_rho(:)        !density [g/cm^3]
       real*8,allocatable :: gas_vol(:)        !cell volume [cm^3]
+c-- microclumping: volume filling factor of the clumps (1: smooth) and
+c-- the clump volume gas_fcl*gas_vol: the gas state (densities,
+c-- populations, opacities per unit volume) is that of the clumps
+      real*8,allocatable :: gas_fcl(:)
+      real*8,allocatable :: gas_volcl(:)
       real*8,allocatable :: gas_rcell(:)      !cell center radius [cm]
       real*8,allocatable :: gas_divv(:)       !divergence of velocity
       real*8,allocatable :: gas_mass(:)       !cell mass [g]
@@ -101,6 +106,8 @@ c-- ndim=1 alloc
       allocate(gas_ur(gas_ncell))
       allocate(gas_rho(gas_ncell))
       allocate(gas_vol(gas_ncell))
+      allocate(gas_fcl(gas_ncell),gas_volcl(gas_ncell))
+      gas_fcl = 1d0
       allocate(gas_rcell(gas_ncell))
       allocate(gas_divv(gas_ncell))
       allocate(gas_mass(gas_ncell))
@@ -143,7 +150,7 @@ c
       deallocate(gas_lum)
       deallocate(gas_ur)
       deallocate(gas_rho)
-      deallocate(gas_vol)
+      deallocate(gas_vol,gas_fcl,gas_volcl)
       deallocate(gas_rcell)
       deallocate(gas_divv)
       deallocate(gas_mass)
