@@ -18,7 +18,7 @@ subroutine particle_advance
   use countersmod
   use fluxmod
   use sourcemod
-  use nltehtrmod, only:nht_on,nht_jbsum,nht_jbcnt
+  use nltextrmod, only:nxt_on,nxt_jbsum,nxt_jbcnt
   implicit none
 !
 !##################################################
@@ -94,14 +94,14 @@ subroutine particle_advance
 !$omp    grp_ng,grp_wl,grd_igeom,grd_sig,grd_cap,grd_capsc,grd_eamp, &
 !$omp    trn_tauddmc,trn_noampfact,trn_errorfatal, &
 !$omp    grd_vxarr,grd_methodswap,t_pckt_stat,transport,diffusion, &
-!$omp    in_puretran,in_io_dogrdtally,in_nomp,nht_on) &
+!$omp    in_puretran,in_io_dogrdtally,in_nomp,nxt_on) &
 !$omp private(ptcl,ptcl2,cache, &
 !$omp    specarr,glumps,llumps, &
 !$omp    x,y,z,mu,om,wl,e,e0,ix,iy,iz,ic,ig,icold,igold, &
 !$omp    vx,vy,vz,help1,help2,vhelp1,vhelp2, &
 !$omp    i,t0,t1,help,tau,labfact,jrad, &
 !$omp    rndstate,eraddens,eamp,ierr,iomp,jbk,jbval) &
-!$omp reduction(+:grd_tally,grd_jrad,nht_jbsum,nht_jbcnt, &
+!$omp reduction(+:grd_tally,grd_jrad,nxt_jbsum,nxt_jbcnt, &
 !$omp    tot_evelo,tot_eout,tot_sflux, &
 !$omp    npckt,nflux, &
 !$omp    nstepddmc,nstepimc,nmethodswap,ndist) &
@@ -215,10 +215,10 @@ subroutine particle_advance
            nstepimc = nstepimc + 1
            call transport(ptcl,ptcl2,vx,vy,vz,rndstate, &
                 eraddens,eamp,jrad,tot_evelo,ierr,jbk,jbval)
-!-- H line resonance estimator
+!-- NLTE line resonance estimator
            if(jbk>0) then
-              nht_jbsum(jbk,icold) = nht_jbsum(jbk,icold) + jbval
-              nht_jbcnt(jbk,icold) = nht_jbcnt(jbk,icold) + 1d0
+              nxt_jbsum(jbk,icold) = nxt_jbsum(jbk,icold) + jbval
+              nxt_jbcnt(jbk,icold) = nxt_jbcnt(jbk,icold) + 1d0
            endif
            if(ptcl2%itype/=1) then
               nmethodswap = nmethodswap + 1

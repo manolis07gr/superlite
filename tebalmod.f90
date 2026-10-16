@@ -12,12 +12,14 @@ module tebalmod
 !    and emission (bound-free emission from ground states in Saha
 !    equilibrium with the next ion at T_e):
 !      4 pi sum_g (kem_g B_g(T) - kabs_g J_g) dnu_g
-!  * NLTE hydrogen, populations re-solved at each trial T:
-!      photoionization heating
-!        4 pi n_H sum_n sum_g (x_n - x_n* e^{-h nu/kT}) sigma_n J_g (1 - nu_n/nu) dnu_g
-!      recombination cooling  n_e n_p sum_n rc_n(T)
+!  * NLTE elements (nlteatommod); the populations of H and He (Z <= te_zsolve)
+!    are re-solved at each trial T, those of heavier elements held (their
+!    rate coefficients follow T):
+!      photoionization heating of every level l (edge nu_l)
+!        4 pi n_el sum_l sum_g (x_l - x_l* e^{-h(nu-nu_l)/kT}) J_g Int_g sigma_l (1 - nu_l/nu) dnu
+!      recombination cooling  n_e sum_l n_c(l) rc_l(T)  (kinetic energy, Milne)
 !      collisions  n_e sum_{l<u} (n_l q_lu - n_u q_ul) (E_u - E_l)
-!                + n_e sum_n (n_n c_n - n_e n_p c3b_n) chi_n
+!                + n_e sum_l (n_l c_l - n_e n_c c3b_l) chi_l
 !  * Compton  sigma_T n_e/(m_e c^2) 4 pi sum_g J_g dnu_g (4kT - h nu_g (1 + n_g)),
 !    n_g = c^2 J_g/(2 h nu_g^3) the photon occupation number (induced
 !    scattering; the balance is exact for a Planck field at T)
@@ -25,7 +27,7 @@ module tebalmod
 !    cell outside shocks ('lumg' source)
 !  * photons above te_ntemin make fast photoelectrons: only the heat share
 !    fh (Shull & van Steenberg 1985) of their absorption heats the gas, the
-!    rest ionizes and excites H (rates nonth, nonexc in the populations)
+!    rest ionizes and excites H and He (rates nti, ntx in the populations)
 !
 ! f is bracketed in log T and the root found by bisection/secant steps
 ! (Illinois).  The new temperature is mixed geometrically with the old one
@@ -35,83 +37,58 @@ module tebalmod
 ! optically thick radiation field that responds to it) and relaxes back
 ! to te_damp while the changes keep their sign.
 !-----------------------------------------------------------------------
-  use nltehmod
+  use nlteatommod
+  use nltexmod, only:nx_solve_cell
+  use nltextrmod, only:nxt_shares,nxt_elh,nxt_elhe
   implicit none
   private
   real*8,parameter :: pi = 3.141592653589793d0
   real*8,parameter :: hh = 6.6260693d-27, cc = 2.99792458d10, kb = 1.3806505d-16
   real*8,parameter :: sigt = 6.6524587d-25, mec2 = 9.1093826d-28*2.99792458d10**2
-  real*8,parameter :: sahac = 4.1412d-16       !(h^2/(2 pi m_e k))^1.5 for g_n/g_p = n^2
   real*8,public :: te_damp = 0.5d0              !weight of the new temperature
   real*8,public :: te_maxfac = 1.5d0            !maximum change per iteration
   real*8,public :: te_tmin = 1d3, te_tmax = 1d7
   real*8,public :: te_ntemin = 0d0              !fast photoelectrons above [erg], 0: off
-  real*8,allocatable :: sigtab(:,:)             !(nlev,ng) sigma_n at group centres
-  integer :: tng = 0
-  public :: te_init,te_balance,te_terms,te_step
-
+!-- elements with Z <= te_zsolve are re-solved at each trial temperature;
+!-- the populations of the heavier ones are held (their rates still follow T)
+  integer,public :: te_zsolve = 2
+  integer,parameter,public :: te_nterm = 6
+  public :: te_balance,te_terms,te_step,te_heatshare
+!
 contains
-
-subroutine te_init(ng,nug)
-!-- photoionization cross sections at the group centres
-  integer,intent(in) :: ng
-  real*8,intent(in) :: nug(ng)
-  integer :: n,ig
-  tng = ng
-  allocate(sigtab(nh_nlev,ng))
-  do ig=1,ng
-     do n=1,nh_nlev
-        sigtab(n,ig) = nlteh_sigma(n,nug(ig))
-     enddo
-  enddo
-end subroutine te_init
-
-
-pure function rc_coef(n,temp) result(rc)
-!-- spontaneous recombination cooling coefficient to level n [erg cm^3/s]:
-!-- kinetic energy h(nu - nu_n) = y kT carried off per recombination,
-!-- Milne relation as nlteh_alpha
-  integer,intent(in) :: n
-  real*8,intent(in) :: temp
-  real*8 :: rc
-  integer,parameter :: ni = 200
-  real*8,parameter :: ymax = 40d0
-  real*8 :: s,nu,y,w,h
-  integer :: i
-  h = ymax/ni
-  s = 0d0
-  do i=1,ni
-     y = i*h
-     w = merge(1d0, merge(4d0, 2d0, mod(i,2)==1), i==ni)
-     nu = nh_nu0(n) + y*kb*temp/hh
-     s = s + w*nlteh_sigma(n,nu)*2d0*nu*nu/cc**2*exp(-y)*y
-  enddo
-  s = s*h/3d0
-  rc = 4d0*pi*dble(n*n)*sahac*temp**(-1.5d0)*(kb*temp/hh)*(kb*temp)*s
-end function rc_coef
-
-
-subroutine te_terms(temp,ng,nug,dnug,jg,capabs,capem,nh,x,ne,gam_ext,terms)
+!
+!
+pure function te_heatshare(nel,x) result(fh)
+!-- heat share of the energy of fast photoelectrons (1 without NLTE H)
+  real*8,intent(in) :: nel(nxa_nel),x(nxa_nst)
+  real*8 :: fh,fih,feh,fihe,fehe,y
+  fh = 1d0
+  if(te_ntemin <= 0d0 .or. nxt_elh==0) return
+  y = 0d0
+  if(nxt_elhe>0 .and. nel(nxt_elh)>0d0) y = 12d0*nel(nxt_elhe)/nel(nxt_elh)
+  call nxt_shares(x(nxa_el(nxt_elh)%xoff+nxa_el(nxt_elh)%ns),y,fh,fih,feh,fihe,fehe)
+end function te_heatshare
+!
+!
+subroutine te_terms(temp,ng,nug,dnug,jg,capabs,capem,nel,x,ne,gam_ext,terms)
 !-----------------------------------------------------------------------
 ! Heating and cooling terms at temperature temp for fixed populations.
-! terms(1) LTE opacities, net cooling      terms(2) H photoionization heating
-! terms(3) H recombination cooling         terms(4) H collisional net cooling
-! terms(5) Compton net cooling             terms(6) external heating
+! terms(1) LTE opacities, net cooling         terms(2) NLTE photoionization heating
+! terms(3) NLTE recombination cooling         terms(4) NLTE collisional net cooling
+! terms(5) Compton net cooling                terms(6) external heating
 ! f = t1 - t2 + t3 + t4 + t5 - t6
 !-----------------------------------------------------------------------
-  real*8,intent(in) :: temp,nug(ng),dnug(ng),jg(ng),nh,x(0:nh_nlev),ne,gam_ext
-  real*4,intent(in) :: capabs(ng),capem(ng)
   integer,intent(in) :: ng
-  real*8,intent(out) :: terms(6)
-  integer :: ig,n,l,u
-  real*8 :: hkt,bg,s,np,saha,xs,qup(nh_nlev,nh_nlev),qdn(nh_nlev,nh_nlev),cup,c3b,eu
-  real*8 :: fh,fi,fe,jh
+  real*8,intent(in) :: temp,nug(ng),dnug(ng),jg(ng),nel(nxa_nel),x(nxa_nst),ne,gam_ext
+  real*4,intent(in) :: capabs(ng),capem(ng)
+  real*8,intent(out) :: terms(te_nterm)
+  integer :: ig,lv,iel,o,i,j,k,n,l,u
+  real*8 :: hkt,bg,s,xs,fh,jh,nu,sh,eu
+  real*8,allocatable :: qup(:,:),qdn(:,:),cion(:),c3b(:)
 !
   hkt = hh/(kb*temp)
-  np = x(0)*nh
   terms = 0d0
-  fh = 1d0
-  if(te_ntemin > 0d0) call nlteh_svs(x(0),fh,fi,fe)
+  fh = te_heatshare(nel,x)
 !-- LTE opacities and Compton
   do ig=1,ng
      if(hkt*nug(ig) < 700d0) then
@@ -127,60 +104,71 @@ subroutine te_terms(temp,ng,nug,dnug,jg,capabs,capem,nh,x,ne,gam_ext,terms)
   enddo
   terms(1) = 4d0*pi*terms(1)
   terms(5) = 4d0*pi*sigt*ne/mec2*terms(5)
-!-- H photoionization heating (net of stimulated recombination)
-  if(nh > 0d0) then
-     saha = ne*x(0)*sahac*temp**(-1.5d0)
-     s = 0d0
-     do ig=1,ng
-        do n=1,nh_nlev
-           if(nug(ig) < nh_nu0(n)) cycle
-           xs = saha*n*n*exp(-hkt*(nug(ig) - nh_nu0(n)))
-           jh = jg(ig)
-           if(te_ntemin > 0d0 .and. hh*nug(ig) > te_ntemin) jh = fh*jg(ig)
-           s = s + (x(n) - xs)*sigtab(n,ig)*jh*(1d0 - nh_nu0(n)/nug(ig))*dnug(ig)
-        enddo
-     enddo
-     terms(2) = 4d0*pi*nh*s
+!-- NLTE photoionization heating (net of stimulated recombination) and
 !-- recombination cooling
-     s = 0d0
-     do n=1,nh_nlev
-        s = s + rc_coef(n,temp)
+  s = 0d0
+  sh = 0d0
+  do lv=1,nxa_nlv
+     iel = nxa_lvel(lv)
+     if(nel(iel) <= 0d0) cycle
+     o = nxa_el(iel)%xoff
+     xs = x(o+nxa_lvc(lv))*ne*nxa_lvphi(lv)*nxa_sahac*temp**(-1.5d0)
+     do ig=1,nxa_g1(lv)
+        nu = max(nug(ig),nxa_lvnu0(lv))
+        jh = jg(ig)
+        if(te_ntemin > 0d0 .and. hh*nug(ig) > te_ntemin) jh = fh*jg(ig)
+!-- Int_g sigma (1 - nu_l/nu) dnu = sgm dnu - h nu_l sgh
+        s = s + nel(iel)*(x(o+nxa_lvs(lv)) - xs*exp(-min(hkt*(nu-nxa_lvnu0(lv)),700d0)))* &
+             jh*(nxa_sgm(ig,lv)*dnug(ig) - hh*nxa_lvnu0(lv)*nxa_sgh(ig,lv))
      enddo
-     terms(3) = ne*np*s
+     sh = sh + nel(iel)*x(o+nxa_lvc(lv))*nxa_rcool(lv,temp)
+  enddo
+  terms(2) = 4d0*pi*s
+  terms(3) = ne*sh
 !-- collisions: excitation/de-excitation and ionization/three-body recombination
-     call nlteh_qcoll(temp,qup,qdn)
-     s = 0d0
-     do l=1,nh_nlev-1
-        do u=l+1,nh_nlev
-           eu = nh_eion(l) - nh_eion(u)
-           s = s + (x(l)*qup(l,u) - x(u)*qdn(u,l))*eu
+  s = 0d0
+  do iel=1,nxa_nel
+     if(nel(iel) <= 0d0) cycle
+     o = nxa_el(iel)%xoff
+     do j=1,nxa_el(iel)%nion
+        i = nxa_el(iel)%ion(j)
+        n = nxa_ion(i)%nlev
+        allocate(qup(n,n),qdn(n,n),cion(n),c3b(n))
+        call nxa_coll(nxa_ion(i),temp,qup,qdn,cion,c3b)
+        do l=1,n-1
+           do u=l+1,n
+              eu = nxa_ion(i)%e(u) - nxa_ion(i)%e(l)
+              s = s + nel(iel)*(x(o+nxa_ion(i)%soff+l)*qup(l,u) - x(o+nxa_ion(i)%soff+u)*qdn(u,l))*eu
+           enddo
         enddo
+        do k=1,n
+           lv = nxa_ion(i)%lvoff + k
+           s = s + nel(iel)*(x(o+nxa_ion(i)%soff+k)*cion(k) - x(o+nxa_lvc(lv))*ne*c3b(k))* &
+                hh*nxa_ion(i)%nu0(k)
+        enddo
+        deallocate(qup,qdn,cion,c3b)
      enddo
-     do n=1,nh_nlev
-        call nlteh_cion(n,temp,cup,c3b)
-        s = s + (x(n)*cup - x(0)*ne*c3b)*nh_eion(n)
-     enddo
-     terms(4) = ne*nh*s
-  endif
+  enddo
+  terms(4) = ne*s
   terms(6) = gam_ext
 end subroutine te_terms
-
-
-subroutine te_balance(told,trad,nh,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nonth,nonexc,capabs, &
+!
+!
+subroutine te_balance(told,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx,capabs, &
      capem,gam_ext,x,tnew,ierr,tsolout)
 !-----------------------------------------------------------------------
-! Solve f(T) = 0 with the H populations re-solved at each trial T; x is
+! Solve f(T) = 0 with the NLTE populations re-solved at each trial T; x is
 ! the initial guess for the populations (unchanged on return).  tnew is
 ! the damped and limited new temperature, tsolout (optional) the root;
 ! ierr = 1 if f has no sign change in [te_tmin, te_tmax] (the root is the
 ! bound).
 !-----------------------------------------------------------------------
-  real*8,intent(in) :: told,trad,nh,neoth,qb,qv,nonth,nonexc,gam_ext
+  real*8,intent(in) :: told,trad,nel(nxa_nel),neoth,qb,qv,gam_ext
   integer,intent(in) :: ng
-  real*8,intent(in) :: nug(ng),dnug(ng),jg(ng),jb(nh_nlin)
-  logical,intent(in) :: ljb(nh_nlin)
+  real*8,intent(in) :: nug(ng),dnug(ng),jg(ng),jb(nxa_nlin),nti(nxa_nst),ntx(nxa_nst)
+  logical,intent(in) :: ljb(nxa_nlin)
   real*4,intent(in) :: capabs(ng),capem(ng)
-  real*8,intent(in) :: x(0:nh_nlev)
+  real*8,intent(in) :: x(nxa_nst)
   real*8,intent(out) :: tnew
   integer,intent(out) :: ierr
   real*8,intent(out),optional :: tsolout
@@ -207,6 +195,7 @@ subroutine te_balance(told,trad,nh,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nonth,nonex
      a = b
      fa = fb
   enddo
+  c = b
   if(fa*fb > 0d0) then
 !-- no root: the bound
      ierr = 1
@@ -241,24 +230,31 @@ subroutine te_balance(told,trad,nh,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nonth,nonex
 contains
   real*8 function fval(lt)
     real*8,intent(in) :: lt
-    real*8 :: t,xx(0:nh_nlev),ne,beta(nh_nlin),terms(6)
+    real*8 :: t,xx(nxa_nst),ne,beta(nxa_nlin),terms(te_nterm)
     integer :: ie
     t = exp(lt)
     xx = x
-    ne = neoth + xx(0)*nh
-    if(nh > 0d0) then
-       call nlteh_solve_cell(t,trad,nh,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nonth,xx,ne,beta,ie,nonexc)
-       if(ie /= 0) then
-          xx = x
-          ne = neoth + xx(0)*nh
-       endif
+    call nx_solve_cell(t,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx,xx,ne,beta,ie, &
+         lsolve=nxa_el(:)%z <= te_zsolve)
+    if(ie == 1) then
+       xx = x
+       ne = neoth + free_el(xx)
     endif
-    call te_terms(t,ng,nug,dnug,jg,capabs,capem,nh,xx,ne,gam_ext,terms)
+    call te_terms(t,ng,nug,dnug,jg,capabs,capem,nel,xx,ne,gam_ext,terms)
     fval = terms(1) - terms(2) + terms(3) + terms(4) + terms(5) - terms(6)
   end function fval
+  real*8 function free_el(xx)
+    real*8,intent(in) :: xx(nxa_nst)
+    integer :: je,jo
+    free_el = 0d0
+    do je=1,nxa_nel
+       jo = nxa_el(je)%xoff
+       free_el = free_el + nel(je)*sum(nxa_el(je)%chg*xx(jo+1:jo+nxa_el(je)%ns))
+    enddo
+  end function free_el
 end subroutine te_balance
-
-
+!
+!
 pure subroutine te_step(told,tsol,dprev,dloc,tnew)
 !-- adaptive damping of one cell: dprev, the previous proposed change of
 !-- ln T, and dloc, the cell's weight (start: 0 and te_damp), are updated
@@ -277,6 +273,6 @@ pure subroutine te_step(told,tsol,dprev,dloc,tnew)
   tnew = min(max(tnew, told/te_maxfac), told*te_maxfac)
   tnew = min(max(tnew, te_tmin), te_tmax)
 end subroutine te_step
-
+!
 end module tebalmod
 ! vim: fdm=marker

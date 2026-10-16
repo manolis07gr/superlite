@@ -15,8 +15,10 @@ c$    use omp_lib
       use miscmod
       use timingmod
       use mpimod
-      use nltehmod, only:nh_nlev,nh_nu0,nlteh_sigma
-      use nltehtrmod, only:nht_xloc,nht_nhloc,nht_neloc,gas_caphbf
+      use nlteatommod, only:nxa_nlv,nxa_lvel,nxa_el,nxa_lvc,nxa_lvs,
+     &  nxa_lvphi,nxa_lvnu0,nxa_g1,nxa_sgm
+      use nltextrmod, only:nxt_xloc,nxt_nelloc,nxt_neloc,gas_capnbf,
+     &  nxt_isel,nxt_elz
       use gridmod, only:grd_xarr,grd_vxarr
       use bbsobmod
       implicit none
@@ -89,7 +91,9 @@ c-- warn once
       logical :: lwarn
 c-- NLTE hydrogen bound-free
       integer :: n
-      real*8 :: nu,caphbf,xstar,sahaf
+      real*8 :: nu,xstar,nl
+      integer :: lv,iel,o
+      real*8,allocatable :: capn(:)
       ! character(40) :: fname
 c-- temporary population arrays
       type level_populations
@@ -165,9 +169,9 @@ c-- bound-bound
        enddo !iz
 c
 c-- NLTE opacity calculation
-c-- (with in_nlteh the H lines are Sobolev resonances in the transport and
-c-- the populations come from nlteh_gas_update)
-       if(.not.in_nlteh) then
+c-- (with NLTE H in the multi-species treatment the H lines are Sobolev
+c-- resonances in the transport, the populations from nltex_gas_update)
+       if(.not.nxt_isel(1)) then
        allocate(npop(gas_ncell,nlte_nspecies,nlte_nelem))
 c
        do iz=1,nlte_nelem
@@ -382,7 +386,7 @@ c-- emissivity for output
        enddo !iz
 c
        deallocate(npop)
-       endif !.not.in_nlteh
+       endif !.not.nxt_isel(1)
 c
 c-- LTE opacity calculations
 c$omp parallel default(none)
@@ -391,7 +395,7 @@ c$omp&   caphelp,emithelp,dirty,B_nu,iz,ii,kk,fq,eps)
 c$omp& shared(ngsub,gas_mass,gas_temp,grndlev,hckt,hckti,wlsub,bb_xs,
 c$omp&   bb_nline,gas_ncell,nlte_nelem,nlte_ndens,nlte_data,
 c$omp&   cap,capemit,emiss,capsc,qarr,warr,qavg,qmin,qmax,nearr,
-c$omp&   bbs_on,bbs_sobolev,bbs_eps)
+c$omp&   bbs_on,bbs_sobolev,bbs_eps,nxt_isel)
        iigs = 0
        dirty = .true.
        phi = 0d0
@@ -400,6 +404,8 @@ c$omp do schedule (static)
         wl0 = bb_xs(il)%wl0*pc_ang  !in cm
         iz = bb_xs(il)%iz
         if(iz.le.nlte_nelem) cycle ! precaution
+c-- lines of the NLTE elements are resonances in the transport
+        if(nxt_isel(iz)) cycle
         ii = bb_xs(il)%ii
 c-- igs pointer
         do igs=iigs,ngsub
@@ -486,7 +492,7 @@ c-- ground state of the next ion at T_e (identical in LTE at T_e).
        grndst = grndlev
        if(in_tesolve) then
         do iz=1,gas_nelem
-         if(in_nlteh .and. iz==1) cycle
+         if(nxt_isel(iz)) cycle
          do i=1,gas_ncell
           if(gas_mass(i)<=0d0) cycle
           nedens = gas_nelec(i)*gas_natom(i)/gas_vol(i)
@@ -508,12 +514,12 @@ c$omp parallel do
 c$omp& schedule(static) default(none)
 c$omp& private(i,ii,iz,wl,en,ie,xs,B_nu)
 c$omp& shared(ngsub,gas_ncell,gas_mass,gas_temp,grndlev,wlsub,
-c$omp&  cap,capemit,emiss,ion_el,in_nlteh,grndst)
+c$omp&  cap,capemit,emiss,ion_el,nxt_isel,grndst)
        do igs=1,ngsub
         wl = wlsub(igs)  !in cm
         en = pc_h*pc_c/(pc_ev*wl) !photon energy in eV
         do iz=1,gas_nelem
-         if(in_nlteh .and. iz==1) cycle !NLTE H below
+         if(nxt_isel(iz)) cycle !NLTE elements below
          do ii=1,min(iz,ion_el(iz)%ni - 1) !last stage is bare nucleus
           ie = iz - ii + 1
           xs = bfxs(iz,ie,en)
@@ -536,30 +542,38 @@ c-- emissivity for output
        enddo !igs
 c$omp end parallel do
 c
-c-- NLTE hydrogen: all levels, with stimulated recombination.  Absorption
-c-- only: the recombination emission comes from the macro-atom.
-      if(in_nlteh) then
-       gas_caphbf = 0.
+c-- NLTE elements: all levels (group means of the cross-sections), with
+c-- stimulated recombination.  Absorption only: the recombination emission
+c-- comes from the macro-atom.
+      if(in_nltex) then
+       gas_capnbf = 0.
+       allocate(capn(ngsub))
        do i=1,gas_ncell
         if(gas_mass(i)<=0d0) cycle
-        sahaf = nht_neloc(i)*nht_xloc(0,i)*4.1412d-16*
-     &    gas_temp(i)**(-1.5d0)
+        capn = 0d0
+        do lv=1,nxa_nlv
+         iel = nxa_lvel(lv)
+         nl = nxt_nelloc(iel,i)
+         if(nl<=0d0) cycle
+         o = nxa_el(iel)%xoff
+c-- LTE population relative to the actual continuum state, times
+c-- exp(-h nu0/kT) (applied with the frequency below)
+         xstar = nxt_xloc(o+nxa_lvc(lv),i)*nxt_neloc(i)*nxa_lvphi(lv)*
+     &     4.1412d-16*gas_temp(i)**(-1.5d0)
+         do igs=1,min(nxa_g1(lv),ngsub)
+          nu = max(2d0*pc_c/(wlsub(igs)+wlsub(igs+1)),nxa_lvnu0(lv))
+          capn(igs) = capn(igs) + nl*(nxt_xloc(o+nxa_lvs(lv),i) -
+     &      xstar*exp(-min(pc_h*(nu-nxa_lvnu0(lv))/
+     &      (pc_kb*gas_temp(i)),700d0)))*nxa_sgm(igs,lv)
+         enddo !igs
+        enddo !lv
         do igs=1,ngsub
-         nu = 2d0*pc_c/(wlsub(igs)+wlsub(igs+1))
-         if(nu<nh_nu0(nh_nlev)) cycle
-         caphbf = 0d0
-         do n=1,nh_nlev
-c-- thresholds decrease with n: skip the levels above this frequency
-          if(nu<nh_nu0(n)) cycle
-          xstar = sahaf*n*n*
-     &      exp(-pc_h*(nu-nh_nu0(n))/(pc_kb*gas_temp(i)))
-          caphbf = caphbf + (nht_xloc(n,i)-xstar)*nlteh_sigma(n,nu)
-         enddo
-         caphbf = max(0d0,caphbf*nht_nhloc(i))
-         cap(i,igs) = cap(i,igs) + caphbf
-         gas_caphbf(igs,i) = sngl(caphbf)
+         capn(igs) = max(0d0,capn(igs))
+         cap(i,igs) = cap(i,igs) + capn(igs)
+         gas_capnbf(igs,i) = sngl(capn(igs))
         enddo !igs
        enddo !i
+       deallocate(capn)
       endif
 c
       endif !in_nobfopac
@@ -575,9 +589,9 @@ c-- simple variant: nearest data grid point
 c$omp parallel do default(none)
 c$omp& schedule(static)
 c$omp& private(i,iz,wl,wlinv,u,ru,du,iu,help,gg,rgg,dgg,igg,gff,B_nu,
-c$omp&   z2)
+c$omp&   z2,o)
 c$omp& shared(ngsub,lwarn,hckt,hlparr,gas_ncell,gas_mass,gas_natomfr,
-c$omp&   gas_z2,in_fflegacy,in_nlteh,nht_xloc,
+c$omp&   gas_z2,in_fflegacy,nxt_isel,nxt_elz,nxt_xloc,nxa_el,
 c$omp&   gas_temp,wlsub,grp_wl,cap,capemit,emiss,ff_gff)
        do igs=1,ngsub
         wl = wlsub(igs)  !in cm
@@ -599,8 +613,11 @@ c-- ions of charge z weighted by z^2: ion fractions from the EOS, the NLTE
 c-- H II fraction for H (in_fflegacy: charge Z for all atoms)
           if(in_fflegacy) then
            z2 = dble(iz**2)
-          elseif(in_nlteh .and. iz==1) then
-           z2 = nht_xloc(0,i)
+          elseif(nxt_isel(iz)) then
+c-- NLTE element: charges of its states
+           o = nxa_el(nxt_elz(iz))%xoff
+           z2 = sum(nxa_el(nxt_elz(iz))%chg**2*
+     &       nxt_xloc(o+1:o+nxa_el(nxt_elz(iz))%ns,i))
           else
            z2 = gas_z2(iz,i)
           endif

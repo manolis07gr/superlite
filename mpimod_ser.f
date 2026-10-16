@@ -92,8 +92,8 @@ c
       use groupmod
       use sourcemod
       use particlemod
-      use inputparmod, only:in_nlteh
-      use nltehtrmod
+      use inputparmod, only:in_nltex
+      use nltextrmod
       use bbsobmod, only:bbs_on,gas_capsc,grd_capsc
 ************************************************************************
 * Broadcast the data that changes with time.
@@ -115,11 +115,11 @@ c
       grd_nelec = reshape(gas_nelec,[grd_ncell])
       grd_natom = reshape(gas_natom,[grd_ncell])
 c-- NLTE hydrogen
-      if(in_nlteh) then
-       nht_x = nht_xloc
-       nht_ne = nht_neloc
-       nht_nh = nht_nhloc
-       grd_caphbf = gas_caphbf
+      if(in_nltex) then
+       nxt_x = nxt_xloc
+       nxt_ne = nxt_neloc
+       nxt_nel = nxt_nelloc
+       grd_capnbf = gas_capnbf
       endif
 c-- line scattering opacity
       if(bbs_on) grd_capsc = gas_capsc

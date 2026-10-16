@@ -7,7 +7,7 @@ c     --------------------------------
       use timingmod
       use inputparmod
       use nltemod
-      use nltehtrmod, only:nht_neothloc,nht_have_mc
+      use nltextrmod, only:nxt_neothloc,nxt_have_mc,nxt_isel
       implicit none
       logical,intent(in) :: do_output
 ************************************************************************
@@ -24,7 +24,7 @@ c-- loop over all gas_vals cells
       do i=1,gas_ncell
        if(gas_mass(i)<=0d0) cycle
        ndens = gas_natom(i)/gas_vol(i) !atom number density
-       if(in_tion=='nebu'.and.nht_have_mc) then
+       if(in_tion=='nebu'.and.nxt_have_mc) then
 c-- modified nebular approximation with the Monte Carlo radiation field
          call ions_nebular_mc(gas_natomfr(1,i),gas_temp(i),
      &     gas_tion(i),gas_wdil(i),ndens,gas_nelec(i))
@@ -44,9 +44,15 @@ c-- mean squared ion charge of each element (free-free opacity)
          gas_z2(iz,i) = gas_z2(iz,i) + (ii-1)**2*ion_el(iz)%i(ii)%n
         enddo !ii
        enddo !iz
-c-- electrons per atom from elements other than H (for NLTE H)
-       if(in_nlteh) nht_neothloc(i) = max(0d0,
-     &   gas_nelec(i) - gas_natomfr(1,i)*ion_el(1)%ne)
+c-- electrons per atom from the elements that are not in NLTE
+       if(in_nltex) then
+        nxt_neothloc(i) = gas_nelec(i)
+        do iz=1,gas_nelem
+         if(nxt_isel(iz)) nxt_neothloc(i) = nxt_neothloc(i) -
+     &     gas_natomfr(iz,i)*ion_el(iz)%ne
+        enddo
+        nxt_neothloc(i) = max(0d0,nxt_neothloc(i))
+       endif
 c
 c-- store occupation numbers of each ion's ground states
        do iz=1,gas_nelem

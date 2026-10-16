@@ -91,8 +91,8 @@ c-- solve LTE/nebular EOS
 c===============================
       do_output = in_io_pdensdump=='on' .and. it==1
       if(.not.in_noeos) call eos_update(do_output)
-c-- NLTE hydrogen: populations and electron density
-      if(in_nlteh) call nlteh_gas_update(it)
+c-- NLTE elements: populations and electron density
+      if(in_nltex) call nltex_gas_update(it)
 c
 c
 c

@@ -91,6 +91,12 @@ c-- NLTE hydrogen with Sobolev line resonances and a macro-atom (requires in_nlt
 c-- benchmark: in_nlteh_tau0 > 0 makes H-alpha a pure-scattering Sobolev
 c-- line with tau = in_nlteh_tau0 (for v/r = dv/dr) and no other H lines
       real*8 :: in_nlteh_tau0 = 0d0
+c-- NLTE ions from model-atom files (Tools/cmfgen2superlite_atom.py),
+c-- names separated by blanks; with in_nlteh hydrogen is built in.
+c-- All NLTE elements share the macro-atom and statistical equilibrium.
+      character(512) :: in_nltex_atoms = ' '
+c-- NLTE treatment active (in_nlteh or model atoms; set, not read)
+      logical :: in_nltex = .false.
 c-- interior source: 'surf' blackbody surfaces at T_rad (legacy),
 c-- 'lumg' energy injected where the luminosity L(r) of the input ('lum'
 c-- column, at the cell's inner edge) grows outward, emitted isotropically
@@ -175,7 +181,7 @@ c-- runtime parameter namelist
      & in_noeos,
      & in_nebular,in_R_phot,
      & in_nlte,in_nlte_nelem,in_nlteh,in_nlteh_nlev,in_nlteh_damp,
-     & in_nlteh_tau0,
+     & in_nlteh_tau0,in_nltex_atoms,
      & in_srctype,in_shock_dvmin,in_shock_tmax,
      & in_bbsobolev,in_bbeps,in_tesolve,in_te_damp,in_tion,
      & in_nt_emin,in_fflegacy,
@@ -479,20 +485,21 @@ c
       endif
 c
       if(in_nebular.and.in_R_phot.le.0) stop 'in_R_phot<=0'
-      if(in_nlteh.and..not.in_nlte) stop 'in_nlteh requires in_nlte'
-      if(in_nlteh.and.in_grp_ngs/=1) stop 'in_nlteh: in_grp_ngs=1'
+      in_nltex = in_nlteh .or. len_trim(in_nltex_atoms)>0
+      if(in_nltex.and..not.in_nlte) stop 'NLTE ions require in_nlte'
+      if(in_nltex.and.in_grp_ngs/=1) stop 'NLTE ions: in_grp_ngs=1'
       if(in_innerbc/='refl'.and.in_innerbc/='thrm'.and.
      &   in_innerbc/='absb') stop 'in_innerbc: refl|thrm|absb'
       if(in_nlteh_nlev<4 .or. in_nlteh_nlev>60) stop 'in_nlteh_nlev'
       if(in_srctype/='surf' .and. in_srctype/='lumg')
      &  stop 'in_srctype must be surf or lumg'
       if(in_bbeps>1d0) stop 'in_bbeps > 1'
-      if(in_tesolve.and..not.in_nlteh) stop 'in_tesolve: needs in_nlteh'
+      if(in_tesolve.and..not.in_nltex) stop 'in_tesolve: NLTE ions'
       if(in_tion/='hydr'.and.in_tion/='elec'.and.in_tion/='nebu')
      &  stop 'in_tion: hydr|elec|nebu'
-      if(in_tion=='nebu'.and..not.in_nlteh) stop 'in_tion: in_nlteh'
+      if(in_tion=='nebu'.and..not.in_nltex) stop 'in_tion: NLTE ions'
       if(in_te_damp<=0d0.or.in_te_damp>1d0) stop 'in_te_damp: (0,1]'
-      if(in_nt_emin>0d0.and..not.in_nlteh) stop 'in_nt_emin: in_nlteh'
+      if(in_nt_emin>0d0.and..not.in_nltex) stop 'in_nt_emin: NLTE'
 c
       if(in_nlte.and.in_nlte_nelem.ne.1) stop 'in_nlte_nelem!=1'
 c

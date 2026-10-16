@@ -13,8 +13,8 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
   use inputparmod
   use dopplermod
   use comptonmod
-  use nltehmod, only:nh_nu,nh_lu,nh_wl
-  use nltehtrmod
+  use nlteatommod, only:nxa_lnu,nxa_lwl
+  use nltextrmod
   use bbsobmod, only:bbs_on,grd_capsc
   implicit none
 !
@@ -26,7 +26,7 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
   real*8,intent(out) :: jrad
   real*8,intent(inout) :: totevelo
   integer,intent(out) :: ierr
-  integer,intent(out) :: jbk      !H line crossed (resonance estimator), 0 if none
+  integer,intent(out) :: jbk      !NLTE line crossed (resonance estimator), 0 if none
   real*8,intent(out) :: jbval     !its contribution e*c/(nu*|Q|)
 !##################################################
 !This subroutine passes particle parameters as input and modifies
@@ -99,7 +99,7 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
   jbk = 0
   jbval = 0d0
   lremit = .false.
-!-- the packet sits on an H line only right after a resonance event
+!-- the packet sits on an NLTE line only right after a resonance event
   ilin0 = ptcl2%iline
   ilsd0 = ptcl2%ilside
   ptcl2%iline = 0
@@ -160,23 +160,23 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
 !
 !-- Doppler shift distance
   if(trn_dopexact) then
-!-- exact distance to the first comoving group boundary or H line along the
+!-- exact distance to the first comoving group boundary or NLTE line along the
 !-- path, for the cell's linear v(r) of any slope (decelerating and
 !-- non-monotonic flows have blueshifts and repeated resonances)
      wlo_e = grp_wl(ig)
      whi_e = grp_wl(ig+1)
-     if(nht_on) then
-        call nlteh_neighbors(wl/elabfact,ilin0,ilsd0,jlo,jhi)
+     if(nxt_on) then
+        call nxt_neighbors(wl/elabfact,ilin0,ilsd0,jlo,jhi)
         if(jlo>0) then
-           if(nht_wlact(jlo)>wlo_e) then
-              wlo_e = nht_wlact(jlo)
+           if(nxt_wlact(jlo)>wlo_e) then
+              wlo_e = nxt_wlact(jlo)
            else
               jlo = 0
            endif
         endif
         if(jhi>0) then
-           if(nht_wlact(jhi)<whi_e) then
-              whi_e = nht_wlact(jhi)
+           if(nxt_wlact(jhi)<whi_e) then
+              whi_e = nxt_wlact(jhi)
            else
               jhi = 0
            endif
@@ -428,21 +428,21 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
 !
 !-- effective scattering
   elseif(d == dcol) then
-     if(nht_on) then
-!-- H bound-free absorption activates the macro-atom, the rest the thermal pool;
-!-- X-rays make fast photoelectrons (heat, H ionization and excitation)
+     if(nxt_on) then
+!-- NLTE bound-free absorption activates the macro-atom, the rest the thermal
+!-- pool; X-rays make fast photoelectrons (heat, H/He ionization and excitation)
         call rnd_r(r1,rndstate)
-        if(nht_ntemin>0d0 .and. pc_h*pc_c*elabfact/wl>nht_ntemin) then
-           call nlteh_nonthermal(ic,rndstate,kind,idx,wlcmf)
-        elseif(r1*grd_cap(ig,ic) < grd_caphbf(ig,ic)) then
-           call nlteh_bfabs(ic,pc_c*elabfact/wl,rndstate,kind,idx,wlcmf)
+        if(nxt_ntemin>0d0 .and. pc_h*pc_c*elabfact/wl>nxt_ntemin) then
+           call nxt_nonthermal(ic,rndstate,kind,idx,wlcmf)
+        elseif(r1*grd_cap(ig,ic) < grd_capnbf(ig,ic)) then
+           call nxt_bfabs(ic,ig,pc_c*elabfact/wl,rndstate,kind,idx,wlcmf)
         else
-           call nlteh_kpacket(ic,rndstate,kind,idx,wlcmf)
+           call nxt_kpacket(ic,rndstate,kind,idx,wlcmf)
         endif
         lremit = .true.
-!-- an H line photon leaves its Sobolev resonance along directions of large |Q(mu)|
+!-- a line photon leaves its Sobolev resonance along directions of large |Q(mu)|
         if(kind==em_line) then
-           call line_mu(nht_kq(idx,ic),dvdr(ix),vx/x,rndstate,mucmf)
+           call line_mu(nxt_kq(idx,ic),dvdr(ix),vx/x,rndstate,mucmf)
            mu = (mucmf+vx*cinv)/(1d0+vx*mucmf*cinv)
         endif
      endif
@@ -460,7 +460,7 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
      else !LTE
         emitlump = grd_opaclump(8,ic)/grd_capgrey(ic)
      endif
-     if(nht_on) then
+     if(nxt_on) then
 !-- outcome chosen above
      elseif(grp_ng==1) then
         !-- do nothing
@@ -487,7 +487,7 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
 !-- converting comoving wavelength to lab frame wavelength
         wl = wl*(1d0-vx*mu*cinv)
      endif
-     if(lremit) call nlteh_reemit(kind,idx,wlcmf,ig,wl,e,e0,mu,vx,x,ix,ic,ptcl2,totevelo,rndstate)
+     if(lremit) call nx_reemit(kind,idx,wlcmf,ig,wl,e,e0,mu,vx,x,ix,ic,ptcl2,totevelo,rndstate)
 
 !
 !-- outer radial bound
@@ -587,30 +587,30 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
 !
 !-- Doppler shift
   elseif(d == ddop .and. jres>0) then
-!-- H line resonance (Sobolev): projected velocity gradient at this point
-     kres = nht_act(jres)
+!-- NLTE line resonance (Sobolev): projected velocity gradient at this point
+     kres = nxt_act(jres)
      mucmf = (mu-vx*cinv)/(1d0-mu*vx*cinv)
      qmu = mucmf**2*dvdr(ix) + (1d0-mucmf**2)*vx/x
      qmin = 1d-3*max(abs(dvdr(ix)),abs(vx/x))
      qmu = max(abs(qmu),qmin)
-     tau = nht_kq(kres,ic)/qmu
+     tau = nxt_kq(kres,ic)/qmu
 !-- resonance estimator of the incident intensity
      jbk = kres
-     jbval = e*elabfact*pc_c/(nh_nu(kres)*qmu)
+     jbval = e*elabfact*pc_c/(nxa_lnu(kres)*qmu)
      call rnd_r(r1,rndstate)
      if(tau>0d0 .and. r1<1d0-exp(-tau)) then
 !-- absorbed: macro-atom in the upper level
-        if(nht_tau0>0d0) then
+        if(nxt_tau0>0d0) then
 !-- benchmark: pure scattering in the same line
            kind = em_line
            idx = kres
-           wlcmf = nh_wl(kres)
+           wlcmf = nxa_lwl(kres)
         else
-           call nlteh_activate(ic,nh_lu(kres),rndstate,kind,idx,wlcmf)
+           call nxt_activate_line(ic,kres,rndstate,kind,idx,wlcmf)
         endif
 !-- line photons escape along directions of large |Q(mu)|, continuum isotropically
         if(kind==em_line) then
-           call line_mu(nht_kq(idx,ic),dvdr(ix),vx/x,rndstate,mucmf)
+           call line_mu(nxt_kq(idx,ic),dvdr(ix),vx/x,rndstate,mucmf)
         else
            call rnd_r(r1,rndstate)
            mucmf = 1d0-2d0*r1
@@ -620,7 +620,7 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
         totevelo = totevelo+e*(1d0-help)
         e = e*help
         e0 = e0*help
-        call nlteh_reemit(kind,idx,wlcmf,ig,wl,e,e0,mu,vx,x,ix,ic,ptcl2,totevelo,rndstate)
+        call nx_reemit(kind,idx,wlcmf,ig,wl,e,e0,mu,vx,x,ix,ic,ptcl2,totevelo,rndstate)
      else
 !-- passes the resonance: now on the far side of the line
         ptcl2%iline = jres
@@ -743,7 +743,7 @@ contains
     enddo
   end subroutine line_mu
 
-  pure subroutine nlteh_reemit(kind,idx,wlcmf,ig,wl,e,e0,mu,vx,x,ix,ic,ptcl2,totevelo,rndstate)
+  pure subroutine nx_reemit(kind,idx,wlcmf,ig,wl,e,e0,mu,vx,x,ix,ic,ptcl2,totevelo,rndstate)
 !-----------------------------------------------------------------------
 ! Re-emit the packet after a macro-atom/k-packet process with comoving
 ! wavelength wlcmf (kind em_line/em_bf/em_2ph) or the thermal emissivity
@@ -765,7 +765,7 @@ contains
     else
        wlc = wlcmf
        if(kind==em_line) then
-          ig = nht_lgrp(idx)
+          ig = nxt_lgrp(idx)
        else
           ig = 0
        endif
@@ -774,9 +774,9 @@ contains
 !-- outside the group grid: put it in the edge group
           call rnd_r(rr,rndstate)
           wlc = 1d0/((1d0-rr)*grp_wlinv(ig)+rr*grp_wlinv(ig+1))
-       elseif(kind==em_line .and. nht_isrt(idx)>0) then
+       elseif(kind==em_line .and. nxt_isrt(idx)>0) then
 !-- the packet sits on the (active) line it was emitted in
-          ptcl2%iline = nht_isrt(idx)
+          ptcl2%iline = nxt_isrt(idx)
           dvdrl = (grd_vxarr(ix+1)-grd_vxarr(ix))/(grd_xarr(ix+1)-grd_xarr(ix))
           qn = ((mu-vx*cinv)/(1d0-mu*vx*cinv))**2
           qn = qn*dvdrl + (1d0-qn)*vx/x
@@ -794,7 +794,7 @@ contains
        e0 = e0*(1d0-vx*mu*cinv)
        wl = wlc
     endif
-  end subroutine nlteh_reemit
+  end subroutine nx_reemit
 
 ! !-- updating the co-moving group for superluminal flow for \tilde{v} frame
 !   if(lsuplum.and.ptcl2%itype == 1) then

@@ -1,14 +1,17 @@
 #!/bin/bash
 # Build and run the unit tests of the CSM-physics branch.
-#   usage: [SL_BUILD=<cmake build dir>] Tests/unit/run_tests.sh [work_dir]
+#   usage: [SL_BUILD=<cmake build dir>] [SL_ATOMS=<model-atom dir>] \
+#          Tests/unit/run_tests.sh [work_dir]
 #   (needs gfortran, LAPACK/BLAS; test_nebular links against the objects of
-#   a SuperLite CMake build given by SL_BUILD, with mpif90 for MPI builds)
+#   a SuperLite CMake build given by SL_BUILD, with mpif90 for MPI builds;
+#   the He tests of test_nltex and test_tebal need he1.atom and he2.atom in
+#   SL_ATOMS, made with Tools/make_nlte_atoms.sh)
 set -e
 src=$(cd "$(dirname "$0")/../.." && pwd)
 b=${1:-$(mktemp -d)}
 mkdir -p "$b"
 cd "$b"
-FC="gfortran -O2 -fallow-argument-mismatch"
+FC="gfortran -O2 -ffree-line-length-none -fallow-argument-mismatch"
 LAPACK="-llapack -lblas"
 build() {   # build <test> <sources...>
   local t=$1; shift
@@ -16,12 +19,13 @@ build() {   # build <test> <sources...>
 }
 build test_doppler   "$src/TRANSPORT1/dopplermod.f90"
 build test_compton   "$src/randommod.f" "$src/TRANSPORT1/comptonmod.f90"
+NLTEX="$src/physconstmod.f $src/miscmod.f $src/groupmod.f $src/gridmod.f $src/randommod.f \
+       $src/nltehmod.f90 $src/nlteatommod.f90 $src/nltexmod.f90 $src/nltextrmod.f90"
 build test_nlteh     "$src/nltehmod.f90"
-build test_macroatom "$src/physconstmod.f" "$src/miscmod.f" "$src/groupmod.f" "$src/gridmod.f" \
-                     "$src/randommod.f" "$src/nltehmod.f90" "$src/nltehtrmod.f90"
+build test_nltex     $NLTEX
 build test_bbsob     "$src/physconstmod.f" "$src/bbsobmod.f90"
-build test_tebal     "$src/nltehmod.f90" "$src/tebalmod.f90"
-tests="test_doppler test_compton test_nlteh test_macroatom test_bbsob test_tebal"
+build test_tebal     $NLTEX "$src/tebalmod.f90"
+tests="test_doppler test_compton test_nlteh test_nltex test_bbsob test_tebal"
 if [ -n "$SL_BUILD" ]; then
   objs=$(find "$SL_BUILD/CMakeFiles/superlite.dir" -name "*.o" ! -name "superlite.f90.o")
   LD=gfortran; command -v mpif90 >/dev/null && grep -q "USE_MPI:BOOL=ON" "$SL_BUILD/CMakeCache.txt" && LD=mpif90
@@ -34,7 +38,9 @@ fi
 fail=0
 for t in $tests; do
   echo "=== $t"
-  ./$t > $t.log 2>&1 || { fail=1; echo "$t FAILED"; }
+  args=""
+  case $t in test_nltex|test_tebal) [ -n "$SL_ATOMS" ] && args="$SL_ATOMS";; esac
+  ./$t $args > $t.log 2>&1 || { fail=1; echo "$t FAILED"; }
   grep -v IEEE $t.log || true
 done
 [ $fail -eq 0 ] && echo "all unit tests passed"

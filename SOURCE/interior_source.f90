@@ -12,7 +12,7 @@ subroutine interior_source!(it)
   use physconstmod
   use inputparmod
   use countersmod
-  use nltehtrmod
+  use nltextrmod
 
   implicit none
   ! integer, intent(in) :: it !experimental iterative approach
@@ -108,8 +108,8 @@ subroutine interior_source!(it)
            call rnd_r(r1,rnd_state)
            wlc = pc_h*pc_c/(-log(max(r1,1d-300))*pc_kb*thelp)
            kind = em_line  !not thermal: wavelength set
-        elseif(nht_on) then
-           call nlteh_kpacket(l,rnd_state,kind,idx,wlc)
+        elseif(nxt_on) then
+           call nxt_kpacket(l,rnd_state,kind,idx,wlc)
         else
            kind = em_thermal
         endif

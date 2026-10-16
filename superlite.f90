@@ -24,10 +24,11 @@ program superlite
   use ffxsmod, only:ffxs_read_data
   use timingmod
   use countersmod
-  use nltehmod, only:nlteh_set_collfits
-  use nltehtrmod
+  use nltehmod, only:nlteh_set_collfits,nlteh_init
+  use nlteatommod, only:nxa_nel,nxa_nion,nxa_ion,nxa_nlin,nxa_nst
+  use nltextrmod
   use bbsobmod
-  use tebalmod, only:te_init,te_damp,te_ntemin
+  use tebalmod, only:te_damp,te_ntemin
 
   implicit none
 !***********************************************************************
@@ -37,6 +38,9 @@ program superlite
   integer :: icell1, ncell !number of cells per rank (gas_ncell)
   real*8 :: t0, t1 !timing
   character(25) :: msg
+!-- NLTE model-atom files
+  integer :: i, nfatom
+  character(256) :: fatom(40)
 !
 !-- mpi initialization
   call mpi_init(ierr) !MPI
@@ -120,26 +124,36 @@ program superlite
 !-- allocate arrays of sizes retreived in bcast_permanent
   call ions_alloc_grndlev(gas_nelem,gas_ncell)  !ground state occupation numbers
   if(in_nlte) call nlte_alloc_nlev(nlte_nelem,gas_ncell) !NLTE
-!-- NLTE hydrogen with line resonances and macro-atom
-  if(in_nlteh) then
-     call nlteh_tr_init(in_nlteh_nlev,grd_ncell,gas_ncell,grp_ng,grp_wl)
-     nht_damp = in_nlteh_damp
-     nht_tau0 = in_nlteh_tau0
-     if(allocated(nlte_data)) call nlteh_set_collfits(nlte_data(1)%i(1)%nlev,nlte_data(1)%i(1)%nplev, &
-          nlte_data(1)%i(1)%glev,nlte_data(1)%i(1)%coll_nlin, &
-          nlte_data(1)%i(1)%llw_coll,nlte_data(1)%i(1)%lup_coll, &
-          nlte_data(1)%i(1)%C0,nlte_data(1)%i(1)%C1,nlte_data(1)%i(1)%C2, &
-          nlte_data(1)%i(1)%C3,nlte_data(1)%i(1)%delE)
-     if(lmpi0) write(6,'(1x,a,i3,a,i5,a)') 'NLTE H:',in_nlteh_nlev,' levels,', &
-          (in_nlteh_nlev*(in_nlteh_nlev-1))/2,' lines (Sobolev resonances, macro-atom)'
+!-- NLTE elements with line resonances and macro-atom: built-in hydrogen
+!-- (in_nlteh) and the ions of the model-atom files
+  if(in_nltex) then
+     if(in_nlteh) then
+        call nlteh_init(in_nlteh_nlev)
+!-- H collision fits of data.nlte.h1 (tabulated by the built-in atom)
+        if(allocated(nlte_data)) call nlteh_set_collfits(nlte_data(1)%i(1)%nlev,nlte_data(1)%i(1)%nplev, &
+             nlte_data(1)%i(1)%glev,nlte_data(1)%i(1)%coll_nlin, &
+             nlte_data(1)%i(1)%llw_coll,nlte_data(1)%i(1)%lup_coll, &
+             nlte_data(1)%i(1)%C0,nlte_data(1)%i(1)%C1,nlte_data(1)%i(1)%C2, &
+             nlte_data(1)%i(1)%C3,nlte_data(1)%i(1)%delE)
+     endif
+     call atomfiles(in_nltex_atoms,nfatom,fatom)
+     call nxt_init(grd_ncell,gas_ncell,grp_ng,grp_wl,nfatom,fatom(:nfatom),merge(in_nlteh_nlev,0,in_nlteh))
+     nxt_damp = in_nlteh_damp
+     nxt_tau0 = in_nlteh_tau0
+     nxt_ntemin = in_nt_emin*pc_ev
+     if(lmpi0) then
+        write(6,'(1x,a,i3,a,i3,a,i6,a,i6,a)') 'NLTE:',nxa_nel,' elements,',nxa_nion,' ions,', &
+             nxa_nst,' states,',nxa_nlin,' lines (Sobolev resonances, macro-atom)'
+        do i=1,nxa_nion
+           write(6,'(3x,a8,i5,a,i6,a)') nxa_ion(i)%name,nxa_ion(i)%nlev,' levels',nxa_ion(i)%nlin,' lines'
+        enddo
+     endif
   endif
 !-- fast photoelectrons from X-ray absorption
-  if(in_nlteh) nht_ntemin = in_nt_emin*pc_ev
   te_ntemin = in_nt_emin*pc_ev
 !-- electron temperature from the thermal balance
   if(in_tesolve) then
      te_damp = in_te_damp
-     call te_init(grp_ng,nht_nug)
      if(lmpi0) write(6,'(1x,a,f5.2,2a)') 'T_e from the thermal balance, damping', &
           in_te_damp,', LTE elements at T_ion = ',in_tion
   endif
@@ -204,8 +218,8 @@ program superlite
 
 !-- gather from gas workers and broadcast to world ranks
      call bcast_nonpermanent !MPI
-!-- NLTE hydrogen: Sobolev strengths, macro-atom and k-packet tables
-     if(in_nlteh) call nlteh_tables(grd_ncell,grd_tempinv,grd_radtemp, &
+!-- NLTE elements: Sobolev strengths, macro-atom and k-packet tables
+     if(in_nltex) call nxt_tables(grd_ncell,grd_tempinv,grd_radtemp, &
           grd_capemitgrey,grd_xarr,grd_vxarr)
 
 !-- source energy
@@ -245,15 +259,15 @@ program superlite
 !-- advance particles
      if(lmpi0) write(6,*) "--> Particle MC tranport"
      t_timelin(3) = t_time() !timeline
-     if(in_nlteh) call nlteh_tally_reset
+     if(in_nltex) call nxt_tally_reset
      call particle_advance
      call reduce_gridtally !MPI  !collect transport results from all workers
      call allreduce_jrad !MPI !NLTE !collect radiation intensity from all workers
-!-- NLTE hydrogen: Monte Carlo estimators for the next iteration
-     if(in_nlteh) then
+!-- NLTE elements: Monte Carlo estimators for the next iteration
+     if(in_nltex) then
         call allreduce_nlteh !MPI
-        call nlteh_store_jg(grd_ncell,grp_ng,grd_jrad,grd_vol)
-        call nlteh_tally_finish(grd_ncell,grd_vol)
+        call nxt_store_jg(grd_ncell,grp_ng,grd_jrad,grd_vol)
+        call nxt_tally_finish(grd_ncell,grd_vol)
      endif
      call scatter_jrad !MPI
 
@@ -288,7 +302,7 @@ program superlite
         call output_grp
         if(it>1.and.in_io_opacdump=='one') in_io_opacdump = 'off'
         if(it==in_niter.and.in_io_profdump) call output_profile
-        if(it==in_niter.and.in_nlteh) call nlteh_write(grd_ncell,grd_rcell, &
+        if(it==in_niter.and.in_nltex) call nxt_write(grd_ncell,grd_rcell, &
              0.5d0*(grd_vxarr(:grd_ncell)+grd_vxarr(2:)),grd_tempinv,grd_radtemp)
 
 !-- write stdout
@@ -336,6 +350,33 @@ program superlite
 !-- Clean up memory. (This helps to locate memory leaks)
   call dealloc_all
   call mpi_finalize(ierr) !MPI
+
+contains
+
+subroutine atomfiles(str,n,files)
+!-- split a blank-separated list of model-atom files
+  character(*),intent(in) :: str
+  integer,intent(out) :: n
+  character(*),intent(out) :: files(:)
+  integer :: k,j
+  n = 0
+  k = 1
+  do while(k <= len_trim(str))
+     if(str(k:k)==' ' .or. str(k:k)==',') then
+        k = k + 1
+        cycle
+     endif
+     j = k
+     do while(j <= len_trim(str))
+        if(str(j:j)==' ' .or. str(j:j)==',') exit
+        j = j + 1
+     enddo
+     n = n + 1
+     if(n > size(files)) stop 'in_nltex_atoms: too many files'
+     files(n) = str(k:j-1)
+     k = j
+  enddo
+end subroutine atomfiles
 
 end program superlite
 ! vim: fdm=marker

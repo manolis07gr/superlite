@@ -87,6 +87,10 @@ c-- broadcast characters
       do i=1,n
        in_c(i)%p = csndvec(i)
       enddo
+c-- NLTE model-atom files (long string)
+      call mpi_bcast(in_nltex_atoms,len(in_nltex_atoms),MPI_CHARACTER,
+     &  impi0,MPI_COMM_WORLD,ierr)
+      in_nltex = in_nlteh .or. len_trim(in_nltex_atoms)>0
       deallocate(csndvec)
 c
 c-- set number of threads, i.e. non-automatic
@@ -651,9 +655,9 @@ c     -----------------------------
       use particlemod
       use timingmod
       use transportmod, only:trn_noampfact
-      use inputparmod, only:in_nlteh
-      use nltehmod, only:nh_nlev
-      use nltehtrmod
+      use inputparmod, only:in_nltex
+      use nlteatommod, only:nxa_nst,nxa_nel
+      use nltextrmod
       use bbsobmod, only:bbs_on,gas_capsc,grd_capsc
       implicit none
 ************************************************************************
@@ -714,19 +718,19 @@ c
      &  grd_lum,counts,displs,MPI_REAL8,
      &  MPI_COMM_WORLD,ierr)
 c
-c-- NLTE hydrogen populations and bound-free opacity
-      if(in_nlteh) then
-       call mpi_allgatherv(nht_xloc,(nh_nlev+1)*gas_ncell,MPI_REAL8,
-     &   nht_x,(nh_nlev+1)*counts,(nh_nlev+1)*displs,MPI_REAL8,
+c-- NLTE populations, element densities and bound-free opacity
+      if(in_nltex) then
+       call mpi_allgatherv(nxt_xloc,nxa_nst*gas_ncell,MPI_REAL8,
+     &   nxt_x,nxa_nst*counts,nxa_nst*displs,MPI_REAL8,
      &   MPI_COMM_WORLD,ierr)
-       call mpi_allgatherv(nht_neloc,gas_ncell,MPI_REAL8,
-     &   nht_ne,counts,displs,MPI_REAL8,
+       call mpi_allgatherv(nxt_neloc,gas_ncell,MPI_REAL8,
+     &   nxt_ne,counts,displs,MPI_REAL8,
      &   MPI_COMM_WORLD,ierr)
-       call mpi_allgatherv(nht_nhloc,gas_ncell,MPI_REAL8,
-     &   nht_nh,counts,displs,MPI_REAL8,
+       call mpi_allgatherv(nxt_nelloc,nxa_nel*gas_ncell,MPI_REAL8,
+     &   nxt_nel,nxa_nel*counts,nxa_nel*displs,MPI_REAL8,
      &   MPI_COMM_WORLD,ierr)
-       call mpi_allgatherv(gas_caphbf,grp_ng*gas_ncell,MPI_REAL,
-     &   grd_caphbf,grp_ng*counts,grp_ng*displs,MPI_REAL,
+       call mpi_allgatherv(gas_capnbf,grp_ng*gas_ncell,MPI_REAL,
+     &   grd_capnbf,grp_ng*counts,grp_ng*displs,MPI_REAL,
      &   MPI_COMM_WORLD,ierr)
       endif
 c-- line scattering opacity
@@ -890,23 +894,23 @@ c
 c
       subroutine allreduce_nlteh
 c     --------------------------
-      use nltehtrmod
+      use nltextrmod
       use timingmod
       implicit none
 ************************************************************************
-* Sum the H line resonance estimators over all ranks.
+* Sum the NLTE line resonance estimators over all ranks.
 ************************************************************************
       integer :: n
       real*8,allocatable :: snd2(:,:)
       real*8 :: t0,t1
       t0 = t_time()
-      n = size(nht_jbsum)
-      allocate(snd2(size(nht_jbsum,1),size(nht_jbsum,2)))
-      snd2 = nht_jbsum
-      call mpi_allreduce(snd2,nht_jbsum,n,MPI_REAL8,MPI_SUM,
+      n = size(nxt_jbsum)
+      allocate(snd2(size(nxt_jbsum,1),size(nxt_jbsum,2)))
+      snd2 = nxt_jbsum
+      call mpi_allreduce(snd2,nxt_jbsum,n,MPI_REAL8,MPI_SUM,
      &  MPI_COMM_WORLD,ierr)
-      snd2 = nht_jbcnt
-      call mpi_allreduce(snd2,nht_jbcnt,n,MPI_REAL8,MPI_SUM,
+      snd2 = nxt_jbcnt
+      call mpi_allreduce(snd2,nxt_jbcnt,n,MPI_REAL8,MPI_SUM,
      &  MPI_COMM_WORLD,ierr)
       deallocate(snd2)
       t1 = t_time()
