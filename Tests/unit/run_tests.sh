@@ -1,11 +1,13 @@
 #!/bin/bash
 # Build and run the unit tests of the CSM-physics branch.
 #   usage: [SL_BUILD=<cmake build dir>] [SL_ATOMS=<model-atom dir>] \
+#          [SL_ATOMS_SL=<super-level atoms> SL_ATOMS_FULL=<the same without>] \
 #          Tests/unit/run_tests.sh [work_dir]
 #   (needs gfortran, LAPACK/BLAS; test_nebular links against the objects of
 #   a SuperLite CMake build given by SL_BUILD, with mpif90 for MPI builds;
 #   the He tests of test_nltex and test_tebal need he1.atom and he2.atom in
-#   SL_ATOMS, made with Tools/make_nlte_atoms.sh)
+#   SL_ATOMS, made with Tools/make_nlte_atoms.sh; test_superlevel compares
+#   atoms with super-levels against the same atoms without, see its header)
 set -e
 src=$(cd "$(dirname "$0")/../.." && pwd)
 b=${1:-$(mktemp -d)}
@@ -25,7 +27,8 @@ build test_nlteh     "$src/nltehmod.f90"
 build test_nltex     $NLTEX
 build test_bbsob     "$src/physconstmod.f" "$src/bbsobmod.f90"
 build test_tebal     $NLTEX "$src/tebalmod.f90"
-tests="test_doppler test_compton test_nlteh test_nltex test_bbsob test_tebal"
+build test_superlevel $NLTEX
+tests="test_doppler test_compton test_nlteh test_nltex test_bbsob test_tebal test_superlevel"
 if [ -n "$SL_BUILD" ]; then
   objs=$(find "$SL_BUILD/CMakeFiles/superlite.dir" -name "*.o" ! -name "superlite.f90.o")
   LD=gfortran; command -v mpif90 >/dev/null && grep -q "USE_MPI:BOOL=ON" "$SL_BUILD/CMakeCache.txt" && LD=mpif90
@@ -39,7 +42,10 @@ fail=0
 for t in $tests; do
   echo "=== $t"
   args=""
-  case $t in test_nltex|test_tebal) [ -n "$SL_ATOMS" ] && args="$SL_ATOMS";; esac
+  case $t in
+    test_nltex|test_tebal) [ -n "$SL_ATOMS" ] && args="$SL_ATOMS";;
+    test_superlevel) [ -n "$SL_ATOMS_SL" ] && args="$SL_ATOMS_SL $SL_ATOMS_FULL";;
+  esac
   ./$t $args > $t.log 2>&1 || { fail=1; echo "$t FAILED"; }
   grep -v IEEE $t.log || true
 done

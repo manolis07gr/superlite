@@ -20,7 +20,11 @@ module nltexmod
 !    populations of the current iteration)
 ! The electron density is iterated with the ionization of all elements;
 ! electrons of the other elements (neoth) come from the LTE/nebular EOS.
-! Populations are fractions x of the element's number density.
+! Populations are fractions x of the element's number density, per state:
+! a level, or a super-level whose levels share its departure coefficient
+! (Boltzmann at T_e within it, shares nxa_wel); the rates between states
+! are the sums over their levels with these shares, transitions within a
+! super-level drop out.
 !-----------------------------------------------------------------------
   use nlteatommod
   use nltehmod, only:nlteh_beta,bplanck
@@ -31,6 +35,21 @@ module nltexmod
 !
   public :: nx_el_rates,nx_el_matrix,nx_el_step,nx_solve_cell,nx_lte,nx_kq,nx_jline
   public :: nx_beta_table,nx_beta,nx_cx_rates,nx_cx_heat
+!-- rates of one element at a temperature (nx_el_rates); s: element-local
+!-- state, k: element-local level
+  type,public :: nxrt
+     real*8,allocatable :: w(:)       !(nlv) share of level k in its state
+     real*8,allocatable :: wc(:)      !(nlv) share of level 1 of the next ion (the continuum of k) in its state
+     real*8,allocatable :: eps(:)     !(ns) state energies [erg] (mean of a super-level)
+     real*8,allocatable :: cq(:,:)    !(ns,ns) electron-impact s -> s' per particle in s [cm^3/s]
+     real*8,allocatable :: eup(:,:),edn(:,:) !(ns,ns) their energy taken from / given to the electrons [erg cm^3/s]
+     real*8,allocatable :: cil(:),c3l(:) !(nlv) collisional ionization of k [cm^3/s]; three-body into k per continuum particle [cm^6/s]
+     real*8,allocatable :: gaml(:)    !(nlv) photoionization of k [1/s]
+     real*8,allocatable :: gstl(:),arl(:) !(nlv) stimulated, spontaneous recombination into k per continuum particle [cm^3/s]
+!-- the same summed over the levels of each state (with the shares w; the
+!-- recombination coefficients per particle in the continuum state)
+     real*8,allocatable :: ci(:),c3(:),gam(:),gst(:),ar(:) !(ns)
+  end type nxrt
 !-- escape probability table of one cell: beta against ln(K/qs) on
 !-- [nx_blt0, nx_blt0 + (nx_nbt-1) nx_bdlt], qs = max(|dv/dr|,|v/r|)
   integer,parameter,public :: nx_nbt = 401
@@ -40,18 +59,20 @@ module nltexmod
 contains
 !
 !
-pure function nx_kq(k,nel,x) result(kq)
+pure function nx_kq(k,nel,x,w) result(kq)
 !-- Sobolev line strength K [1/s] of global line k (tau(mu) = K/|Q(mu)|);
-!-- x: populations of the line's element, nel its number density
+!-- x: state populations of the line's element, w: the shares of its
+!-- levels in their states (element-local), nel its number density
   integer,intent(in) :: k
-  real*8,intent(in) :: nel,x(:)
+  real*8,intent(in) :: nel,x(:),w(:)
   real*8 :: kq
-  integer :: i,l,u
+  integer :: i,l,u,lo
   i = nxa_lion(k)
   l = nxa_ion(i)%ll(nxa_lloc(k))
   u = nxa_ion(i)%lu(nxa_lloc(k))
+  lo = nxa_el(nxa_lel(k))%lvoff
   kq = nxa_fsob*nxa_lf(k)*(cc/nxa_lnu(k))*nel* &
-       (x(nxa_lsl(k)) - nxa_ion(i)%g(l)/nxa_ion(i)%g(u)*x(nxa_lsu(k)))
+       (x(nxa_lsl(k))*w(nxa_llv(k)-lo) - nxa_ion(i)%g(l)/nxa_ion(i)%g(u)*x(nxa_lsu(k))*w(nxa_luv(k)-lo))
 end function nx_kq
 !
 !
@@ -125,85 +146,105 @@ end function nx_jline
 subroutine nx_lte(temp,ne,x)
 !-----------------------------------------------------------------------
 ! Saha-Boltzmann populations of all elements at temp and ne (fractions of
-! each element; partition functions from the model levels).
+! each element; partition functions from the model levels; a super-level
+! holds the sum of its levels).
 !-----------------------------------------------------------------------
   real*8,intent(in) :: temp,ne
   real*8,intent(out) :: x(nxa_nst)
-  integer :: iel,j,i,k,o,ns
-  real*8 :: lw(nxa_nst),lmax,s,lsaha
+  integer :: iel,j,i,k,o,ns,lo,lv0
+  real*8 :: lmax,lsaha
+  real*8,allocatable :: lw(:)
 !
   do iel=1,nxa_nel
      o = nxa_el(iel)%xoff
      ns = nxa_el(iel)%ns
-!-- log of n_s/n_top: Saha-Boltzmann chain from the top ion down
-     lw(o+ns) = 0d0
+     lv0 = nxa_el(iel)%lvoff
+     allocate(lw(nxa_el(iel)%nlv))
+!-- log of n_k/n_top: Saha-Boltzmann chain from the top ion down
      lsaha = 0d0
      do j=nxa_el(iel)%nion,1,-1
         i = nxa_el(iel)%ion(j)
+        lo = nxa_ion(i)%lvoff - lv0
 !-- n(level k of ion j)/n(ground of next) = ne phi_k T^-1.5 sahac e^{h nu0/kT}
         do k=1,nxa_ion(i)%nlev
-           lw(o+nxa_ion(i)%soff+k) = lsaha + log(ne*nxa_ion(i)%g(k)/(2d0*nxa_ion(i)%gion)* &
+           lw(lo+k) = lsaha + log(ne*nxa_ion(i)%g(k)/(2d0*nxa_ion(i)%gion)* &
                 nxa_sahac*temp**(-1.5d0)) + hh*nxa_ion(i)%nu0(k)/(kb*temp)
         enddo
 !-- relative to the top: next ion's ground state
-        lsaha = lw(o+nxa_ion(i)%soff+1)
+        lsaha = lw(lo+1)
      enddo
-     lmax = maxval(lw(o+1:o+ns))
-     s = sum(exp(lw(o+1:o+ns)-lmax))
-     x(o+1:o+ns) = exp(lw(o+1:o+ns)-lmax)/s
+     lmax = max(maxval(lw),0d0)
+     x(o+1:o+ns) = 0d0
+     do k=1,nxa_el(iel)%nlv
+        x(o+nxa_lvs(lv0+k)) = x(o+nxa_lvs(lv0+k)) + exp(lw(k)-lmax)
+     enddo
+     x(o+ns) = exp(-lmax)
+     x(o+1:o+ns) = x(o+1:o+ns)/sum(x(o+1:o+ns))
+     deallocate(lw)
   enddo
 end subroutine nx_lte
 !
 !
-subroutine nx_el_rates(iel,temp,trad,ng,nug,dnug,jg,cq,ci,c3,gam,gst,ar)
+subroutine nx_el_rates(iel,temp,trad,ng,nug,dnug,jg,r)
 !-----------------------------------------------------------------------
-! Rate coefficients of element iel that do not depend on the populations,
-! indexed by the element-local state s (levels; the top state has none):
-!  cq(s,s')  electron-impact transition s -> s' (same ion) [cm^3/s]
-!  ci(s)     electron-impact ionization [cm^3/s]
-!  c3(s)     three-body recombination into s per ion [cm^6/s]
-!  gam(s)    photoionization rate [1/s]
-!  gst(s)    stimulated recombination coefficient into s [cm^3/s]
-!  ar(s)     spontaneous radiative recombination coefficient into s [cm^3/s]
+! Rate coefficients of element iel that do not depend on the populations
+! (type nxrt): the shares of the levels in their states, the state
+! energies, electron-impact rates (nxa_coll_el), and per level
+! photoionization and stimulated recombination by the Monte Carlo J of the
+! groups (below the group grid: J with the shape of B(trad)) and
+! spontaneous radiative recombination; then their sums per state.
 !-----------------------------------------------------------------------
   integer,intent(in) :: iel,ng
   real*8,intent(in) :: temp,trad,nug(ng),dnug(ng),jg(ng)
-  real*8,intent(out) :: cq(:,:),ci(:),c3(:),gam(:),gst(:),ar(:)
-  integer :: j,i,n,o,k,lv,ig,igred,isub
+  type(nxrt),intent(inout) :: r
+  integer :: j,i,k,lv,ig,igred,isub,ns,nl,lv0,kl,s
   integer,parameter :: nsub = 200
-  real*8 :: s,sst,nu,phit,numin,jred,dlt,xr,sig,hkt
-  real*8,allocatable :: qup(:,:),qdn(:,:),cion(:),c3b(:)
+  real*8 :: sm,sst,nu,phit,numin,jred,dlt,xr,sig,hkt
 !
-  cq = 0d0; ci = 0d0; c3 = 0d0; gam = 0d0; gst = 0d0; ar = 0d0
+  ns = nxa_el(iel)%ns
+  nl = nxa_el(iel)%nlv
+  lv0 = nxa_el(iel)%lvoff
+  if(allocated(r%w)) then
+     if(size(r%w)/=nl .or. size(r%eps)/=ns) deallocate(r%w,r%wc,r%eps,r%cq,r%eup,r%edn,r%cil,r%c3l, &
+          r%gaml,r%gstl,r%arl,r%ci,r%c3,r%gam,r%gst,r%ar)
+  endif
+  if(.not.allocated(r%w)) allocate(r%w(nl),r%wc(nl),r%eps(ns),r%cq(ns,ns),r%eup(ns,ns),r%edn(ns,ns), &
+       r%cil(nl),r%c3l(nl),r%gaml(nl),r%gstl(nl),r%arl(nl),r%ci(ns),r%c3(ns),r%gam(ns),r%gst(ns),r%ar(ns))
+!-- shares and energies
+  call nxa_wel(iel,temp,r%w)
+  do kl=1,nl
+     lv = nxa_lvcl(lv0+kl)
+     if(lv>0) then
+        r%wc(kl) = r%w(lv-lv0)
+     else
+        r%wc(kl) = 1d0
+     endif
+  enddo
+  call nxa_eps(iel,r%w,r%eps)
+!-- collisions
+  call nxa_coll_el(iel,temp,r%cq,r%eup,r%edn,r%cil,r%c3l)
+!-- radiative bound-free per level
   hkt = hh/(kb*temp)
   igred = minloc(nug,1)
   numin = nug(igred) - 0.5d0*dnug(igred)
   jred = jg(igred)
   do j=1,nxa_el(iel)%nion
      i = nxa_el(iel)%ion(j)
-     n = nxa_ion(i)%nlev
-     o = nxa_ion(i)%soff
-     allocate(qup(n,n),qdn(n,n),cion(n),c3b(n))
-     call nxa_coll(nxa_ion(i),temp,qup,qdn,cion,c3b)
-!-- qup(l,u) (l<u) and qdn(u,l) fill disjoint triangles: together s -> s'
-     cq(o+1:o+n,o+1:o+n) = qup + qdn
-     ci(o+1:o+n) = cion
-     c3(o+1:o+n) = c3b
-     deallocate(qup,qdn,cion,c3b)
-     do k=1,n
+     do k=1,nxa_ion(i)%nlev
         lv = nxa_ion(i)%lvoff + k
-        ar(o+k) = nxa_alpha(lv,temp)
+        kl = lv - lv0
+        r%arl(kl) = nxa_alpha(lv,temp)
 !-- photoionization and stimulated recombination (group integrals)
-        s = 0d0
+        sm = 0d0
         do ig=1,nxa_g1(lv)
-           s = s + jg(ig)*nxa_sgh(ig,lv)
+           sm = sm + jg(ig)*nxa_sgh(nxa_sgo(lv)+ig)
         enddo
 !-- stimulated recombination: from the edge up to h(nu-nu0) = 40 kT
         sst = 0d0
         do ig=nxa_g1(lv),1,-1
            nu = max(nug(ig),nxa_lvnu0(lv))
            if(hkt*(nu-nxa_lvnu0(lv)) > 40d0) exit
-           sst = sst + jg(ig)*nxa_sgh(ig,lv)*exp(-hkt*(nu-nxa_lvnu0(lv)))
+           sst = sst + jg(ig)*nxa_sgh(nxa_sgo(lv)+ig)*exp(-hkt*(nu-nxa_lvnu0(lv)))
         enddo
 !-- threshold below the group grid: J extrapolated with the shape of B(trad)
         if(nxa_lvnu0(lv) < numin .and. jred > 0d0) then
@@ -213,83 +254,105 @@ subroutine nx_el_rates(iel,temp,trad,ng,nug,dnug,jg,cq,ci,c3,gam,gst,ar)
                    (numin/nxa_lvnu0(lv))**(dble(isub-1)/nsub))
               xr = jred*bplanck(nu,trad)/max(bplanck(nug(igred),trad),1d-300)
               sig = nxa_sigma(nxa_ion(i),k,nu)
-              s = s + xr*sig/(hh*nu)*dlt
+              sm = sm + xr*sig/(hh*nu)*dlt
               sst = sst + xr*sig/(hh*nu)*dlt*exp(-min(hkt*(nu-nxa_lvnu0(lv)),700d0))
            enddo
         endif
         phit = nxa_lvphi(lv)*nxa_sahac*temp**(-1.5d0)
-        gam(o+k) = 4d0*pi*s
-        gst(o+k) = 4d0*pi*phit*sst
+        r%gaml(kl) = 4d0*pi*sm
+        r%gstl(kl) = 4d0*pi*phit*sst
      enddo
+  enddo
+!-- sums per state
+  r%ci = 0d0; r%c3 = 0d0; r%gam = 0d0; r%gst = 0d0; r%ar = 0d0
+  do kl=1,nl
+     s = nxa_lvs(lv0+kl)
+     r%ci(s) = r%ci(s) + r%w(kl)*r%cil(kl)
+     r%gam(s) = r%gam(s) + r%w(kl)*r%gaml(kl)
+     r%c3(s) = r%c3(s) + r%wc(kl)*r%c3l(kl)
+     r%gst(s) = r%gst(s) + r%wc(kl)*r%gstl(kl)
+     r%ar(s) = r%ar(s) + r%wc(kl)*r%arl(kl)
   enddo
 end subroutine nx_el_rates
 !
 !
-subroutine nx_el_matrix(iel,ne,cq,ci,c3,gam,gst,ar,jl,beta,nti,ntx,m)
+subroutine nx_el_matrix(iel,ne,r,jl,beta,nti,ntx,m)
 !-----------------------------------------------------------------------
 ! Rate matrix of element iel: m(s,s') = rate s' -> s per particle in s',
-! diagonal = -(total out).  jl, beta: incident intensity and escape
-! probability of the element's lines (in the order of the global list);
-! nti(s), ntx(s): non-thermal ionization of s and excitation from s into
-! the state's first allowed upper level (resonance line) [1/s].
+! diagonal = -(total out).  r: nx_el_rates; jl, beta: incident intensity
+! and escape probability of the element's lines (in the order of the
+! global list); nti(s), ntx(s): non-thermal ionization of s and excitation
+! from s (its lowest level) into the upper level of the strongest line
+! from there [1/s].  Lines within a super-level drop out.
 !-----------------------------------------------------------------------
   integer,intent(in) :: iel
-  real*8,intent(in) :: ne,cq(:,:),ci(:),c3(:),gam(:),gst(:),ar(:)
+  real*8,intent(in) :: ne
+  type(nxrt),intent(in) :: r
   real*8,intent(in) :: jl(:),beta(:),nti(:),ntx(:)
   real*8,intent(out) :: m(:,:)
-  integer :: j,i,n,o,k,kg,l,u,sc,ns,s,kl
+  integer :: j,i,o,k,kg,l,u,sc,ns,s,kl,lv0,k0,lo
 !
   ns = nxa_el(iel)%ns
-  m = 0d0
+  lv0 = nxa_el(iel)%lvoff
+  k0 = nxa_ion(nxa_el(iel)%ion(1))%loff
+!-- collisions
+  do l=1,ns
+     do u=1,ns
+        if(u/=l) m(u,l) = ne*r%cq(l,u)
+     enddo
+     m(l,l) = 0d0
+  enddo
   do j=1,nxa_el(iel)%nion
      i = nxa_el(iel)%ion(j)
-     n = nxa_ion(i)%nlev
      o = nxa_ion(i)%soff
-!-- collisions (all pairs of the ion)
-     do l=1,n
-        do u=1,n
-           if(u/=l) m(o+u,o+l) = m(o+u,o+l) + ne*cq(o+l,o+u)
-        enddo
-     enddo
+     lo = nxa_ion(i)%lvoff - lv0
 !-- lines
      do k=1,nxa_ion(i)%nlin
         kg = nxa_ion(i)%loff + k
-        kl = kg - nxa_ion(nxa_el(iel)%ion(1))%loff
-        l = o + nxa_ion(i)%ll(k)
-        u = o + nxa_ion(i)%lu(k)
-        m(u,l) = m(u,l) + beta(kl)*nxa_lblu(kg)*jl(kl)
-        m(l,u) = m(l,u) + beta(kl)*(nxa_la(kg) + nxa_lbul(kg)*jl(kl))
+        kl = kg - k0
+        l = nxa_lsl(kg)
+        u = nxa_lsu(kg)
+        if(l==u) cycle
+        m(u,l) = m(u,l) + r%w(nxa_llv(kg)-lv0)*beta(kl)*nxa_lblu(kg)*jl(kl)
+        m(l,u) = m(l,u) + r%w(nxa_luv(kg)-lv0)*beta(kl)*(nxa_la(kg) + nxa_lbul(kg)*jl(kl))
      enddo
 !-- two-photon
      do k=1,nxa_ion(i)%ntwo
-        m(o+nxa_ion(i)%tl(k),o+nxa_ion(i)%tu(k)) = m(o+nxa_ion(i)%tl(k),o+nxa_ion(i)%tu(k)) + &
-             nxa_ion(i)%ta(k)
+        l = o + nxa_ion(i)%sl(nxa_ion(i)%tl(k))
+        u = o + nxa_ion(i)%sl(nxa_ion(i)%tu(k))
+        if(l==u) cycle
+        m(l,u) = m(l,u) + r%w(lo+nxa_ion(i)%tu(k))*nxa_ion(i)%ta(k)
      enddo
-!-- bound-free with the ground state of the next ion (top state for the last)
-     if(j<nxa_el(iel)%nion) then
-        sc = nxa_ion(nxa_el(iel)%ion(j+1))%soff + 1
-     else
-        sc = ns
-     endif
-     do k=1,n
-        s = o + k
-        m(sc,s) = m(sc,s) + gam(s) + ne*ci(s) + nti(s)
-        m(s,sc) = m(s,sc) + ne*(ar(s) + gst(s)) + ne*ne*c3(s)
+!-- bound-free with the state of level 1 of the next ion (top state for the last)
+     sc = nxa_lvc(nxa_ion(i)%lvoff+1)
+     do s=o+1,o+nxa_ion(i)%nsl
+        m(sc,s) = m(sc,s) + r%gam(s) + ne*r%ci(s) + nti(s)
+        m(s,sc) = m(s,sc) + ne*(r%ar(s) + r%gst(s)) + ne*ne*r%c3(s)
      enddo
-!-- non-thermal excitation: into the upper level of the strongest line from s
-     do k=1,n
-        s = o + k
+!-- non-thermal excitation: from the lowest level of s into the upper level
+!-- of its strongest line
+     do s=o+1,o+nxa_ion(i)%nsl
         if(ntx(s) <= 0d0) cycle
+        l = 0
+        do k=1,nxa_ion(i)%nlev
+           if(o+nxa_ion(i)%sl(k)==s) then
+              l = k
+              exit
+           endif
+        enddo
         u = 0
         do kl=1,nxa_ion(i)%nlin
-           if(nxa_ion(i)%ll(kl)/=k) cycle
+           if(nxa_ion(i)%ll(kl)/=l) cycle
            if(u==0) then
               u = kl
            elseif(nxa_ion(i)%f(kl) > nxa_ion(i)%f(u)) then
               u = kl
            endif
         enddo
-        if(u>0) m(o+nxa_ion(i)%lu(u),s) = m(o+nxa_ion(i)%lu(u),s) + ntx(s)
+        if(u>0) then
+           u = o + nxa_ion(i)%sl(nxa_ion(i)%lu(u))
+           if(u/=s) m(u,s) = m(u,s) + ntx(s)
+        endif
      enddo
   enddo
   do s=1,ns
@@ -299,7 +362,7 @@ subroutine nx_el_matrix(iel,ne,cq,ci,c3,gam,gst,ar,jl,beta,nti,ntx,m)
 end subroutine nx_el_matrix
 !
 !
-subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,cq,ci,c3,gam,gst,ar,nti,ntx,it,x,beta,d,ierr, &
+subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
      ncx,cxf,cxt,cxr)
 !-----------------------------------------------------------------------
 ! One iteration for the populations x of element iel (number density nel)
@@ -312,7 +375,8 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,cq,ci,c3,gam,gst,ar,nti,ntx,it,x,
 !-----------------------------------------------------------------------
   integer,intent(in) :: iel,it
   real*8,intent(in) :: nel,ne,qb,qv,btab(0:nx_nbt),jl(:)
-  real*8,intent(in) :: cq(:,:),ci(:),c3(:),gam(:),gst(:),ar(:),nti(:),ntx(:)
+  type(nxrt),intent(in) :: r
+  real*8,intent(in) :: nti(:),ntx(:)
   real*8,intent(inout) :: x(:)
   real*8,intent(out) :: beta(:),d
   integer,intent(out) :: ierr
@@ -329,9 +393,9 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,cq,ci,c3,gam,gst,ar,nti,ntx,it,x,
   k0 = nxa_ion(nxa_el(iel)%ion(1))%loff
   do k=1,nl
      kg = k0 + k
-     beta(k) = nx_beta(nx_kq(kg,nel,x),qb,qv,btab)
+     beta(k) = nx_beta(nx_kq(kg,nel,x,r%w),qb,qv,btab)
   enddo
-  call nx_el_matrix(iel,ne,cq,ci,c3,gam,gst,ar,jl,beta,nti,ntx,m)
+  call nx_el_matrix(iel,ne,r,jl,beta,nti,ntx,m)
   if(present(ncx)) then
      do k=1,ncx
         m(cxt(k),cxf(k)) = m(cxt(k),cxf(k)) + cxr(k)
@@ -394,15 +458,12 @@ subroutine nx_solve_cell(temp,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx
   integer,intent(in),optional :: maxit
   integer :: iel,ns,o,l0,l1,it,ie,k,ncx,mit
   real*8 :: dtol
-  real*8 :: neold,nenew,d,dmax,dne,dold,jl(nxa_nlin),btab(0:nx_nbt)
+  real*8 :: neold,nenew,d,dmax,dne,dold,jl(nxa_nlin),btab(0:nx_nbt),wg(nxa_nlv)
   integer,parameter :: mcx = 4096
   integer :: cxf(mcx),cxt(mcx)
   real*8 :: cxr(mcx)
   logical :: lsol(nxa_nel)
-  type rt
-     real*8,allocatable :: cq(:,:),ci(:),c3(:),gam(:),gst(:),ar(:)
-  end type rt
-  type(rt) :: r(nxa_nel)
+  type(nxrt) :: r(nxa_nel)
 !
   ierr = 0
   beta = 1d0
@@ -413,12 +474,10 @@ subroutine nx_solve_cell(temp,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx
   mit = 300
   if(present(maxit)) mit = maxit
   call nx_beta_table(qb,qv,btab)
+  call nxa_weights(temp,wg)
   do iel=1,nxa_nel
      if(.not.lsol(iel)) cycle
-     ns = nxa_el(iel)%ns
-     allocate(r(iel)%cq(ns,ns),r(iel)%ci(ns),r(iel)%c3(ns),r(iel)%gam(ns),r(iel)%gst(ns),r(iel)%ar(ns))
-     call nx_el_rates(iel,temp,trad,ng,nug,dnug,jg,r(iel)%cq,r(iel)%ci,r(iel)%c3,r(iel)%gam, &
-          r(iel)%gst,r(iel)%ar)
+     call nx_el_rates(iel,temp,trad,ng,nug,dnug,jg,r(iel))
   enddo
   do k=1,nxa_nlin
      jl(k) = nx_jline(k,ng,nug,jg,jb(k),ljb(k))
@@ -435,9 +494,8 @@ subroutine nx_solve_cell(temp,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx
         l1 = nxa_ion(nxa_el(iel)%ion(nxa_el(iel)%nion))%loff + &
              nxa_ion(nxa_el(iel)%ion(nxa_el(iel)%nion))%nlin
         ncx = 0
-        if(nxa_ncx>0) call nx_cx_rates(iel,temp,nel,x,ncx,cxf,cxt,cxr)
-        call nx_el_step(iel,nel(iel),ne,qb,qv,btab,jl(l0:l1), &
-             r(iel)%cq,r(iel)%ci,r(iel)%c3,r(iel)%gam,r(iel)%gst,r(iel)%ar, &
+        if(nxa_ncx>0) call nx_cx_rates(iel,temp,nel,x,wg,ncx,cxf,cxt,cxr)
+        call nx_el_step(iel,nel(iel),ne,qb,qv,btab,jl(l0:l1),r(iel), &
              nti(o+1:o+ns),ntx(o+1:o+ns),it,x(o+1:o+ns),beta(l0:l1),d,ie, &
              ncx,cxf,cxt,cxr)
         if(ie/=0) then
@@ -472,7 +530,7 @@ contains
   end function chg
 end subroutine nx_solve_cell
 !
-subroutine cx_reaction(j,temp,nel,x,af,ar,np,w)
+subroutine cx_reaction(j,temp,nel,x,wg,af,ar,np,w)
 !-----------------------------------------------------------------------
 ! Charge-exchange reaction j at temperature temp: forward and reverse rate
 ! coefficients af, ar [cm^3/s], participant densities np(1:4) [cm^-3] and
@@ -480,32 +538,36 @@ subroutine cx_reaction(j,temp,nel,x,af,ar,np,w)
 ! reverse rate from LTE, n_A n_B/(n_C n_D) = G_A G_B/(G_C G_D)
 ! exp((chi_B - chi_C)/kT), G = sum g exp(-E/kT) over the term (E above the
 ! ion's ground level; the top state has g = gtop), chi the ionization
-! energies of the ions of B and C.
+! energies of the ions of B and C.  wg: shares of the levels in their
+! states (nxa_weights).
 !-----------------------------------------------------------------------
   integer,intent(in) :: j
-  real*8,intent(in) :: temp,nel(nxa_nel),x(nxa_nst)
+  real*8,intent(in) :: temp,nel(nxa_nel),x(nxa_nst),wg(nxa_nlv)
   real*8,intent(out) :: af,ar,np(4),w(nxa_cxml,4)
-  integer :: k,l,m,ie,io,lv
+  integer :: k,l,ie,io,lv,lo,kk
   real*8 :: kt,g(4),emin(4),ex
   kt = kb*temp
   do k=1,4
      ie = nxa_cx(j)%el(k)
      io = nxa_cx(j)%ion(k)
+     lo = nxa_el(ie)%lvoff
      emin(k) = 0d0
-     if(io>0) emin(k) = minval(nxa_ion(io)%e(nxa_cx(j)%s(1:nxa_cx(j)%nl(k),k)-nxa_ion(io)%soff))
      g(k) = 0d0
      np(k) = 0d0
-     do l=1,nxa_cx(j)%nl(k)
-        m = nxa_cx(j)%s(l,k)
-        if(io>0) then
-           lv = m - nxa_ion(io)%soff
-           w(l,k) = nxa_ion(io)%g(lv)*exp(-(nxa_ion(io)%e(lv)-emin(k))/kt)
-        else
-           w(l,k) = nxa_el(ie)%gtop
-        endif
-        g(k) = g(k) + w(l,k)
-        np(k) = np(k) + nel(ie)*x(nxa_el(ie)%xoff+m)
-     enddo
+     if(io>0) then
+        kk = nxa_ion(io)%lvoff - lo
+        emin(k) = minval(nxa_ion(io)%e(nxa_cx(j)%s(1:nxa_cx(j)%nl(k),k)-kk))
+        do l=1,nxa_cx(j)%nl(k)
+           lv = nxa_cx(j)%s(l,k)
+           w(l,k) = nxa_ion(io)%g(lv-kk)*exp(-(nxa_ion(io)%e(lv-kk)-emin(k))/kt)
+           g(k) = g(k) + w(l,k)
+           np(k) = np(k) + nel(ie)*x(nxa_el(ie)%xoff+nxa_lvs(lo+lv))*wg(lo+lv)
+        enddo
+     else
+        w(1,k) = nxa_el(ie)%gtop
+        g(k) = w(1,k)
+        np(k) = nel(ie)*x(nxa_el(ie)%xoff+nxa_el(ie)%ns)
+     endif
      w(1:nxa_cx(j)%nl(k),k) = w(1:nxa_cx(j)%nl(k),k)/g(k)
   enddo
   af = nxa_cx_coef(j,temp)
@@ -515,15 +577,16 @@ subroutine cx_reaction(j,temp,nel,x,af,ar,np,w)
 end subroutine cx_reaction
 !
 !
-subroutine nx_cx_rates(iel,temp,nel,x,n,sf,st,rt)
+subroutine nx_cx_rates(iel,temp,nel,x,wg,n,sf,st,rt)
 !-----------------------------------------------------------------------
 ! Charge-exchange transitions of element iel with the populations x of
-! the partner elements: n transitions sf -> st at the rates rt per
-! particle in sf [1/s].  Products are distributed over the levels of a
-! term with Boltzmann weights.
+! the partner elements: n transitions sf -> st (element-local states) at
+! the rates rt per particle in sf [1/s].  Products are distributed over
+! the levels of a term with Boltzmann weights.  wg: shares of the levels
+! in their states (nxa_weights).
 !-----------------------------------------------------------------------
   integer,intent(in) :: iel
-  real*8,intent(in) :: temp,nel(nxa_nel),x(nxa_nst)
+  real*8,intent(in) :: temp,nel(nxa_nel),x(nxa_nst),wg(nxa_nlv)
   integer,intent(out) :: n,sf(:),st(:)
   real*8,intent(out) :: rt(:)
   integer :: j
@@ -531,7 +594,7 @@ subroutine nx_cx_rates(iel,temp,nel,x,n,sf,st,rt)
   n = 0
   do j=1,nxa_ncx
      if(nxa_cx(j)%el(1)/=iel .and. nxa_cx(j)%el(2)/=iel) cycle
-     call cx_reaction(j,temp,nel,x,af,ar,np,w)
+     call cx_reaction(j,temp,nel,x,wg,af,ar,np,w)
      if(nxa_cx(j)%el(1)==iel) then
         call add(1,3,af*np(2))     !A -> C: alpha_f n_B
         call add(3,1,ar*np(4))     !C -> A: alpha_r n_D
@@ -545,29 +608,41 @@ contains
     integer,intent(in) :: kf,kd
     real*8,intent(in) :: r
     integer :: a,b
+    real*8 :: wa
     if(r<=0d0) return
     do a=1,nxa_cx(j)%nl(kf)
+       wa = 1d0
+       if(nxa_cx(j)%ion(kf)>0) wa = wg(nxa_el(iel)%lvoff+nxa_cx(j)%s(a,kf))
        do b=1,nxa_cx(j)%nl(kd)
           if(n>=size(sf)) stop 'nx_cx_rates: too many transitions'
           n = n + 1
-          sf(n) = nxa_cx(j)%s(a,kf)
-          st(n) = nxa_cx(j)%s(b,kd)
-          rt(n) = r*w(b,kd)
+          sf(n) = cxstate(kf,a)
+          st(n) = cxstate(kd,b)
+          rt(n) = r*w(b,kd)*wa
        enddo
     enddo
   end subroutine add
+  integer function cxstate(kk,a)
+!-- element-local state of level a of participant kk
+    integer,intent(in) :: kk,a
+    if(nxa_cx(j)%ion(kk)>0) then
+       cxstate = nxa_lvs(nxa_el(iel)%lvoff+nxa_cx(j)%s(a,kk))
+    else
+       cxstate = nxa_el(iel)%ns
+    endif
+  end function cxstate
 end subroutine nx_cx_rates
 !
 !
-function nx_cx_heat(temp,nel,x) result(h)
+function nx_cx_heat(temp,nel,x,wg) result(h)
 !-- net heating by charge exchange [erg/s/cm^3]: (forward - reverse) rate
-!-- times the energy released by the forward reaction
-  real*8,intent(in) :: temp,nel(nxa_nel),x(nxa_nst)
+!-- times the energy released by the forward reaction; wg: nxa_weights
+  real*8,intent(in) :: temp,nel(nxa_nel),x(nxa_nst),wg(nxa_nlv)
   real*8 :: h,af,ar,np(4),w(nxa_cxml,4)
   integer :: j
   h = 0d0
   do j=1,nxa_ncx
-     call cx_reaction(j,temp,nel,x,af,ar,np,w)
+     call cx_reaction(j,temp,nel,x,wg,af,ar,np,w)
      h = h + (af*np(1)*np(2) - ar*np(3)*np(4))*nxa_cx(j)%q
   enddo
 end function nx_cx_heat

@@ -4,7 +4,12 @@
 #   usage: Tools/make_nlte_atoms.sh <CMFGEN atomic dir> <output dir> [ions...]
 # ions: names as in the table below (default: all), e.g.  he1 he2 c2 c3
 # Each line of the table: name Z stage directory nlev (levels kept, lowest
-# first) and, for older data sets, the osc/phot/col file names.
+# first) and, for older data sets, the osc/phot/col file names.  nlev may be
+# N:file, with file the CMFGEN super-level assignment (F_TO_S) of the data
+# set: the atom then has super-levels.  The environment variables
+#   SL_TABLE  a file with a table of the same format replacing the one below
+#   GFMIN     keep only the lines with g_l f >= GFMIN
+# select other atoms.
 set -e
 here=$(cd "$(dirname "$0")" && pwd)
 A=${1:?CMFGEN atomic data directory (the one containing HYD, HE, CARB, ...)}
@@ -62,6 +67,7 @@ ni4 28 4 NICK/IV/19apr23 60
 ni5 28 5 NICK/V/19apr23  120
 ni6 28 6 NICK/VI/19apr23 140
 "
+[ -n "$SL_TABLE" ] && table=$(cat "$SL_TABLE")
 want=" $* "
 roman="I II III IV V VI VII VIII IX X"
 echo "$table" | while read -r name z stage dir nlev osc phot col; do
@@ -69,6 +75,12 @@ echo "$table" | while read -r name z stage dir nlev osc phot col; do
   if [ $# -gt 0 ] && [[ "$want" != *" $name "* ]]; then continue; fi
   d="$A/$dir"
   osc=${osc:-osc_data}; phot=${phot:-phot_data_A}; col=${col:-col_data}
+  sl=()
+  if [[ "$nlev" == *:* ]]; then
+    sl=(--ftos "$d/${nlev#*:}")
+    nlev=${nlev%%:*}
+  fi
+  [ -n "$GFMIN" ] && sl+=(--gfmin "$GFMIN")
 # further photoionization routes (to excited terms of the next ion) and the
 # levels of the next ion (same data date if present, else the latest)
   extra=()
@@ -84,7 +96,7 @@ echo "$table" | while read -r name z stage dir nlev osc phot col; do
   fi
   python3 -I "$here/cmfgen2superlite_atom.py" --z "$z" --ion "$stage" \
     --osc "$d/$osc" --phot "$d/$phot" --col "$d/$col" --hyd "$A/HYD/I/5dec96" \
-    "${extra[@]}" --nlev "$nlev" -o "$out/$name.atom" 2>&1 | grep -v "^note: [0-9]* photo\|^note: no "
+    "${extra[@]}" "${sl[@]}" --nlev "$nlev" -o "$out/$name.atom" 2>&1 | grep -v "^note: [0-9]* photo\|^note: no "
 done
 # charge-exchange reactions among the NLTE elements (SuperLite reads
 # chgexch.dat from the model-atom directory, see in_nltex_chgexch)

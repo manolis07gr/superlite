@@ -28,6 +28,15 @@ module nltextrmod
 ! cooling rates.  Packets keep their comoving energy, so the scheme
 ! conserves energy exactly.
 !
+! Super-levels (states of several levels, Boltzmann at T_e within them):
+! the macro-atom jumps between states with the rates summed over their
+! levels; the energy of a state is the mean of its levels.  The energy
+! emitted or given to the electrons by a transition is that of the level
+! pair (line h nu, ionization energy, collisional energy exchange), the
+! jump keeps the rest: weight (rate x energy of the state - emitted).  A
+! line within a super-level is thermal (source function B(T_e)): absorption
+! goes to the k-packet, which emits it at the rate n_u A beta h nu.
+!
 ! The random walk is an absorbing Markov chain.  Per element and cell the
 ! fundamental matrix N = (I-Q)^-1 of its states gives, for each start state,
 ! the probabilities to de-activate from each state (or to enter the thermal
@@ -90,8 +99,15 @@ module nltextrmod
   integer,allocatable,public :: nxt_chst(:)   !(nst+1) first channel of each (global) state
   integer,allocatable,public :: nxt_chk(:),nxt_chi(:) !(nch) kind (em_*), index (line, level, two-photon)
   real*8,allocatable,public :: nxt_chcum(:,:) !(nch,ncell) cumulative within each state
-  integer,public :: nxt_nko = 0               !k-packet outcomes: thermal, bf cooling per level, exit per state
+  integer,public :: nxt_nko = 0               !k-packet outcomes: thermal, bf cooling per level, exit per
+                                              !state, lines within super-levels
   real*8,allocatable,public :: nxt_kcum(:,:)  !(nko,ncell)
+  integer,allocatable,public :: nxt_lch(:)    !(nlin) emission channel of the line (0: within a super-level)
+  integer,allocatable,public :: nxt_bch(:)    !(nlv) recombination channel of the level
+  integer,allocatable,public :: nxt_2pch(:)   !(n2p) channel of the two-photon transition
+  integer,public :: nxt_nin = 0               !lines within super-levels
+  integer,allocatable,public :: nxt_inl(:)    !(nin) their global index
+  real*8,allocatable,public :: nxt_w(:,:)     !(nlv,ncell) share of each level in its state (nxa_weights)
   integer,public :: nxt_n2p = 0               !two-photon transitions
   integer,allocatable,public :: nxt_2pion(:),nxt_2pk(:)
   real*8,allocatable,public :: nxt_2pnu(:)
@@ -149,7 +165,8 @@ subroutine nxt_init(ncell,gncell,ng,wlg,nfile,files,hnlev)
   nxt_ncell = ncell
   nxt_ng = ng
   nst = nxa_nst
-  allocate(nxt_x(nst,ncell),nxt_nel(nxa_nel,ncell),nxt_ne(ncell))
+  allocate(nxt_x(nst,ncell),nxt_nel(nxa_nel,ncell),nxt_ne(ncell),nxt_w(nxa_nlv,ncell))
+  nxt_w = 1d0
   allocate(nxt_kq(nxa_nlin,ncell),nxt_beta(nxa_nlin,ncell))
   allocate(nxt_jg(ng,ncell),nxt_jb(nxa_nlin,ncell),nxt_ljb(nxa_nlin,ncell))
   allocate(nxt_jbsum(nxa_nlin,ncell),nxt_jbcnt(nxa_nlin,ncell))
@@ -169,12 +186,18 @@ subroutine nxt_init(ncell,gncell,ng,wlg,nfile,files,hnlev)
   enddo
   do k=1,nxa_nlin
      nxt_lgrp(k) = 0
-     do ig=1,ng
-        if(nxa_lwl(k) >= wlg(ig) .and. nxa_lwl(k) < wlg(ig+1)) then
-           nxt_lgrp(k) = ig
-           exit
+     if(nxa_lwl(k) < wlg(1) .or. nxa_lwl(k) >= wlg(ng+1)) cycle
+     i = 1
+     j = ng + 1
+     do while(j-i>1)
+        n = (i+j)/2
+        if(wlg(n) <= nxa_lwl(k)) then
+           i = n
+        else
+           j = n
         endif
      enddo
+     nxt_lgrp(k) = i
   enddo
 !-- all lines active until the first tables are built
   nxt_nact = nxa_nlin
@@ -205,17 +228,25 @@ subroutine nxt_init(ncell,gncell,ng,wlg,nfile,files,hnlev)
         nxt_2pnu(n) = (nxa_ion(i)%e(nxa_ion(i)%tu(k)) - nxa_ion(i)%e(nxa_ion(i)%tl(k)))/hh
      enddo
   enddo
-!-- emission channels of each global state: lines (upper state), two-photon
-!-- (upper state), recombination (continuum state)
-  allocate(cnt(nst+1))
+!-- emission channels of each global state: lines (upper state; not those
+!-- within a super-level), two-photon (upper state), recombination
+!-- (continuum state)
+  allocate(cnt(nst+1),nxt_lch(nxa_nlin),nxt_bch(nxa_nlv),nxt_2pch(nxt_n2p))
   cnt = 0
+  nxt_nin = 0
   do k=1,nxa_nlin
+     if(nxa_lsl(k)==nxa_lsu(k)) then
+        nxt_nin = nxt_nin + 1
+        cycle
+     endif
      is = nxa_el(nxa_lel(k))%xoff + nxa_lsu(k)
      cnt(is) = cnt(is) + 1
   enddo
   do n=1,nxt_n2p
      i = nxt_2pion(n)
-     is = nxa_el(nxa_ion(i)%el)%xoff + nxa_ion(i)%soff + nxa_ion(i)%tu(nxt_2pk(n))
+     if(nxa_ion(i)%sl(nxa_ion(i)%tl(nxt_2pk(n)))==nxa_ion(i)%sl(nxa_ion(i)%tu(nxt_2pk(n)))) &
+          stop 'nxt_init: two-photon transition within a super-level'
+     is = nxa_el(nxa_ion(i)%el)%xoff + nxa_ion(i)%soff + nxa_ion(i)%sl(nxa_ion(i)%tu(nxt_2pk(n)))
      cnt(is) = cnt(is) + 1
   enddo
   do lv=1,nxa_nlv
@@ -228,23 +259,32 @@ subroutine nxt_init(ncell,gncell,ng,wlg,nfile,files,hnlev)
      nxt_chst(s+1) = nxt_chst(s) + cnt(s)
   enddo
   nxt_nch = nxt_chst(nst+1) - 1
-  allocate(nxt_chk(nxt_nch),nxt_chi(nxt_nch),nxt_chcum(nxt_nch,ncell))
+  allocate(nxt_chk(nxt_nch),nxt_chi(nxt_nch),nxt_chcum(nxt_nch,ncell),nxt_inl(nxt_nin))
   nxt_chcum = 1d0
   cnt = 0
+  nxt_nin = 0
   do k=1,nxa_nlin
+     if(nxa_lsl(k)==nxa_lsu(k)) then
+        nxt_nin = nxt_nin + 1
+        nxt_inl(nxt_nin) = k
+        nxt_lch(k) = 0
+        cycle
+     endif
      is = nxa_el(nxa_lel(k))%xoff + nxa_lsu(k)
      j = nxt_chst(is) + cnt(is)
      cnt(is) = cnt(is) + 1
      nxt_chk(j) = em_line
      nxt_chi(j) = k
+     nxt_lch(k) = j
   enddo
   do n=1,nxt_n2p
      i = nxt_2pion(n)
-     is = nxa_el(nxa_ion(i)%el)%xoff + nxa_ion(i)%soff + nxa_ion(i)%tu(nxt_2pk(n))
+     is = nxa_el(nxa_ion(i)%el)%xoff + nxa_ion(i)%soff + nxa_ion(i)%sl(nxa_ion(i)%tu(nxt_2pk(n)))
      j = nxt_chst(is) + cnt(is)
      cnt(is) = cnt(is) + 1
      nxt_chk(j) = em_2ph
      nxt_chi(j) = n
+     nxt_2pch(n) = j
   enddo
   do lv=1,nxa_nlv
      is = nxa_el(nxa_lvel(lv))%xoff + nxa_lvc(lv)
@@ -252,9 +292,11 @@ subroutine nxt_init(ncell,gncell,ng,wlg,nfile,files,hnlev)
      cnt(is) = cnt(is) + 1
      nxt_chk(j) = em_bf
      nxt_chi(j) = lv
+     nxt_bch(lv) = j
   enddo
-!-- k-packet outcomes: thermal, bf cooling per level, exit per global state
-  nxt_nko = 1 + nxa_nlv + nst
+!-- k-packet outcomes: thermal, bf cooling per level, exit per global state,
+!-- lines within super-levels
+  nxt_nko = 1 + nxa_nlv + nst + nxt_nin
   allocate(nxt_kcum(nxt_nko,ncell))
   nxt_kcum = 1d0
 !-- bf emission sampling: running maximum of sigma u^3 along each table
@@ -319,7 +361,7 @@ contains
        endif
     enddo
     s2 = 0
-    if(ku>0) s2 = nxa_el(je)%xoff + nxa_ion(ii)%lu(ku)
+    if(ku>0) s2 = nxa_el(je)%xoff + nxa_ion(ii)%soff + nxa_ion(ii)%sl(nxa_ion(ii)%lu(ku))
     sc = nxa_el(je)%xoff + nxa_lvc(nxa_ion(ii)%lvoff+1)
   end subroutine nt_targets
 end subroutine nxt_init
@@ -329,7 +371,10 @@ subroutine nxt_dealloc
 !-- free the cell arrays and tables (set up again by nxt_init)
   if(allocated(nxt_x)) deallocate(nxt_x,nxt_nel,nxt_ne,nxt_kq,nxt_beta,nxt_jg,nxt_jb,nxt_ljb, &
        nxt_jbsum,nxt_jbcnt,grd_capnbf,nxt_xloc,nxt_neloc,nxt_nelloc,nxt_neothloc,gas_capnbf, &
-       nxt_lgrp,nxt_isrt,nxt_nug,nxt_dnug,nxt_act,nxt_wlact)
+       nxt_lgrp,nxt_isrt,nxt_nug,nxt_dnug,nxt_act,nxt_wlact,nxt_w)
+  if(allocated(nxt_lch)) deallocate(nxt_lch,nxt_bch,nxt_2pch)
+  if(allocated(nxt_inl)) deallocate(nxt_inl)
+  nxt_nin = 0
   if(allocated(nxt_ecoff)) deallocate(nxt_ecoff,nxt_ecum)
   if(allocated(nxt_2pion)) deallocate(nxt_2pion,nxt_2pk,nxt_2pnu)
   if(allocated(nxt_chst)) deallocate(nxt_chst,nxt_chk,nxt_chi,nxt_chcum)
@@ -532,12 +577,12 @@ subroutine nxt_tables(ncell,tempinv,radtemp,capemitgrey,xarr,vxarr)
   integer,intent(in) :: ncell
   real*8,intent(in) :: tempinv(ncell),radtemp(ncell),capemitgrey(ncell)
   real*8,intent(in) :: xarr(ncell+1),vxarr(ncell+1)
-  integer :: ic,iel,ig,k,j,s,nfail,info,lv,l0,l1,ns,o,ko,ch0,ch1
+  integer :: ic,iel,ig,k,j,s,nfail,info,lv,l0,l1,ns,o,ko,ch0,ch1,lo,m
   real*8 :: t,ne,qb,qv,ww,wth
   real*8 :: jg(nxt_ng),jb(nxa_nlin),jl(nxa_nlin),btab(0:nx_nbt)
   logical :: ljb(nxa_nlin)
   real*8 :: kw(nxt_nko)            !k-packet: non-returning flows
-  real*8,allocatable :: cq(:,:),ci(:),c3(:),gam(:),gst(:),ar(:)
+  type(nxrt) :: r
   real*8,allocatable :: q(:,:),nn(:,:),tot(:),emt(:),kex(:),kin(:),chw(:)
   integer,allocatable :: ipiv(:)
 !
@@ -559,10 +604,14 @@ subroutine nxt_tables(ncell,tempinv,radtemp,capemitgrey,xarr,vxarr)
         ljb = .false.
      endif
      call nx_beta_table(qb,qv,btab)
+     call nxa_weights(t,nxt_w(:,ic))
      do k=1,nxa_nlin
         jl(k) = nx_jline(k,nxt_ng,nxt_nug,jg,jb(k),ljb(k))
-        o = nxa_el(nxa_lel(k))%xoff
-        nxt_kq(k,ic) = nx_kq(k,nxt_nel(nxa_lel(k),ic),nxt_x(o+1:o+nxa_el(nxa_lel(k))%ns,ic))
+        iel = nxa_lel(k)
+        o = nxa_el(iel)%xoff
+        lo = nxa_el(iel)%lvoff
+        nxt_kq(k,ic) = nx_kq(k,nxt_nel(iel,ic),nxt_x(o+1:o+nxa_el(iel)%ns,ic), &
+             nxt_w(lo+1:lo+nxa_el(iel)%nlv,ic))
         nxt_beta(k,ic) = nx_beta(nxt_kq(k,ic),qb,qv,btab)
      enddo
      if(nxt_tau0>0d0 .and. nxt_kha>0) then
@@ -578,21 +627,21 @@ subroutine nxt_tables(ncell,tempinv,radtemp,capemitgrey,xarr,vxarr)
      do iel=1,nxa_nel
         ns = nxa_el(iel)%ns
         o = nxa_el(iel)%xoff
-        allocate(cq(ns,ns),ci(ns),c3(ns),gam(ns),gst(ns),ar(ns))
+        lo = nxa_el(iel)%lvoff
         allocate(q(ns,ns),nn(ns,ns),tot(ns),emt(ns),kex(ns),kin(ns),ipiv(ns))
-        call nx_el_rates(iel,t,radtemp(ic),nxt_ng,nxt_nug,nxt_dnug,jg,cq,ci,c3,gam,gst,ar)
+        call nx_el_rates(iel,t,radtemp(ic),nxt_ng,nxt_nug,nxt_dnug,jg,r)
         l0 = nxa_ion(nxa_el(iel)%ion(1))%loff + 1
         l1 = nxa_ion(nxa_el(iel)%ion(nxa_el(iel)%nion))%loff + &
              nxa_ion(nxa_el(iel)%ion(nxa_el(iel)%nion))%nlin
         ch0 = nxt_chst(o+1)
         ch1 = nxt_chst(o+ns+1) - 1
         allocate(chw(ch0:ch1))
-        call el_chain(iel,ne,nxt_nel(iel,ic),nxt_x(o+1:o+ns,ic),cq,ci,c3,gam,gst,ar, &
+        call el_chain(iel,ne,nxt_nel(iel,ic),nxt_x(o+1:o+ns,ic),r, &
              jl(l0:l1),nxt_beta(l0:l1,ic),q,tot,emt,kex,kin,chw,ch0)
-!-- recombination cooling per level of this element
-        do lv=1,nxa_nlv
-           if(nxa_lvel(lv)/=iel) cycle
-           kw(1+lv) = nxt_nel(iel,ic)*nxt_x(o+nxa_lvc(lv),ic)*ne*nxa_rcool(lv,t)
+!-- recombination cooling per level of this element (from level 1 of the next ion)
+        do k=1,nxa_el(iel)%nlv
+           lv = lo + k
+           kw(1+lv) = nxt_nel(iel,ic)*nxt_x(o+nxa_lvc(lv),ic)*r%wc(k)*ne*nxa_rcool(lv,t)
         enddo
 !-- fundamental matrix N = (I-Q)^-1
         nn = 0d0
@@ -647,7 +696,15 @@ subroutine nxt_tables(ncell,tempinv,radtemp,capemitgrey,xarr,vxarr)
            endif
            if(nxt_chst(j+1)>nxt_chst(j)) nxt_chcum(nxt_chst(j+1)-1,ic) = 1d0
         enddo
-        deallocate(cq,ci,c3,gam,gst,ar,q,nn,tot,emt,kex,kin,ipiv,chw)
+        deallocate(q,nn,tot,emt,kex,kin,ipiv,chw)
+     enddo
+!-- lines within super-levels: thermal emission n_u A beta h nu
+     ko = 1 + nxa_nlv + nxa_nst
+     do m=1,nxt_nin
+        k = nxt_inl(m)
+        iel = nxa_lel(k)
+        kw(ko+m) = nxt_nel(iel,ic)*nxt_x(nxa_el(iel)%xoff+nxa_lsu(k),ic)*nxt_w(nxa_luv(k),ic)* &
+             nxa_la(k)*nxt_beta(k,ic)*hh*nxa_lnu(k)
      enddo
 !-- k-packet outcome distribution
      ww = 0d0
@@ -685,113 +742,119 @@ subroutine nxt_tables(ncell,tempinv,radtemp,capemitgrey,xarr,vxarr)
 end subroutine nxt_tables
 !
 !
-subroutine el_chain(iel,ne,nel,x,cq,ci,c3,gam,gst,ar,jl,beta,q,tot,emt,kex,kin,chw,ch0)
+subroutine el_chain(iel,ne,nel,x,r,jl,beta,q,tot,emt,kex,kin,chw,ch0)
 !-----------------------------------------------------------------------
 ! Macro-atom transition probabilities of element iel in cell ic, from the
-! energy-weighted rates (Lucy 2002): per state s with energy eps_s
-!  internal jump down to l:  (R_sl + C_sl) eps_l
-!  internal jump up to u:    (R_su + C_su) eps_s
-!  emission (to l):          R_sl (eps_s - eps_l)
-!  into the k-packet:        C_sl (eps_s - eps_l)
+! energy-weighted rates (Lucy 2002), per state s with energy eps_s (r%eps):
+!  a transition out of s with rate R that emits (or gives the electrons)
+!  the energy E: emission (k-packet) weight R E, internal jump R (eps_s - E)
+!  (Lucy: E = eps_s - eps_l for a downward jump to l, 0 upward), with E of
+!  the level pair: line h nu, ionization energy h nu_0, the collisional
+!  exchange (r%edn).
 ! normalized by their sum.  Out: q(s,s') jump probabilities, emt(s) and
 ! kex(s) total emission and k-packet probabilities of s, chw (channels of
 ! the element, from ch0) emission probabilities, kin(s) the k-packet
 ! entries into s (collisional cooling rates per volume), tot (scratch).
+! Lines within a super-level are not part of the macro-atom.
 !-----------------------------------------------------------------------
   integer,intent(in) :: iel,ch0
-  real*8,intent(in) :: ne,nel,x(:),cq(:,:),ci(:),c3(:),gam(:),gst(:),ar(:),jl(:),beta(:)
+  real*8,intent(in) :: ne,nel,x(:),jl(:),beta(:)
+  type(nxrt),intent(in) :: r
   real*8,intent(out) :: q(:,:),tot(:),emt(:),kex(:),kin(:),chw(ch0:)
-  integer :: ns,j,i,n,o,k,kg,kl,l,u,s,sc,lv,ch,g
-  real*8 :: eps(nxa_el(iel)%ns),r,gl,gu,cor
+  integer :: ns,j,i,o,k,kg,kl,l,u,s,sc,lv,ch,lv0,k0,lo,sl
+  real*8 :: eps(nxa_el(iel)%ns),rr,cor,hnu,chi,nl,nu_
 !
   ns = nxa_el(iel)%ns
-  eps = nxa_el(iel)%eps
-  g = nxa_el(iel)%xoff
+  eps = r%eps
+  lv0 = nxa_el(iel)%lvoff
+  k0 = nxa_ion(nxa_el(iel)%ion(1))%loff
   q = 0d0
   kex = 0d0
   kin = 0d0
   chw = 0d0
+!-- collisions between the states
+  do l=1,ns
+     do u=1,ns
+        if(u==l) cycle
+        rr = ne*r%cq(l,u)
+        if(rr<=0d0) cycle
+        q(l,u) = q(l,u) + max(rr*eps(l) - ne*r%edn(l,u),0d0)
+        kex(l) = kex(l) + ne*r%edn(l,u)
+        kin(u) = kin(u) + nel*x(l)*ne*r%eup(l,u)
+     enddo
+  enddo
   do j=1,nxa_el(iel)%nion
      i = nxa_el(iel)%ion(j)
-     n = nxa_ion(i)%nlev
      o = nxa_ion(i)%soff
-!-- collisions within the ion
-     do l=1,n
-        do u=1,n
-           if(u==l) cycle
-           r = ne*cq(o+l,o+u)
-           if(r<=0d0) cycle
-           if(eps(o+u)>eps(o+l)) then
-!-- excitation: jump up; the k-packet excites it at the cooling rate
-              q(o+l,o+u) = q(o+l,o+u) + r*eps(o+l)
-              kin(o+u) = kin(o+u) + nel*x(o+l)*r*(eps(o+u) - eps(o+l))
-           else
-!-- de-excitation: jump down and into the k-packet
-              q(o+l,o+u) = q(o+l,o+u) + r*eps(o+u)
-              kex(o+l) = kex(o+l) + r*(eps(o+l) - eps(o+u))
-           endif
-        enddo
-     enddo
+     lo = nxa_ion(i)%lvoff - lv0
 !-- lines: emission and jump down, net absorption up
      do k=1,nxa_ion(i)%nlin
         kg = nxa_ion(i)%loff + k
-        kl = kg - nxa_ion(nxa_el(iel)%ion(1))%loff
-        l = o + nxa_ion(i)%ll(k)
-        u = o + nxa_ion(i)%lu(k)
-        r = nxa_la(kg)*beta(kl)
-        q(u,l) = q(u,l) + r*eps(l)
-        ch = find_ch(g+u,em_line,kg)
-        chw(ch) = chw(ch) + r*(eps(u) - eps(l))
-        gl = nxa_ion(i)%g(nxa_ion(i)%ll(k))
-        gu = nxa_ion(i)%g(nxa_ion(i)%lu(k))
+        kl = kg - k0
+        l = nxa_lsl(kg)
+        u = nxa_lsu(kg)
+        if(l==u) cycle
+        hnu = hh*nxa_lnu(kg)
+        rr = nxa_la(kg)*beta(kl)*r%w(nxa_luv(kg)-lv0)
+        q(u,l) = q(u,l) + max(rr*(eps(u) - hnu),0d0)
+        ch = nxt_lch(kg)
+        chw(ch) = chw(ch) + rr*hnu
+        nl = x(l)*r%w(nxa_llv(kg)-lv0)
         cor = 1d0
-        if(x(l) > 0d0) cor = max(0d0,1d0 - gl*x(u)/(gu*x(l)))
-        q(l,u) = q(l,u) + beta(kl)*nxa_lblu(kg)*jl(kl)*cor*eps(l)
+        if(nl > 0d0) cor = max(0d0,1d0 - nxa_ion(i)%g(nxa_ion(i)%ll(k))*x(u)*r%w(nxa_luv(kg)-lv0)/ &
+             (nxa_ion(i)%g(nxa_ion(i)%lu(k))*nl))
+        q(l,u) = q(l,u) + r%w(nxa_llv(kg)-lv0)*beta(kl)*nxa_lblu(kg)*jl(kl)*cor*eps(l)
      enddo
 !-- two-photon
      do k=1,nxa_ion(i)%ntwo
-        l = o + nxa_ion(i)%tl(k)
-        u = o + nxa_ion(i)%tu(k)
-        r = nxa_ion(i)%ta(k)
-        q(u,l) = q(u,l) + r*eps(l)
-        ch = find_ch(g+u,em_2ph,two_index(i,k))
-        chw(ch) = chw(ch) + r*(eps(u) - eps(l))
+        l = o + nxa_ion(i)%sl(nxa_ion(i)%tl(k))
+        u = o + nxa_ion(i)%sl(nxa_ion(i)%tu(k))
+        hnu = nxa_ion(i)%e(nxa_ion(i)%tu(k)) - nxa_ion(i)%e(nxa_ion(i)%tl(k))
+        rr = nxa_ion(i)%ta(k)*r%w(lo+nxa_ion(i)%tu(k))
+        q(u,l) = q(u,l) + max(rr*(eps(u) - hnu),0d0)
+        ch = nxt_2pch(two_index(i,k))
+        chw(ch) = chw(ch) + rr*hnu
      enddo
-!-- bound-free with the continuum state
-     if(j<nxa_el(iel)%nion) then
-        sc = nxa_ion(nxa_el(iel)%ion(j+1))%soff + 1
-     else
-        sc = ns
-     endif
-     do k=1,n
-        s = o + k
-        lv = nxa_ion(i)%lvoff + k
+!-- bound-free with the continuum state (level 1 of the next ion)
+     sc = nxa_lvc(nxa_ion(i)%lvoff+1)
+     do s=o+1,o+nxa_ion(i)%nsl
 !-- up: photoionization less stimulated recombination, collisional ionization
-        r = gam(s)
-        if(x(s) > 0d0) r = max(0d0, r - ne*gst(s)*x(sc)/x(s))
-        q(s,sc) = q(s,sc) + (r + ne*ci(s))*eps(s)
-        kin(sc) = kin(sc) + nel*x(s)*ne*ci(s)*(eps(sc) - eps(s))
-!-- down: radiative and three-body recombination
-        q(sc,s) = q(sc,s) + ne*(ar(s) + ne*c3(s))*eps(s)
-        ch = find_ch(g+sc,em_bf,lv)
-        chw(ch) = chw(ch) + ne*ar(s)*(eps(sc) - eps(s))
-        kex(sc) = kex(sc) + ne*ne*c3(s)*(eps(sc) - eps(s))
+        rr = r%gam(s)
+        if(x(s) > 0d0) rr = max(0d0, rr - ne*r%gst(s)*x(sc)/x(s))
+        q(s,sc) = q(s,sc) + (rr + ne*r%ci(s))*eps(s)
      enddo
+     do k=1,nxa_ion(i)%nlev
+        lv = nxa_ion(i)%lvoff + k
+        s = nxa_lvs(lv)
+        chi = hh*nxa_ion(i)%nu0(k)
+        kin(sc) = kin(sc) + nel*x(s)*r%w(lo+k)*ne*r%cil(lo+k)*chi
+!-- down: radiative and three-body recombination into level k
+        rr = ne*r%wc(lo+k)*r%arl(lo+k)
+        nu_ = ne*ne*r%wc(lo+k)*r%c3l(lo+k)
+        q(sc,s) = q(sc,s) + max((rr + nu_)*(eps(sc) - chi),0d0)
+        ch = nxt_bch(lv)
+        chw(ch) = chw(ch) + rr*chi
+        kex(sc) = kex(sc) + nu_*chi
+     enddo
+  enddo
+!-- jumps within a state (super-level) do not change it
+  do s=1,ns
+     q(s,s) = 0d0
   enddo
 !-- normalize per state
   do s=1,ns
-     r = 0d0
-     do ch=nxt_chst(g+s),nxt_chst(g+s+1)-1
-        r = r + chw(ch)
+     rr = 0d0
+     do ch=nxt_chst(nxa_el(iel)%xoff+s),nxt_chst(nxa_el(iel)%xoff+s+1)-1
+        rr = rr + chw(ch)
      enddo
-     emt(s) = r
+     emt(s) = rr
      tot(s) = sum(q(s,:)) + emt(s) + kex(s)
      if(tot(s) <= 0d0) then
 !-- a state without any channel goes into the k-packet
         q(s,:) = 0d0
         emt(s) = 0d0
         kex(s) = 1d0
-        do ch=nxt_chst(g+s),nxt_chst(g+s+1)-1
+        do ch=nxt_chst(nxa_el(iel)%xoff+s),nxt_chst(nxa_el(iel)%xoff+s+1)-1
            chw(ch) = 0d0
         enddo
         cycle
@@ -802,18 +865,6 @@ subroutine el_chain(iel,ne,nel,x,cq,ci,c3,gam,gst,ar,jl,beta,q,tot,emt,kex,kin,c
   enddo
 !-- (channel weights stay unnormalized: their cumulative is normalized per state)
 contains
-  integer function find_ch(gs,kind,idx)
-    integer,intent(in) :: gs,kind,idx
-    integer :: c
-    find_ch = 0
-    do c=nxt_chst(gs),nxt_chst(gs+1)-1
-       if(nxt_chk(c)==kind .and. nxt_chi(c)==idx) then
-          find_ch = c
-          return
-       endif
-    enddo
-    stop 'el_chain: channel not found'
-  end function find_ch
   integer function two_index(ii,kk)
     integer,intent(in) :: ii,kk
     integer :: m
@@ -1005,8 +1056,13 @@ pure subroutine nxt_kpacket(ic,state,kind,idx,wlc)
      idx = e - 1
      call nxt_bffreq(idx,1d0/grd_tempinv(ic),state,nu)
      wlc = cc/nu
-  else
+  elseif(e<=1+nxa_nlv+nxa_nst) then
      call emit_state(ic,e-1-nxa_nlv,state,kind,idx,wlc)
+  else
+!-- a line within a super-level
+     kind = em_line
+     idx = nxt_inl(e-1-nxa_nlv-nxa_nst)
+     wlc = nxa_lwl(idx)
   endif
 end subroutine nxt_kpacket
 !
@@ -1032,12 +1088,17 @@ end subroutine nxt_activate
 !
 !
 pure subroutine nxt_activate_line(ic,k,state,kind,idx,wlc)
-!-- packet absorbed in global line k: macro-atom in the upper level
+!-- packet absorbed in global line k: macro-atom in the upper level (its
+!-- state); a line within a super-level is thermal (k-packet)
   integer,intent(in) :: ic,k
   type(rnd_t),intent(inout) :: state
   integer,intent(out) :: kind,idx
   real*8,intent(out) :: wlc
-  call nxt_activate(ic,nxa_lel(k),nxa_lsu(k),state,kind,idx,wlc)
+  if(nxt_lch(k)==0) then
+     call nxt_kpacket(ic,state,kind,idx,wlc)
+  else
+     call nxt_activate(ic,nxa_lel(k),nxa_lsu(k),state,kind,idx,wlc)
+  endif
 end subroutine nxt_activate_line
 !
 !
@@ -1107,7 +1168,7 @@ pure subroutine nxt_bfabs(ic,ig,nu,state,kind,idx,wlc)
   do lv=1,nxa_nlv
      if(ig > nxa_g1(lv)) cycle
      iel = nxa_lvel(lv)
-     s = s + nxt_nel(iel,ic)*nxt_x(nxa_el(iel)%xoff+nxa_lvs(lv),ic)*nxa_sgm(ig,lv)
+     s = s + nxt_nel(iel,ic)*nxt_x(nxa_el(iel)%xoff+nxa_lvs(lv),ic)*nxt_w(lv,ic)*nxa_sgm(nxa_sgo(lv)+ig)
   enddo
   if(s<=0d0) then
      call nxt_kpacket(ic,state,kind,idx,wlc)
@@ -1120,7 +1181,7 @@ pure subroutine nxt_bfabs(ic,ig,nu,state,kind,idx,wlc)
   do lv=1,nxa_nlv
      if(ig > nxa_g1(lv)) cycle
      iel = nxa_lvel(lv)
-     w = w + nxt_nel(iel,ic)*nxt_x(nxa_el(iel)%xoff+nxa_lvs(lv),ic)*nxa_sgm(ig,lv)
+     w = w + nxt_nel(iel,ic)*nxt_x(nxa_el(iel)%xoff+nxa_lvs(lv),ic)*nxt_w(lv,ic)*nxa_sgm(nxa_sgo(lv)+ig)
      lsel = lv
      if(w >= r) exit
   enddo
@@ -1158,7 +1219,7 @@ subroutine nxt_write(ncell,rcell,vcell,tempinv,radtemp)
         o = nxa_el(iel)%xoff
         do j=1,nxa_el(iel)%nion
            i = nxa_el(iel)%ion(j)
-           fr(j) = sum(nxt_x(o+nxa_ion(i)%soff+1:o+nxa_ion(i)%soff+nxa_ion(i)%nlev,ic))
+           fr(j) = sum(nxt_x(o+nxa_ion(i)%soff+1:o+nxa_ion(i)%soff+nxa_ion(i)%nsl,ic))
         enddo
         fr(nxa_el(iel)%nion+1) = nxt_x(o+nxa_el(iel)%ns,ic)
 !-- below 1e-99 the e12.4 format drops the exponent letter
@@ -1172,7 +1233,7 @@ subroutine nxt_write(ncell,rcell,vcell,tempinv,radtemp)
   open(4,file='output.nltexj',status='replace')
   write(4,'(a)') '# Monte Carlo radiation field per cell: 4 pi Int J dnu [erg/s/cm^2] in bands, '// &
        'T_R from the mean frequency and dilution W (Mazzali & Lucy 1993)'
-  write(4,'(a1,a11,10a12)') '#','r[cm]','T[K]','<228A','228-504','504-912','912-2000', &
+  write(4,'(a1,a11,11a12)') '#','r[cm]','T[K]','<228A','228-504','504-912','912-2000', &
        '2000-4000','4000-1e4','1e4-3e4','>3e4A','T_R[K]','W'
   do ic=1,ncell
      call bands(nxt_jg(:,ic),b8)

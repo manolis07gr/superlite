@@ -156,7 +156,12 @@ program superlite
         write(6,'(1x,a,i3,a,i3,a,i6,a,i6,a)') 'NLTE:',nxa_nel,' elements,',nxa_nion,' ions,', &
              nxa_nst,' states,',nxa_nlin,' lines (Sobolev resonances, macro-atom)'
         do i=1,nxa_nion
-           write(6,'(3x,a8,i5,a,i6,a)') nxa_ion(i)%name,nxa_ion(i)%nlev,' levels',nxa_ion(i)%nlin,' lines'
+           if(nxa_ion(i)%nsl < nxa_ion(i)%nlev) then
+              write(6,'(3x,a8,i5,a,i5,a,i6,a)') nxa_ion(i)%name,nxa_ion(i)%nlev,' levels in', &
+                   nxa_ion(i)%nsl,' super-levels',nxa_ion(i)%nlin,' lines'
+           else
+              write(6,'(3x,a8,i5,a,i6,a)') nxa_ion(i)%name,nxa_ion(i)%nlev,' levels',nxa_ion(i)%nlin,' lines'
+           endif
         enddo
      endif
   endif

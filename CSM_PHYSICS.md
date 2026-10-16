@@ -86,19 +86,51 @@ Validation:
 | all unit tests | `SL_BUILD=<build> Tests/unit/run_tests.sh` | pass |
 | regression | stage-2 switches off and `in_fflegacy = t`: LTE runs bit-identical to stage 1 before the partition-function fix (row 13), which changes every LTE run | identical |
 
+### Stage 3: NLTE for all abundant elements
+
+Stage 3 replaces the H-only machinery by one framework for any set of ions (the
+built-in H atom of stage 1 is one of them; `nltehtrmod.f90` is gone, its transport and
+macro-atom are `nltextrmod.f90`; `GAS/nlteh_gas_update.f90` is
+`GAS/nltex_gas_update.f90`; `test_macroatom` is part of `test_nltex`).
+
+| Switch | Physics | Code |
+|---|---|---|
+| `in_nltex_atoms`, `in_nltex_dir` | Model atoms converted from the CMFGEN atomic data (Hillier & Miller 1998; `Tools/cmfgen2superlite_atom.py`, `Tools/make_nlte_atoms.sh`; the data carry no license statement, so the converted files are not distributed): levels, f-values, collision strengths Ω(T) (missing pairs as in CMFGEN: van Regemorter with the Auer & Mihalas or ion Gaunt factors, Ω_set; Seaton ionization), photoionization cross-sections of every CMFGEN type; further routes to excited terms of the next ion are added to the route to the ground state (exact for a final term in Boltzmann equilibrium with the ground state). Default set: He I–II, C I–IV, N I–IV, O I–IV, Ne I–III, Na I–II, Mg I–III, Si I–IV, S I–IV, Ca I–III, Fe I–IV, Co II–IV, Ni II–IV (≈ 2000 states, 14 000 lines). | `nlteatommod.f90` |
+| (with the atoms) | Statistical equilibrium of each element over all its ions and the next ion (top state): Sobolev bound-bound rates with the Q(μ) escape probabilities and resonance estimators of J; photoionization and stimulated recombination by the Monte Carlo J of the groups; spontaneous recombination from the Milne relation, integrated accurately (the stage-1 H tables overestimated α of high n at high T by up to 70 %); collisional excitation, ionization and three-body recombination; two-photon decays; non-thermal ionization and excitation of H and He (Shull & van Steenberg 1985, He shares scaled with n_He/n_H). Populations, escape probabilities and n_e iterated together per cell. | `nltexmod.f90` |
+| (with the atoms) | Every model-atom line is a Sobolev resonance in the transport; one macro-atom per element (Lucy 2002, 2003) with a shared k-packet pool, its internal transitions solved per cell as an absorbing Markov chain; bound-free absorption from every level with stimulated recombination. | `nltextrmod.f90`, `TRANSPORT1/transport11.f90` |
+| super-levels (the `--ftos` column of the model atoms) | CMFGEN's super-levels (F_TO_S assignments of the atomic data): the levels of a super-level share its departure coefficient, Boltzmann at T_e within it. The statistical equilibrium, the macro-atom (state energies: the Boltzmann mean of the levels; emitted energies those of the level pairs) and the thermal balance run over the super-levels; lines, bound-free opacity and emission channels keep the full levels. Collision rates between super-levels are summed without a loop over all level pairs (Ω_set pairs by running counts, own-Ω pairs as corrections). Lines within a super-level are thermal (absorbed into and emitted by the k-packet, cooling n_u A β hν). The atoms can then reach their ionization limits: Fe II 827 levels in 209 super-levels instead of 100 levels. | `nlteatommod.f90`, `nltexmod.f90`, `nltextrmod.f90`, `tebalmod.f90` |
+| `in_nltex_chgexch` (default `chgexch.dat` in `in_nltex_dir`) | Charge exchange among the NLTE elements (CMFGEN's reactions: C, N, O, Fe, Co, Ni ions with H; C, N ions with He; Kingdon & Ferland 1996 fits; `Tools/cmfgen2superlite_chgexch.py`): forward rates into the product term with Boltzmann level shares, reverse rates by detailed balance with the model's own levels and ionization energies, the released energy heats the gas. In partially ionized H it sets O I/O II and Fe II/Fe III (Fe III + H⁰: ≈ 10⁻⁹ cm³ s⁻¹, orders of magnitude above radiative recombination). | `nlteatommod.f90`, `nltexmod.f90` |
+| (with the atoms) | Lines of the line list of NLTE ions whose upper level lies above the model atom, and lines of the top ion, stay in the Sobolev expansion opacity, the lower level populated from the NLTE population of the highest model level at or below it with Boltzmann excitation at T_e: the truncated Fe-group atoms (35–50 % of the ionization energy) keep their UV blanketing. | `GAS/physical_opacity_nlte.f` |
+| (with the atoms) | Core-shell X-ray absorption of the NLTE ions (Verner & Yakovlev 1995; the model atoms describe the valence shell), absorbed into fast photoelectrons. | `bfxsmod.f`, `GAS/physical_opacity_nlte.f` |
+| `in_tesolve` | Thermal balance with all NLTE elements: photoionization heating, recombination and collisional cooling from the model atoms, charge exchange, the LTE opacities of the remaining elements, Compton, deposition; every element re-solved at the first trial T, then those with at least 1 % of the heating and cooling terms (a held population gives the wrong T dependence of radiatively pumped levels). | `tebalmod.f90`, `GAS/te_update.f90` |
+| `in_niter_early`, `in_src_n2s_early` | Fewer source packets in the first iterations, while the gas state converges. | `superlite.f90` |
+
+Validation (`Tests/unit/run_tests.sh` with `SL_ATOMS` = the converted atoms):
+
+| Test | Checks | Result |
+|---|---|---|
+| `test_nltex` | built-in H against the stage-1 H atom; Case B; the He I macro-atom and the H macro-atom against the statistical-equilibrium emissivities; every converted atom (14 elements, 44 ions, 2005 states) in a Planck field at high density; charge exchange at LTE | rates to 2×10⁻³, LTE populations to 7×10⁻⁵; Hα/Hβ = 2.74 (Storey & Hummer 2.86 l-resolved), He I 5876/4471 = 2.53; macro-atom He I 2.34 ± 0.03 against 2.37, Hα/Hβ 3.15 ± 0.02 against 3.14; all elements Saha–Boltzmann to < 2 %; no net charge-exchange flow into any state to 10⁻¹⁴ |
+| `test_tebal` | Planck field with LTE opacities, H, He I and He II must return T₀; pure-H nebula; fast-electron shares | T₀ to 0.2 %; 21 500 K; Shull & van Steenberg values |
+| `test_superlevel` (`SL_ATOMS_SL`, `SL_ATOMS_FULL`) | Fe II–IV (400, 300, 300 levels) with CMFGEN's super-levels (136, 55, 51) against the same atoms with every level a state: photospheric, diluted nebular (W = 0.1), dense and cool cells | Fe ion fractions and Fe II level populations to ≤ 7 % (nebular), ≤ 2.5 % otherwise; the same atoms with super-levels and the CMFGEN-matched C, N, O, Ca, Fe set pass the LTE and charge-exchange checks of `test_nltex` |
+| cross-sections | converted valence-shell cross-sections against Verner et al. (1996) | O I at 23 eV 12.1 Mb (route A alone 3.5 Mb) against 11.9 Mb; C II, N III within 10 % to 1 keV; Fe II/III below Verner above 40 eV (CMFGEN's own data) |
+
 ## 3. Roadmap
 
 Done in stage 2: electron temperature from the thermal balance, non-thermal
 ionization/excitation of H by shock X-rays, Sobolev opacity with thermalization for the
 lines of the other elements, direction-dependent Sobolev escape (§2).
 
+Done in stage 3: items 1, 2 and 6 below (NLTE model atoms, macro-atoms and ionization
+for H, He and the abundant metals), charge exchange, core-shell X-ray opacity.
+
 **Next — physics needed for reliable line strengths across regimes**
-1. He I / He II macro-atoms with the same machinery (He I 5876/6678/7065, He II 4686: SN IIn/Ibn/Icn, flash features; the C-series). He II is hydrogenic: `nltehmod` with Z = 2 scaling is the quick route.
-2. Ionization of the other elements beyond LTE: photoionization equilibrium with the Monte Carlo J (or the nebular approximation with Monte Carlo W and T_R) instead of Saha at one temperature (`in_tion`).
+1. ~~He I / He II macro-atoms~~ (stage 3).
+2. ~~Ionization of the other elements beyond LTE~~ (stage 3).
+2b. ~~Super-levels (CMFGEN's F_TO_S)~~ (stage 3); dielectronic recombination through autoionizing levels at T ≳ 3×10⁴ K; non-thermal ionization and excitation of the metals (Spencer–Fano).
 3. Time-dependent ionization (Utrobin & Chugai 2005; Dessart & Hillier 2008): needed for SN II Hα on the plateau (no-CSM models lose Hα too early).
 4. Non-thermal deposition of ⁵⁶Co γ-rays (Kozma & Fransson 1992) with the same Shull & van Steenberg channels.
 5. Shock structure: adiabatic vs radiative from the cooling time; cooling-function spectra (line cooling at 10⁵–10⁷ K) instead of bremsstrahlung shapes; T_e ≠ T_i behind fast shocks.
-6. NLTE macro-atoms for Fe II, Ca II, O I, Mg II (the ε treatment of stage 2 is a two-level-atom approximation).
+6. ~~NLTE macro-atoms for Fe II, Ca II, O I, Mg II~~ (stage 3; the ε treatment of stage 2 remains for the LTE elements and the lines beyond the model atoms).
 7. DDMC: macro-atom-aware absorption, non-thermal deposition and H lines (expansion opacity) in optically thick cells (at present DDMC re-emits absorbed energy thermally).
 
 **Stage 3 — dynamics and geometry**
@@ -213,10 +245,16 @@ against an independent code (e.g. CMFGEN) on the same snapshot.
 cmake -DUSE_MPI=ON <src> && make
 python3 Tools/stella2superlite_csm.py mesa.day020_post_Lbol_max.data -o run --tau-max 50
 python3 Tools/make_wlgrid.py -o run
-# input.par: in_grp_ng = 0, in_flx_ndim = -1,1,1 (written grids)
+# NLTE model atoms and charge-exchange reactions from the CMFGEN atomic data
+# (atomic_data_21jun23 of https://sites.pitt.edu/~hillier/web/CMFGEN.htm)
+Tools/make_nlte_atoms.sh <CMFGEN atomic dir> atoms
+# input.par: in_grp_ng = 0, in_flx_ndim = -1,1,1 (written grids);
+#   in_nlte = t, in_nlteh = t, in_grp_ngs = 1,
+#   in_nltex_dir = 'atoms', in_nltex_atoms = 'he1.atom he2.atom c1.atom ... fe4.atom'
 mpirun -np 4 superlite
 ```
-Outputs: `output.flx_luminos` (spectrum per iteration), `output.nlteh` (populations,
+Outputs: `output.flx_luminos` (spectrum per iteration), `output.nltex` (ion fractions
+of every NLTE element and n_e per cell), `output.nlteh` (H populations,
 departure coefficients, Sobolev optical depths, escape probabilities per cell),
 `output.tebal_<rank>` with `in_tesolve` (heating and cooling terms per cell at the last
 iteration).  Unit tests: `Tests/unit/run_tests.sh`.

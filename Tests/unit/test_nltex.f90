@@ -22,7 +22,8 @@ program test_nltex
   real*8 :: xo(0:nlev), betao(nlev*(nlev-1)/2), jbo(nlev*(nlev-1)/2), neo
   logical :: ljbo(nlev*(nlev-1)/2)
   real*8,allocatable :: x(:), xl(:), beta(:), jb(:), nti(:), ntx(:), nel(:)
-  real*8,allocatable :: cq(:,:), ci(:), c3(:), gam(:), gst(:), ar(:)
+  type(nxrt) :: rr
+  real*8,allocatable :: wv(:)
   logical,allocatable :: ljb(:)
   real*8 :: gamo(nlev), alpo(nlev), alpso(nlev), cupo(nlev), c3bo(nlev), qupo(nlev,nlev), qdno(nlev,nlev)
   real*8 :: jlo(nlev*(nlev-1)/2)
@@ -69,11 +70,9 @@ program test_nltex
   enddo
   jbo = 0d0; ljbo = .false.
   call nlteh_cell_rates(1d4, t2, ng, nug, dnug, jg, jbo, ljbo, 0d0, gamo, alpo, alpso, cupo, c3bo, qupo, qdno, jlo)
-  n = nxa_el(1)%ns
-  allocate(cq(n,n), ci(n), c3(n), gam(n), gst(n), ar(n))
-  call nx_el_rates(1, 1d4, t2, ng, nug, dnug, jg, cq, ci, c3, gam, gst, ar)
-  dev = maxval(abs(gam(1:nlev)/gamo - 1d0))
-  d = maxval(abs(cq(1,2:nlev)/qupo(1,2:nlev) - 1d0))
+  call nx_el_rates(1, 1d4, t2, ng, nug, dnug, jg, rr)
+  dev = maxval(abs(rr%gam(1:nlev)/gamo - 1d0))
+  d = maxval(abs(rr%cq(1,2:nlev)/qupo(1,2:nlev) - 1d0))
   write(*,'(a,es10.3,a,es10.3)') '  max |Gamma/Gamma(nltehmod) - 1| =', dev, '   collisions:', d
   if(dev > 1d-2 .or. d > 1d-2) nfail = nfail + 1
 !-- LTE limit and Case B: populations against nlteh_solve_cell
@@ -113,7 +112,7 @@ program test_nltex
         if(ierr /= 0 .or. abs(w/2.86d0 - 1d0) > 0.05d0) nfail = nfail + 1
      endif
   enddo
-  deallocate(x, xl, beta, jb, ljb, nti, ntx, nel, cq, ci, c3, gam, gst, ar)
+  deallocate(x, xl, beta, jb, ljb, nti, ntx, nel)
 !
 !-- 2. He model atoms
   nargs = command_argument_count()
@@ -195,11 +194,15 @@ contains
          x(o+nxa_el(ihe)%ns), '  ne=', ne
     write(*,'(a,f7.3,a)') '  He I 5876/4471 =', r, '   (Case B at 1e4 K, low density: ~2.7-2.8)'
     wls = [584.33d-8, 10830.3d-8, 3888.6d-8, 5875.6d-8, 4471.5d-8, 6678.2d-8]
+    allocate(wv(nxa_nlv))
+    call nxa_weights(t, wv)
     do j = 1, 6
        k = lnear(wls(j))
        write(*,'(a,f9.1,a,es10.3,a,es10.3,a,es10.3)') '    He I', nxa_lwl(k)*1d8, ' tau=', nx_kq(k, nel(ihe), &
-            x(o+1:o+nxa_el(ihe)%ns))/q, ' beta=', beta(k), ' x_u=', popu(k)
+            x(o+1:o+nxa_el(ihe)%ns), wv(nxa_el(ihe)%lvoff+1:nxa_el(ihe)%lvoff+nxa_el(ihe)%nlv))/q, &
+            ' beta=', beta(k), ' x_u=', popu(k)
     enddo
+    deallocate(wv)
     if(ierr /= 0 .or. r < 2.4d0 .or. r > 3.2d0) nfail = nfail + 1
 !-- macro-atom against the populations (Lucy 2002): exact when the
 !-- activations carry all energy input; recombination activations do so only
@@ -318,9 +321,11 @@ contains
 !-- charge exchange: no net flow into any state at LTE (detailed balance)
        if(nxa_ncx > 0) then
           dmax = 0d0
+          allocate(wv(nxa_nlv))
+          call nxa_weights(t, wv)
           do iel = 1, nxa_nel
              o = nxa_el(iel)%xoff
-             call nx_cx_rates(iel, t, nel, xl, ncx, cxf, cxt, cxr)
+             call nx_cx_rates(iel, t, nel, xl, wv, ncx, cxf, cxt, cxr)
              fnet = 0d0; fabs = 0d0
              do k = 1, ncx
                 fnet(cxt(k)) = fnet(cxt(k)) + xl(o+cxf(k))*cxr(k)
@@ -331,6 +336,7 @@ contains
                 if(fabs(k) > 0d0) dmax = max(dmax, abs(fnet(k))/fabs(k))
              enddo
           enddo
+          deallocate(wv)
           write(*,'(a,f7.0,a,i3,a,es9.2)') '  charge exchange at LTE, T=', t, ':', nxa_ncx, &
                ' reactions, max |net/out| per state =', dmax
           if(dmax > 1d-8) nbad = nbad + 1
@@ -359,7 +365,7 @@ contains
     do ii = 1, nxa_nion
        if(nxa_el(nxa_ion(ii)%el)%xoff /= o) cycle
        if(nxa_ion(ii)%stage /= j) cycle
-       ionfr = sum(x(o+nxa_ion(ii)%soff+1:o+nxa_ion(ii)%soff+nxa_ion(ii)%nlev))
+       ionfr = sum(x(o+nxa_ion(ii)%soff+1:o+nxa_ion(ii)%soff+nxa_ion(ii)%nsl))
     enddo
   end function ionfr
 !

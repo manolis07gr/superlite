@@ -16,7 +16,8 @@ c$    use omp_lib
       use timingmod
       use mpimod
       use nlteatommod, only:nxa_nlv,nxa_lvel,nxa_el,nxa_lvc,nxa_lvs,
-     &  nxa_lvphi,nxa_lvnu0,nxa_g1,nxa_sgm
+     &  nxa_lvphi,nxa_lvnu0,nxa_g1,nxa_sgm,nxa_lvcl,nxa_weights,
+     &  nxa_sgo
       use nltextrmod, only:nxt_xloc,nxt_nelloc,nxt_neloc,gas_capnbf,
      &  nxt_isel,nxt_elz,nxt_ionzs,nxt_etop
       use nlteatommod, only:nxa_ion,nxa_nion
@@ -100,8 +101,10 @@ c-- core-shell cross-sections of the NLTE ions and top states [cm^2]
 c-- NLTE ions, lines to levels above the model atom: reference state
 c-- (model level at or below the lower level, or the top state), its weight,
 c-- and the excitation energy of the lower level above it [cm^-1]
-      integer :: jst,k
-      real*8 :: eup,boltz,gref,dchi,elv,ethr
+      integer :: jst,k,jlv
+      real*8 :: eup,boltz,gref,dchi,elv,ethr,wcl
+c-- share of each NLTE level in its state (super-levels) per cell
+      real*8,allocatable :: wlv(:,:)
       real*8 :: expfe(gas_ncell)
       ! character(40) :: fname
 c-- temporary population arrays
@@ -112,6 +115,16 @@ c-- temporary population arrays
 c
 c-- subgroups
       ngsub = grp_ng*grp_ngs
+c-- shares of the NLTE levels in their states at T_e
+      allocate(wlv(max(nxa_nlv,1),gas_ncell))
+      wlv = 1d0
+      if(in_nltex) then
+       do i=1,gas_ncell
+        if(gas_mass(i)<=0d0) cycle
+        call nxa_weights(gas_temp(i),wlv(:,i))
+       enddo
+      endif
+c
 c
 c-- initialize
       allocate(cap(gas_ncell,ngsub))
@@ -401,12 +414,12 @@ c-- LTE opacity calculations
 c$omp parallel default(none)
 c$omp& private(wl0,wl,wlinv,dwl,phi,ocggrnd,expfac,i,igs,iigs,
 c$omp&   caphelp,emithelp,dirty,B_nu,iz,ii,kk,fq,eps,jion,eup,boltz,
-c$omp&   expfe,iel,jst,k,gref,dchi,elv,ethr)
+c$omp&   expfe,iel,jst,k,gref,dchi,elv,ethr,jlv)
 c$omp& shared(ngsub,gas_mass,gas_temp,grndlev,hckt,hckti,wlsub,bb_xs,
 c$omp&   bb_nline,gas_ncell,nlte_nelem,nlte_ndens,nlte_data,
 c$omp&   cap,capemit,emiss,capsc,qarr,warr,qavg,qmin,qmax,nearr,
 c$omp&   bbs_on,bbs_sobolev,bbs_eps,nxt_isel,nxt_ionzs,nxt_etop,
-c$omp&   nxa_ion,nxa_el,nxt_xloc,nxt_nelloc)
+c$omp&   nxa_ion,nxa_el,nxt_xloc,nxt_nelloc,wlv)
        iigs = 0
        dirty = .true.
        phi = 0d0
@@ -443,10 +456,13 @@ c-- Line-list and model-atom energies of a level agree to ~1e-4.
           enddo
           dchi = max(0d0,bb_xs(il)%chilw - gref)
           gref = nxa_ion(jion)%g(jst)
-          jst = nxa_el(iel)%xoff + nxa_ion(jion)%soff + jst
+          jlv = nxa_ion(jion)%lvoff + jst
+          jst = nxa_el(iel)%xoff + nxa_ion(jion)%soff +
+     &      nxa_ion(jion)%sl(jst)
          else
           dchi = bb_xs(il)%chilw
           gref = nxa_el(iel)%gtop
+          jlv = 0
           jst = nxa_el(iel)%xoff + nxa_el(iel)%ns
          endif
         endif
@@ -481,6 +497,7 @@ c-- evaluate cap
          if(gas_mass(i)<=0d0) cycle
          if(jion/=0) then
           ocggrnd = nxt_nelloc(iel,i)*nxt_xloc(jst,i)/gref
+          if(jlv>0) ocggrnd = ocggrnd*wlv(jlv,i)
           boltz = exp(-dchi*hckt(i))*expfe(i)
          else
           ocggrnd = grndlev(i,ii,iz)
@@ -621,20 +638,23 @@ c-- absorption only (fast photoelectrons), not in gas_capnbf
          nl = nxt_nelloc(iel,i)
          if(nl<=0d0) cycle
          o = nxa_el(iel)%xoff
-c-- LTE population relative to the actual continuum state, times
-c-- exp(-h nu0/kT) (applied with the frequency below)
-         xstar = nxt_xloc(o+nxa_lvc(lv),i)*nxt_neloc(i)*nxa_lvphi(lv)*
-     &     4.1412d-16*gas_temp(i)**(-1.5d0)
+c-- LTE population relative to the actual continuum (level 1 of the next
+c-- ion), times exp(-h nu0/kT) (applied with the frequency below)
+         wcl = 1d0
+         if(nxa_lvcl(lv)>0) wcl = wlv(nxa_lvcl(lv),i)
+         xstar = nxt_xloc(o+nxa_lvc(lv),i)*wcl*nxt_neloc(i)*
+     &     nxa_lvphi(lv)*4.1412d-16*gas_temp(i)**(-1.5d0)
          do igs=1,min(nxa_g1(lv),ngsub)
           capn(igs) = capn(igs) + nl*nxt_xloc(o+nxa_lvs(lv),i)*
-     &      nxa_sgm(igs,lv)
+     &      wlv(lv,i)*nxa_sgm(nxa_sgo(lv)+igs)
          enddo !igs
 c-- stimulated recombination: from the edge up to h(nu-nu0) = 40 kT
          do igs=min(nxa_g1(lv),ngsub),1,-1
           nu = max(2d0*pc_c/(wlsub(igs)+wlsub(igs+1)),nxa_lvnu0(lv))
           argx = pc_h*(nu-nxa_lvnu0(lv))/(pc_kb*gas_temp(i))
           if(argx>40d0) exit
-          capn(igs) = capn(igs) - nl*xstar*exp(-argx)*nxa_sgm(igs,lv)
+          capn(igs) = capn(igs) - nl*xstar*exp(-argx)*
+     &    nxa_sgm(nxa_sgo(lv)+igs)
          enddo !igs
         enddo !lv
         do igs=1,ngsub
@@ -650,7 +670,7 @@ c-- core shells
          do j=1,nxa_el(iel)%nion
           jion = nxa_el(iel)%ion(j)
           help = nl*sum(nxt_xloc(o+nxa_ion(jion)%soff+1:
-     &      o+nxa_ion(jion)%soff+nxa_ion(jion)%nlev,i))
+     &      o+nxa_ion(jion)%soff+nxa_ion(jion)%nsl,i))
           cap(i,:) = cap(i,:) + help*sinn(:,jion)
          enddo
          help = nl*nxt_xloc(o+nxa_el(iel)%ns,i)

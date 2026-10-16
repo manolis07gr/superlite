@@ -16,8 +16,10 @@ Input (one ion):
   --hyd   directory with hyd_l_data.dat and gbf_n_data.dat (hydrogenic
           cross-sections; needed for cross-section types 2, 3 and 8)
   --nlev  number of levels to keep (lowest in the osc file)
-  --ftos  optional super-level file; levels then carry their super-level
-          index (only for information: SuperLite treats every level)
+  --ftos  optional super-level file (CMFGEN F_TO_S): each level carries the
+          index of its super-level; SuperLite solves for the super-levels,
+          with Boltzmann shares at T_e within each
+  --gfmin keep only the lines with g_l f >= gfmin (default: all)
 
 The photoionization cross-sections are evaluated with the formulae of
 CMFGEN's SUB_PHOT_GEN (types 1-9, 20, 21) and tabulated against
@@ -556,8 +558,8 @@ def same_n(a, b):
 
 
 # ---------------------------------------------------------------------------
-TWO_PHOTON = {   # (element, ion stage): (lower name, upper name, A [1/s], g of decaying state)
-    (1, 1): (['1___', '2s_2Se'], ['1___'], 8.225, 2.0),
+TWO_PHOTON = {   # (element, ion stage): (upper names, lower names, A [1/s], g of decaying state)
+    (1, 1): (['2___', '2s_2Se'], ['1___'], 8.225, 2.0),
     (2, 1): (['1s_2s_1Se', '1s2s1Se'], ['1s2_1Se', '1s1s1Se'], 51.9, 1.0),
     (2, 2): (['2___', '2s2Se'], ['1___', '1s2Se'], 526.4, 2.0),
 }
@@ -579,6 +581,7 @@ def main():
     ap.add_argument('--hyd', default=None)
     ap.add_argument('--ftos', default=None)
     ap.add_argument('--nlev', type=int, default=0, help='levels to keep (0: all)')
+    ap.add_argument('--gfmin', type=float, default=0.0, help='keep lines with g_l f >= gfmin')
     ap.add_argument('-o', '--out', required=True)
     args = ap.parse_args()
 
@@ -624,6 +627,8 @@ def main():
     nu_inf /= (1 + 5.48597e-4) if args.z == 1 else (1 + 5.48597e-4 / (2 * args.z))
 
     trans = [t for t in osc['trans'] if t['u'] <= nlev and t['l'] < t['u']]
+    if args.gfmin > 0:
+        trans = [t for t in trans if levs[t['l'] - 1]['g'] * t['f'] >= args.gfmin]
     col = read_col(args.col, names, [lv['g'] for lv in levs])
 
     ename = ELEM.get(args.z, 'Z%d' % args.z)

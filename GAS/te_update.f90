@@ -13,15 +13,16 @@ subroutine te_update(it)
   use sourcemod, only:src_tsh
   use inputparmod
   use nlteatommod, only:nxa_nel,nxa_el,nxa_nst,nxa_nlin
-  use nltexmod, only:nx_solve_cell
+  use nltexmod, only:nx_solve_cell,nx_jline
   use nltextrmod
   use tebalmod
   use mpimod, only:lmpi0,impi
   implicit none
   integer,intent(in) :: it
-  integer :: i,l,ierr,nfail,iel
+  integer :: i,l,ierr,nfail,iel,k
   real*8 :: neoth,qb,qv,gext,tnew,dmax,dmin,edep,ne,tsol
   real*8 :: nel(nxa_nel),x(nxa_nst),nti(nxa_nst),ntx(nxa_nst),beta(nxa_nlin),terms(te_nterm)
+  real*8 :: jl(nxa_nlin)
   real*4 :: capabs(nxt_ng)
 !-- per cell: previous proposed change of ln T and damping weight
   real*8,allocatable,save :: dprev(:),dloc(:)
@@ -71,8 +72,11 @@ subroutine te_update(it)
         x = nxt_xloc(:,i)
         call nx_solve_cell(tnew,gas_radtemp(i),nel,neoth,qb,qv,nxt_ng,nxt_nug,nxt_dnug, &
              nxt_jg(:,l),nxt_jb(:,l),nxt_ljb(:,l),nti,ntx,x,ne,beta,ierr)
+        do k=1,nxa_nlin
+           jl(k) = nx_jline(k,nxt_ng,nxt_nug,nxt_jg(:,l),nxt_jb(k,l),nxt_ljb(k,l))
+        enddo
         call te_terms(tnew,nxt_ng,nxt_nug,nxt_dnug,nxt_jg(:,l),capabs,gas_capemit(:,i),nel,x,ne, &
-             gext,terms)
+             gext,terms,beta=beta,jl=jl)
         write(41,'(i7,2f12.1,6es12.4)') l,tnew,gas_temp(i),terms
      endif
      dmax = max(dmax,tnew/gas_temp(i))

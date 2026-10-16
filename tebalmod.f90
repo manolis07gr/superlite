@@ -21,6 +21,9 @@ module tebalmod
 !      recombination cooling  n_e sum_l n_c(l) rc_l(T)  (kinetic energy, Milne)
 !      collisions  n_e sum_{l<u} (n_l q_lu - n_u q_ul) (E_u - E_l)
 !                + n_e sum_l (n_l c_l - n_e n_c c3b_l) chi_l
+!      (with super-levels: between states, nxa_coll_el; level populations
+!      n_l = n_S w_l), and the lines within super-levels, thermal at T_e
+!      (net emission beta (n_u A_ul - (n_l B_lu - n_u B_ul) J) h nu)
 !  * Compton  sigma_T n_e/(m_e c^2) 4 pi sum_g J_g dnu_g (4kT - h nu_g (1 + n_g)),
 !    n_g = c^2 J_g/(2 h nu_g^3) the photon occupation number (induced
 !    scattering; the balance is exact for a Planck field at T)
@@ -42,7 +45,7 @@ module tebalmod
 ! to te_damp while the changes keep their sign.
 !-----------------------------------------------------------------------
   use nlteatommod
-  use nltexmod, only:nx_solve_cell,nx_cx_heat
+  use nltexmod, only:nx_solve_cell,nx_cx_heat,nx_jline
   use nltextrmod, only:nxt_shares,nxt_elh,nxt_elhe
   implicit none
   private
@@ -87,7 +90,7 @@ subroutine te_pisums(ng,nug,dnug,jg,pa,pb)
   pb = 0d0
   do lv=1,nxa_nlv
      do ig=1,nxa_g1(lv)
-        w = jg(ig)*(nxa_sgm(ig,lv)*dnug(ig) - hh*nxa_lvnu0(lv)*nxa_sgh(ig,lv))
+        w = jg(ig)*(nxa_sgm(nxa_sgo(lv)+ig)*dnug(ig) - hh*nxa_lvnu0(lv)*nxa_sgh(nxa_sgo(lv)+ig))
         if(te_ntemin > 0d0 .and. hh*nug(ig) > te_ntemin) then
            pb(lv) = pb(lv) + w
         else
@@ -98,12 +101,13 @@ subroutine te_pisums(ng,nug,dnug,jg,pa,pb)
 end subroutine te_pisums
 !
 !
-subroutine te_terms(temp,ng,nug,dnug,jg,capabs,capem,nel,x,ne,gam_ext,terms,pa,pb,elc)
+subroutine te_terms(temp,ng,nug,dnug,jg,capabs,capem,nel,x,ne,gam_ext,terms,pa,pb,elc,beta,jl)
 !-----------------------------------------------------------------------
 ! Heating and cooling terms at temperature temp for fixed populations.
 ! terms(1) LTE opacities, net cooling         terms(2) NLTE photoionization heating
 ! terms(3) NLTE recombination cooling         terms(4) NLTE collisional net cooling
-!                                              (electrons, and charge exchange)
+!                                              (electrons, charge exchange, and
+!                                              lines within super-levels)
 ! terms(5) Compton net cooling                terms(6) external heating
 ! f = t1 - t2 + t3 + t4 + t5 - t6
 !-----------------------------------------------------------------------
@@ -115,15 +119,19 @@ subroutine te_terms(temp,ng,nug,dnug,jg,capabs,capem,nel,x,ne,gam_ext,terms,pa,p
 !-- (optional) per element: sum of the magnitudes of its photoionization
 !-- heating, recombination cooling and collisional terms [erg/s/cm^3]
   real*8,intent(out),optional :: elc(nxa_nel)
+!-- (optional) escape probabilities and incident intensities of the lines:
+!-- the lines within super-levels (none without super-levels)
+  real*8,intent(in),optional :: beta(nxa_nlin),jl(nxa_nlin)
   real*8 :: se(nxa_nel),sh0
-  integer :: ig,lv,iel,o,i,j,k,n,l,u
-  real*8 :: hkt,bg,s,xs,fh,jh,nu,sh,eu,sst
-  real*8 :: qa(nxa_nlv),qb(nxa_nlv)
-  real*8,allocatable :: qup(:,:),qdn(:,:),cion(:),c3b(:)
+  integer :: ig,lv,iel,o,i,j,k,ns,lo,s,u
+  real*8 :: hkt,bg,sm,xs,fh,jh,nu,sh,sst,chi
+  real*8 :: qa(nxa_nlv),qb(nxa_nlv),wg(nxa_nlv),wc
+  real*8,allocatable :: cq(:,:),eup(:,:),edn(:,:),cil(:),c3l(:)
 !
   hkt = hh/(kb*temp)
   terms = 0d0
   fh = te_heatshare(nel,x)
+  call nxa_weights(temp,wg)
 !-- LTE opacities and Compton
   do ig=1,ng
      if(hkt*nug(ig) < 700d0) then
@@ -147,14 +155,17 @@ subroutine te_terms(temp,ng,nug,dnug,jg,capabs,capem,nel,x,ne,gam_ext,terms,pa,p
   else
      call te_pisums(ng,nug,dnug,jg,qa,qb)
   endif
-  s = 0d0
+  sm = 0d0
   sh = 0d0
   se = 0d0
   do lv=1,nxa_nlv
      iel = nxa_lvel(lv)
      if(nel(iel) <= 0d0) cycle
      o = nxa_el(iel)%xoff
-     xs = x(o+nxa_lvc(lv))*ne*nxa_lvphi(lv)*nxa_sahac*temp**(-1.5d0)
+!-- the continuum: level 1 of the next ion
+     wc = 1d0
+     if(nxa_lvcl(lv)>0) wc = wg(nxa_lvcl(lv))
+     xs = x(o+nxa_lvc(lv))*wc*ne*nxa_lvphi(lv)*nxa_sahac*temp**(-1.5d0)
 !-- Int_g sigma (1 - nu_l/nu) dnu = sgm dnu - h nu_l sgh; stimulated
 !-- recombination from the edge up to h(nu-nu0) = 40 kT
      sst = 0d0
@@ -164,45 +175,62 @@ subroutine te_terms(temp,ng,nug,dnug,jg,capabs,capem,nel,x,ne,gam_ext,terms,pa,p
         jh = jg(ig)
         if(te_ntemin > 0d0 .and. hh*nug(ig) > te_ntemin) jh = fh*jg(ig)
         sst = sst + jh*exp(-hkt*(nu-nxa_lvnu0(lv)))* &
-             (nxa_sgm(ig,lv)*dnug(ig) - hh*nxa_lvnu0(lv)*nxa_sgh(ig,lv))
+             (nxa_sgm(nxa_sgo(lv)+ig)*dnug(ig) - hh*nxa_lvnu0(lv)*nxa_sgh(nxa_sgo(lv)+ig))
      enddo
-     sh0 = nel(iel)*(x(o+nxa_lvs(lv))*(qa(lv) + fh*qb(lv)) - xs*sst)
-     s = s + sh0
+     sh0 = nel(iel)*(x(o+nxa_lvs(lv))*wg(lv)*(qa(lv) + fh*qb(lv)) - xs*sst)
+     sm = sm + sh0
      se(iel) = se(iel) + 4d0*pi*abs(sh0)
-     sh0 = nel(iel)*x(o+nxa_lvc(lv))*nxa_rcool(lv,temp)
+     sh0 = nel(iel)*x(o+nxa_lvc(lv))*wc*nxa_rcool(lv,temp)
      sh = sh + sh0
      se(iel) = se(iel) + ne*abs(sh0)
   enddo
-  terms(2) = 4d0*pi*s
+  terms(2) = 4d0*pi*sm
   terms(3) = ne*sh
-!-- collisions: excitation/de-excitation and ionization/three-body recombination
-  s = 0d0
+!-- collisions: excitation/de-excitation between states and
+!-- ionization/three-body recombination
+  sm = 0d0
   do iel=1,nxa_nel
      if(nel(iel) <= 0d0) cycle
      o = nxa_el(iel)%xoff
-     do j=1,nxa_el(iel)%nion
-        i = nxa_el(iel)%ion(j)
-        n = nxa_ion(i)%nlev
-        allocate(qup(n,n),qdn(n,n),cion(n),c3b(n))
-        call nxa_coll(nxa_ion(i),temp,qup,qdn,cion,c3b)
-        sh0 = s
-        do l=1,n-1
-           do u=l+1,n
-              eu = nxa_ion(i)%e(u) - nxa_ion(i)%e(l)
-              s = s + nel(iel)*(x(o+nxa_ion(i)%soff+l)*qup(l,u) - x(o+nxa_ion(i)%soff+u)*qdn(u,l))*eu
-           enddo
+     ns = nxa_el(iel)%ns
+     lo = nxa_el(iel)%lvoff
+     allocate(cq(ns,ns),eup(ns,ns),edn(ns,ns),cil(nxa_el(iel)%nlv),c3l(nxa_el(iel)%nlv))
+     call nxa_coll_el(iel,temp,cq,eup,edn,cil,c3l)
+     sh0 = sm
+     do s=1,ns
+        if(x(o+s) <= 0d0) cycle
+        do u=1,ns
+           if(u/=s) sm = sm + nel(iel)*x(o+s)*(eup(s,u) - edn(s,u))
         enddo
-        do k=1,n
-           lv = nxa_ion(i)%lvoff + k
-           s = s + nel(iel)*(x(o+nxa_ion(i)%soff+k)*cion(k) - x(o+nxa_lvc(lv))*ne*c3b(k))* &
-                hh*nxa_ion(i)%nu0(k)
-        enddo
-        se(iel) = se(iel) + ne*abs(s - sh0)
-        deallocate(qup,qdn,cion,c3b)
      enddo
+     do k=1,nxa_el(iel)%nlv
+        lv = lo + k
+        i = nxa_lvion(lv)
+        chi = hh*nxa_lvnu0(lv)
+        wc = 1d0
+        if(nxa_lvcl(lv)>0) wc = wg(nxa_lvcl(lv))
+        sm = sm + nel(iel)*(x(o+nxa_lvs(lv))*wg(lv)*cil(k) - x(o+nxa_lvc(lv))*wc*ne*c3l(k))*chi
+     enddo
+     se(iel) = se(iel) + ne*abs(sm - sh0)
+     deallocate(cq,eup,edn,cil,c3l)
   enddo
-  terms(4) = ne*s
-  if(nxa_ncx>0) terms(4) = terms(4) - nx_cx_heat(temp,nel,x)
+  terms(4) = ne*sm
+  if(nxa_ncx>0) terms(4) = terms(4) - nx_cx_heat(temp,nel,x,wg)
+!-- lines within super-levels: thermal at T_e
+  if(nxa_anysl .and. present(beta) .and. present(jl)) then
+     sm = 0d0
+     do k=1,nxa_nlin
+        if(nxa_lsl(k)/=nxa_lsu(k)) cycle
+        iel = nxa_lel(k)
+        if(nel(iel) <= 0d0) cycle
+        o = nxa_el(iel)%xoff
+        sh0 = nel(iel)*x(o+nxa_lsu(k))*beta(k)*hh*nxa_lnu(k)* &
+             (wg(nxa_luv(k))*(nxa_la(k) + nxa_lbul(k)*jl(k)) - wg(nxa_llv(k))*nxa_lblu(k)*jl(k))
+        sm = sm + sh0
+        se(iel) = se(iel) + abs(sh0)
+     enddo
+     terms(4) = terms(4) + sm
+  endif
   terms(6) = gam_ext
   if(present(elc)) elc = se
 end subroutine te_terms
@@ -229,7 +257,7 @@ subroutine te_balance(told,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx,ca
   integer :: it,side,nwarm
   real*8 :: a,b,c,fa,fb,fc,tsol,lo,hi,step,elc(nxa_nel),scale
   logical :: lsol(nxa_nel),lfirst
-  real*8 :: pa(nxa_nlv),pb(nxa_nlv)
+  real*8 :: pa(nxa_nlv),pb(nxa_nlv),jl(nxa_nlin)
 !-- populations at the temperatures tried (warm starts)
   integer,parameter :: mwarm = 8
   real*8 :: xw(nxa_nst,mwarm),tw(mwarm)
@@ -237,6 +265,9 @@ subroutine te_balance(told,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx,ca
   ierr = 0
   nwarm = 0
   call te_pisums(ng,nug,dnug,jg,pa,pb)
+  do it=1,nxa_nlin
+     jl(it) = nx_jline(it,ng,nug,jg,jb(it),ljb(it))
+  enddo
 !-- first evaluation with every element (Z <= te_zsolve) re-solved; then
 !-- only the elements with at least 1 % of the summed magnitudes of the
 !-- NLTE heating and cooling terms (and of the other terms) are re-solved
@@ -325,7 +356,7 @@ contains
        xw(:,k) = xx
        tw(k) = t
     endif
-    call te_terms(t,ng,nug,dnug,jg,capabs,capem,nel,xx,ne,gam_ext,terms,pa,pb,elc)
+    call te_terms(t,ng,nug,dnug,jg,capabs,capem,nel,xx,ne,gam_ext,terms,pa,pb,elc,beta,jl)
     fval = terms(1) - terms(2) + terms(3) + terms(4) + terms(5) - terms(6)
     if(lfirst) then
        lfirst = .false.

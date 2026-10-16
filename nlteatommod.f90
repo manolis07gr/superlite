@@ -63,15 +63,27 @@ module nlteatommod
      integer :: loff = 0                         !global line index offset
      integer :: lvoff = 0                        !global level index offset
      integer :: soff = 0                         !element-local state offset of level 1
+!-- super-levels: level k belongs to state soff + sl(k); the levels of a
+!-- super-level share its departure coefficient (Boltzmann at T_e within it)
+     integer :: nsl = 0                          !states of the ion (= nlev without super-levels)
+     integer,allocatable :: sl(:)                !(nlev) super-level of each level
+     real*8,allocatable :: eref(:)               !(nsl) lowest energy of each super-level [erg]
+!-- collision pairs with their own Omega (tabulated, or a line with f > 1e-5);
+!-- all other pairs have omegaset
+     integer :: nxp = 0
+     integer,allocatable :: xpl(:),xpu(:)        !(nxp) lower, upper level
+     integer,allocatable :: xpc(:),xpk(:)        !(nxp) table column, line (0: none)
+     integer,allocatable :: icol(:)              !(nlev) table column of the ionization of the level (0: none)
   end type nxion
 !
   type,public :: nxelem
      integer :: z = 0, nion = 0
      integer :: ion(nxa_maxion) = 0              !NLTE ions, increasing stage
-     integer :: ns = 0                           !states: all levels and the top ion
+     integer :: ns = 0                           !states: all (super-)levels and the top ion
      integer :: xoff = 0                         !offset in the per-cell state arrays
+     integer :: lvoff = 0, nlv = 0               !global level offset, levels of the element
      real*8 :: gtop = 1d0                        !weight of the top ion
-     real*8,allocatable :: eps(:)                !(ns) energy of the states [erg]
+     real*8,allocatable :: eps(:)                !(ns) energy of the states [erg] (super-levels: g-weighted mean)
      real*8,allocatable :: chg(:)                !(ns) ion charge of the states
   end type nxelem
 !
@@ -89,16 +101,21 @@ module nlteatommod
   real*8,allocatable,public :: nxa_lnu(:),nxa_lwl(:)  !(nlin) frequency [Hz], wavelength [cm]
   real*8,allocatable,public :: nxa_lf(:),nxa_la(:),nxa_lblu(:),nxa_lbul(:) !(nlin)
   integer,allocatable,public :: nxa_lsrt(:)      !(nlin) lines sorted by wavelength
+  integer,allocatable,public :: nxa_llv(:),nxa_luv(:) !(nlin) global level of the lower, upper level
 !-- global levels (all ions)
   integer,public :: nxa_nlv = 0
   integer,allocatable,public :: nxa_lvion(:),nxa_lvel(:) !(nlv) ion, element
   integer,allocatable,public :: nxa_lvs(:),nxa_lvc(:)    !(nlv) element-local state, its continuum state
   real*8,allocatable,public :: nxa_lvnu0(:)               !(nlv) threshold [Hz]
   real*8,allocatable,public :: nxa_lvphi(:)               !(nlv) g/(2 g_+)
+  integer,allocatable,public :: nxa_lvcl(:)               !(nlv) global level 1 of the next NLTE ion (0: top)
+  logical,public :: nxa_anysl = .false.                   !any ion with super-levels
 !-- group integrals of the cross-sections (set by nxa_groups)
   integer,public :: nxa_ng = 0
-  real*8,allocatable,public :: nxa_sgm(:,:)   !(ng,nlv) group mean of sigma [cm^2]
-  real*8,allocatable,public :: nxa_sgh(:,:)   !(ng,nlv) integral of sigma/(h nu) dnu over the group
+!-- per level lv only the groups 1..g1(lv) (above the edge), at nxa_sgo(lv)+ig
+  real*4,allocatable,public :: nxa_sgm(:)     !group mean of sigma [cm^2]
+  real*4,allocatable,public :: nxa_sgh(:)     !integral of sigma/(h nu) dnu over the group
+  integer,allocatable,public :: nxa_sgo(:)    !(nlv) offset of the level's groups
   integer,allocatable,public :: nxa_g1(:)     !(nlv) reddest group above the edge (groups 1..g1)
   integer,allocatable,public :: nxa_lgn(:)    !(nlin) group with the centre nearest the line
 !-- recombination tables on a logarithmic temperature grid
@@ -110,12 +127,12 @@ module nlteatommod
 !-- charge exchange  A + B -> C + D:  A = X^(n+1) and C = X^n of element X,
 !-- B = Y^m and D = Y^(m+1) of element Y (CMFGEN data, Kingdon & Ferland
 !-- 1996 fits); participant k = 1..4 (A, B, C, D) is a term of an NLTE ion
-!-- (its levels, element-local states s) or the top state.  The reverse
-!-- rate follows from detailed balance with the model levels.
+!-- (its levels: element-local level indices s) or the top state (s = 0).
+!-- The reverse rate follows from detailed balance with the model levels.
   integer,parameter,public :: nxa_cxml = 16
   type,public :: nxcx
      integer :: el(4) = 0, ion(4) = 0          !element; NLTE ion (0: top state)
-     integer :: nl(4) = 0, s(nxa_cxml,4) = 0   !states of the term
+     integer :: nl(4) = 0, s(nxa_cxml,4) = 0   !levels of the term (element-local; 0: top state)
      integer :: typ = 2
      real*8 :: c(4) = 0d0, tlo = 0d0, thi = 1d2 !fit coefficients; T range [1e4 K]
      real*8 :: q = 0d0                          !energy released (forward), lowest levels [erg]
@@ -124,7 +141,7 @@ module nlteatommod
   type(nxcx),allocatable,public :: nxa_cx(:)
 !
   public :: nxa_read,nxa_builtin_h,nxa_setup,nxa_groups,nxa_sigma,nxa_alpha,nxa_rcool
-  public :: nxa_coll,nxa_air,nxa_read_cx,nxa_cx_coef
+  public :: nxa_coll,nxa_air,nxa_read_cx,nxa_cx_coef,nxa_weights,nxa_wel,nxa_coll_el,nxa_eps
 !
 contains
 !
@@ -208,21 +225,39 @@ subroutine nxa_read(fname,ion)
   call keyval(iu,'nlev',s)
   read(s,*) n
   ion%nlev = n
-  allocate(ion%g(n),ion%e(n),ion%nu0(n),ion%lname(n))
+  allocate(ion%g(n),ion%e(n),ion%nu0(n),ion%lname(n),ion%sl(n))
   do i=1,n
      call getrec(iu,s,ios)
-!-- index, name (may contain '/', which ends list-directed input), g, E
+!-- index, name (may contain '/', which ends list-directed input), g, E,
+!-- super-level (optional; the level itself if absent)
      s = adjustl(s)
      k = index(s,' ')
      s = adjustl(s(k:))
      k = index(s,' ')
      ion%lname(i) = s(:k-1)
-     read(s(k:),*) g,e
+     read(s(k:),*,iostat=ist) g,e,isn
+     if(ist/=0) then
+        read(s(k:),*) g,e
+        isn = i
+     endif
      ion%g(i) = g
      ion%e(i) = hh*cc*e
+     ion%sl(i) = isn
   enddo
-!-- energies above level 1
+  ion%nsl = maxval(ion%sl)
+  if(ion%sl(1)/=1 .or. minval(ion%sl)<1) stop 'nxa_read: super-levels must start with level 1 in 1'
+  do i=1,ion%nsl
+     if(count(ion%sl==i)==0) stop 'nxa_read: empty super-level'
+  enddo
+!-- energies above level 1, increasing (the collision sums count the
+!-- lower levels by index)
   ion%e = ion%e - ion%e(1)
+  do i=2,n
+     if(ion%e(i) < ion%e(i-1)) then
+        write(0,*) 'nxa_read: ',trim(fname),' level',i,' below level',i-1
+        stop 'nxa_read: levels not ordered by energy'
+     endif
+  enddo
   ion%nu0 = (ion%chi - ion%e)/hh
   if(any(ion%nu0<=0d0)) stop 'nxa_read: level above the ionization limit'
 !-- lines
@@ -345,7 +380,9 @@ subroutine nxa_builtin_h(nlev,ion)
   ion%chi = nh_chi
   ion%gion = 1d0
   ion%nlev = nlev
-  allocate(ion%g(nlev),ion%e(nlev),ion%nu0(nlev),ion%lname(nlev))
+  allocate(ion%g(nlev),ion%e(nlev),ion%nu0(nlev),ion%lname(nlev),ion%sl(nlev))
+  ion%sl = [(n,n=1,nlev)]
+  ion%nsl = nlev
   do n=1,nlev
      ion%g(n) = nh_g(n)
      ion%e(n) = nh_eexc(n)
@@ -419,18 +456,19 @@ subroutine nxa_setup(nion,ions)
 !-----------------------------------------------------------------------
   integer,intent(in) :: nion
   type(nxion),intent(inout) :: ions(nion)
-  integer :: i,j,k,iel,n,m,lv,it,ks
+  integer :: i,j,k,iel,n,m,lv,it,ks,kc
   integer :: order(nion)
   real*8 :: e0
   integer,allocatable :: idx(:)
+  real*8,allocatable :: gsum(:)
 !
   nxa_nion = nion
   if(allocated(nxa_ion)) deallocate(nxa_ion)
   allocate(nxa_ion(nion))
 !-- set up again: drop the previous lists
   if(allocated(nxa_lion)) deallocate(nxa_lion,nxa_lel,nxa_lsl,nxa_lsu,nxa_lloc,nxa_lnu, &
-       nxa_lwl,nxa_lf,nxa_la,nxa_lblu,nxa_lbul,nxa_lsrt)
-  if(allocated(nxa_lvion)) deallocate(nxa_lvion,nxa_lvel,nxa_lvs,nxa_lvc,nxa_lvnu0,nxa_lvphi)
+       nxa_lwl,nxa_lf,nxa_la,nxa_lblu,nxa_lbul,nxa_lsrt,nxa_llv,nxa_luv)
+  if(allocated(nxa_lvion)) deallocate(nxa_lvion,nxa_lvel,nxa_lvs,nxa_lvc,nxa_lvnu0,nxa_lvphi,nxa_lvcl)
   if(allocated(nxa_lalp)) deallocate(nxa_lalp,nxa_lrc)
 !-- sort by (z, stage)
   order = [(i,i=1,nion)]
@@ -474,14 +512,16 @@ subroutine nxa_setup(nion,ions)
      nxa_el(iel)%ion(nxa_el(iel)%nion) = i
      nxa_ion(i)%el = iel
   enddo
-!-- states and energies
+!-- states (levels, or the super-levels of an ion) and energies
   nxa_nst = 0
+  nxa_anysl = .false.
   do iel=1,nxa_nel
      n = 0
      do j=1,nxa_el(iel)%nion
         i = nxa_el(iel)%ion(j)
         nxa_ion(i)%soff = n
-        n = n + nxa_ion(i)%nlev
+        n = n + nxa_ion(i)%nsl
+        if(nxa_ion(i)%nsl < nxa_ion(i)%nlev) nxa_anysl = .true.
      enddo
      nxa_el(iel)%ns = n + 1
      nxa_el(iel)%xoff = nxa_nst
@@ -492,10 +532,23 @@ subroutine nxa_setup(nion,ions)
      e0 = 0d0
      do j=1,nxa_el(iel)%nion
         i = nxa_el(iel)%ion(j)
+        if(allocated(nxa_ion(i)%eref)) deallocate(nxa_ion(i)%eref)
+        allocate(nxa_ion(i)%eref(nxa_ion(i)%nsl),gsum(nxa_ion(i)%nsl))
+        nxa_ion(i)%eref = huge(1d0)
+        gsum = 0d0
+        nxa_el(iel)%eps(nxa_ion(i)%soff+1:nxa_ion(i)%soff+nxa_ion(i)%nsl) = 0d0
         do k=1,nxa_ion(i)%nlev
-           nxa_el(iel)%eps(nxa_ion(i)%soff+k) = e0 + nxa_ion(i)%e(k)
-           nxa_el(iel)%chg(nxa_ion(i)%soff+k) = dble(nxa_ion(i)%stage - 1)
+           m = nxa_ion(i)%sl(k)
+           nxa_ion(i)%eref(m) = min(nxa_ion(i)%eref(m),nxa_ion(i)%e(k))
+           gsum(m) = gsum(m) + nxa_ion(i)%g(k)
+           nxa_el(iel)%eps(nxa_ion(i)%soff+m) = nxa_el(iel)%eps(nxa_ion(i)%soff+m) + &
+                nxa_ion(i)%g(k)*nxa_ion(i)%e(k)
         enddo
+        do m=1,nxa_ion(i)%nsl
+           nxa_el(iel)%eps(nxa_ion(i)%soff+m) = e0 + nxa_el(iel)%eps(nxa_ion(i)%soff+m)/gsum(m)
+           nxa_el(iel)%chg(nxa_ion(i)%soff+m) = dble(nxa_ion(i)%stage - 1)
+        enddo
+        deallocate(gsum)
         e0 = e0 + nxa_ion(i)%chi
      enddo
      nxa_el(iel)%eps(n+1) = e0
@@ -511,11 +564,50 @@ subroutine nxa_setup(nion,ions)
         nxa_ion(i)%gion = nxa_ion(k)%g(1)
      enddo
   enddo
+!-- global levels (by element, then ion)
+  nxa_nlv = sum(nxa_ion(:)%nlev)
+  allocate(nxa_lvion(nxa_nlv),nxa_lvel(nxa_nlv),nxa_lvs(nxa_nlv),nxa_lvc(nxa_nlv))
+  allocate(nxa_lvnu0(nxa_nlv),nxa_lvphi(nxa_nlv),nxa_lvcl(nxa_nlv))
+  lv = 0
+  do iel=1,nxa_nel
+     nxa_el(iel)%lvoff = lv
+     do j=1,nxa_el(iel)%nion
+        i = nxa_el(iel)%ion(j)
+        nxa_ion(i)%lvoff = lv
+        lv = lv + nxa_ion(i)%nlev
+     enddo
+     nxa_el(iel)%nlv = lv - nxa_el(iel)%lvoff
+  enddo
+  do iel=1,nxa_nel
+     do j=1,nxa_el(iel)%nion
+        i = nxa_el(iel)%ion(j)
+!-- continuum: level 1 of the next NLTE ion (its state), else the top state
+        if(j<nxa_el(iel)%nion) then
+           m = nxa_el(iel)%ion(j+1)
+           ks = nxa_ion(m)%soff + nxa_ion(m)%sl(1)
+           kc = nxa_ion(m)%lvoff + 1
+        else
+           ks = nxa_el(iel)%ns
+           kc = 0
+        endif
+        do k=1,nxa_ion(i)%nlev
+           lv = nxa_ion(i)%lvoff + k
+           nxa_lvion(lv) = i
+           nxa_lvel(lv) = iel
+           nxa_lvs(lv) = nxa_ion(i)%soff + nxa_ion(i)%sl(k)
+           nxa_lvc(lv) = ks
+           nxa_lvcl(lv) = kc
+           nxa_lvnu0(lv) = nxa_ion(i)%nu0(k)
+           nxa_lvphi(lv) = nxa_ion(i)%g(k)/(2d0*nxa_ion(i)%gion)
+        enddo
+     enddo
+  enddo
 !-- global lines
   nxa_nlin = sum(nxa_ion(:)%nlin)
   allocate(nxa_lion(nxa_nlin),nxa_lel(nxa_nlin),nxa_lsl(nxa_nlin),nxa_lsu(nxa_nlin))
   allocate(nxa_lloc(nxa_nlin),nxa_lnu(nxa_nlin),nxa_lwl(nxa_nlin),nxa_lf(nxa_nlin))
   allocate(nxa_la(nxa_nlin),nxa_lblu(nxa_nlin),nxa_lbul(nxa_nlin),nxa_lsrt(nxa_nlin))
+  allocate(nxa_llv(nxa_nlin),nxa_luv(nxa_nlin))
   m = 0
   do i=1,nion
      nxa_ion(i)%loff = m
@@ -524,8 +616,10 @@ subroutine nxa_setup(nion,ions)
         nxa_lion(m) = i
         nxa_lel(m) = nxa_ion(i)%el
         nxa_lloc(m) = k
-        nxa_lsl(m) = nxa_ion(i)%soff + nxa_ion(i)%ll(k)
-        nxa_lsu(m) = nxa_ion(i)%soff + nxa_ion(i)%lu(k)
+        nxa_lsl(m) = nxa_ion(i)%soff + nxa_ion(i)%sl(nxa_ion(i)%ll(k))
+        nxa_lsu(m) = nxa_ion(i)%soff + nxa_ion(i)%sl(nxa_ion(i)%lu(k))
+        nxa_llv(m) = nxa_ion(i)%lvoff + nxa_ion(i)%ll(k)
+        nxa_luv(m) = nxa_ion(i)%lvoff + nxa_ion(i)%lu(k)
         nxa_lnu(m) = nxa_ion(i)%nu(k)
         nxa_lwl(m) = nxa_air(cc/nxa_lnu(m))
         nxa_lf(m) = nxa_ion(i)%f(k)
@@ -538,30 +632,9 @@ subroutine nxa_setup(nion,ions)
   idx = [(k,k=1,nxa_nlin)]
   call sortidx(nxa_lwl,idx)
   nxa_lsrt = idx
-!-- global levels
-  nxa_nlv = sum(nxa_ion(:)%nlev)
-  allocate(nxa_lvion(nxa_nlv),nxa_lvel(nxa_nlv),nxa_lvs(nxa_nlv),nxa_lvc(nxa_nlv))
-  allocate(nxa_lvnu0(nxa_nlv),nxa_lvphi(nxa_nlv))
-  lv = 0
-  do iel=1,nxa_nel
-     do j=1,nxa_el(iel)%nion
-        i = nxa_el(iel)%ion(j)
-        nxa_ion(i)%lvoff = lv
-        if(j<nxa_el(iel)%nion) then
-           ks = nxa_ion(nxa_el(iel)%ion(j+1))%soff + 1
-        else
-           ks = nxa_el(iel)%ns
-        endif
-        do k=1,nxa_ion(i)%nlev
-           lv = lv + 1
-           nxa_lvion(lv) = i
-           nxa_lvel(lv) = iel
-           nxa_lvs(lv) = nxa_ion(i)%soff + k
-           nxa_lvc(lv) = ks
-           nxa_lvnu0(lv) = nxa_ion(i)%nu0(k)
-           nxa_lvphi(lv) = nxa_ion(i)%g(k)/(2d0*nxa_ion(i)%gion)
-        enddo
-     enddo
+!-- collision pairs with their own Omega
+  do i=1,nion
+     call coll_pairs(nxa_ion(i))
   enddo
 !-- recombination coefficients and cooling on 1e2..1e8 K
   allocate(nxa_lalp(nxa_ntt,nxa_nlv),nxa_lrc(nxa_ntt,nxa_nlv))
@@ -579,22 +652,101 @@ subroutine nxa_setup(nion,ions)
   nxa_lrc = log(max(nxa_lrc,1d-300))
 contains
   subroutine sortidx(a,ix)
-!-- insertion sort of the index ix by a(ix)
+!-- stable merge sort of the index ix by a(ix)
     real*8,intent(in) :: a(:)
     integer,intent(inout) :: ix(:)
-    integer :: ii,jj,t
-    do ii=2,size(ix)
-       t = ix(ii)
-       jj = ii - 1
-       do while(jj>=1)
-          if(a(ix(jj)) <= a(t)) exit
-          ix(jj+1) = ix(jj)
-          jj = jj - 1
+    integer :: nn,wd,lo,mi,hi,p1,p2,q
+    integer,allocatable :: tmp(:)
+    nn = size(ix)
+    allocate(tmp(nn))
+    wd = 1
+    do while(wd < nn)
+       lo = 1
+       do while(lo <= nn)
+          mi = min(lo+wd-1,nn)
+          hi = min(lo+2*wd-1,nn)
+          p1 = lo
+          p2 = mi + 1
+          do q=lo,hi
+             if(p1<=mi .and. (p2>hi .or. a(ix(min(p1,nn))) <= a(ix(min(p2,nn))))) then
+                tmp(q) = ix(p1)
+                p1 = p1 + 1
+             else
+                tmp(q) = ix(p2)
+                p2 = p2 + 1
+             endif
+          enddo
+          lo = lo + 2*wd
        enddo
-       ix(jj+1) = t
+       ix = tmp
+       wd = 2*wd
     enddo
+    deallocate(tmp)
   end subroutine sortidx
 end subroutine nxa_setup
+!
+!
+subroutine coll_pairs(ion)
+!-----------------------------------------------------------------------
+! Level pairs of an ion with their own collision strength: tabulated
+! pairs (the last entry of a pair counts) and lines with f > 1e-5 (van
+! Regemorter; for a tabulated pair, when its Omega is not positive);
+! the table column of the ionization of each level.
+!-----------------------------------------------------------------------
+  type(nxion),intent(inout) :: ion
+  integer :: n,c,l,u,k,np
+  integer,allocatable :: pm(:,:),tl(:),tu(:),tc(:),tk(:)
+!
+  n = ion%nlev
+  if(allocated(ion%xpl)) deallocate(ion%xpl,ion%xpu,ion%xpc,ion%xpk)
+  if(allocated(ion%icol)) deallocate(ion%icol)
+  allocate(ion%icol(n))
+  ion%icol = 0
+  allocate(pm(n,n),tl(ion%ncol+ion%nlin),tu(ion%ncol+ion%nlin),tc(ion%ncol+ion%nlin), &
+       tk(ion%ncol+ion%nlin))
+  pm = 0
+  np = 0
+  do c=1,ion%ncol
+     if(ion%cu(c)==0) then
+        ion%icol(ion%cl(c)) = c
+        cycle
+     endif
+     l = min(ion%cl(c),ion%cu(c))
+     u = max(ion%cl(c),ion%cu(c))
+     if(l==u .or. l<1 .or. u>n) cycle
+     if(pm(l,u)==0) then
+        np = np + 1
+        pm(l,u) = np
+        tl(np) = l
+        tu(np) = u
+        tk(np) = 0
+     endif
+     tc(pm(l,u)) = c
+  enddo
+!-- lines (the line of a pair: its last line, as ion%lin)
+  do l=1,n-1
+     do u=l+1,n
+        k = ion%lin(l,u)
+        if(k==0) cycle
+        if(ion%f(k) <= 1d-5) cycle
+        if(pm(l,u)==0) then
+           np = np + 1
+           pm(l,u) = np
+           tl(np) = l
+           tu(np) = u
+           tc(np) = 0
+        endif
+        tk(pm(l,u)) = k
+     enddo
+  enddo
+  ion%nxp = np
+  allocate(ion%xpl(np),ion%xpu(np),ion%xpc(np),ion%xpk(np))
+  ion%xpl = tl(:np)
+  ion%xpu = tu(:np)
+  ion%xpc = tc(:np)
+  ion%xpk = tk(:np)
+  deallocate(pm,tl,tu,tc,tk)
+end subroutine coll_pairs
 !
 !
 pure function nxa_sigma(ion,k,nu) result(s)
@@ -721,44 +873,67 @@ subroutine nxa_groups(ng,wlg)
 ! Group integrals of the cross-sections, exact for the tabulated
 ! (piecewise linear in u) cross-section and its nu^-3 extension:
 !   sgm(g) = (1/dnu_g) Int_g sigma dnu,   sgh(g) = Int_g sigma/(h nu) dnu
+! stored per level for the groups above its edge (single precision).
 !-----------------------------------------------------------------------
   integer,intent(in) :: ng
   real*8,intent(in) :: wlg(ng+1)       !group boundaries [cm], increasing
-  integer :: lv,i,k,ig,j,i0,i1
-  real*8 :: nulo,nuhi,ua,ub,u1,u2,s1,s2,sl,nu0,dnu,ul,sl3
+  integer :: lv,i,k,ig,j,i0,i1,ntot,o,a,b,m
+  real*8 :: nulo,nuhi,ua,ub,u1,u2,s1,s2,sl,nu0,dnu,ul,sl3,gm,gh
 !
   nxa_ng = ng
-  if(allocated(nxa_sgm)) deallocate(nxa_sgm,nxa_sgh,nxa_g1,nxa_lgn)
-  allocate(nxa_sgm(ng,nxa_nlv),nxa_sgh(ng,nxa_nlv),nxa_g1(nxa_nlv),nxa_lgn(nxa_nlin))
-!-- group of each line: nearest group centre in frequency
+  if(allocated(nxa_sgm)) deallocate(nxa_sgm,nxa_sgh,nxa_sgo,nxa_g1,nxa_lgn)
+  allocate(nxa_g1(nxa_nlv),nxa_sgo(nxa_nlv),nxa_lgn(nxa_nlin))
+!-- group of each line: nearest group centre in frequency (bisection on the
+!-- decreasing centre frequencies)
   do k=1,nxa_nlin
-     nxa_lgn(k) = 1
-     dnu = 1d99
-     do ig=1,ng
-        nulo = 0.5d0*(cc/wlg(ig) + cc/wlg(ig+1))
-        if(abs(nulo - nxa_lnu(k)) < dnu) then
-           dnu = abs(nulo - nxa_lnu(k))
-           nxa_lgn(k) = ig
+     a = 1
+     b = ng
+     do while(b-a>1)
+        m = (a+b)/2
+        if(0.5d0*(cc/wlg(m) + cc/wlg(m+1)) > nxa_lnu(k)) then
+           a = m
+        else
+           b = m
         endif
      enddo
+     nxa_lgn(k) = a
+     if(abs(0.5d0*(cc/wlg(b) + cc/wlg(b+1)) - nxa_lnu(k)) < &
+          abs(0.5d0*(cc/wlg(a) + cc/wlg(a+1)) - nxa_lnu(k))) nxa_lgn(k) = b
   enddo
-  nxa_sgm = 0d0
-  nxa_sgh = 0d0
+!-- reddest group above the edge of each level, offsets
+  ntot = 0
+  do lv=1,nxa_nlv
+     i = nxa_lvion(lv)
+     k = lv - nxa_ion(i)%lvoff
+     nu0 = nxa_ion(i)%nu0(k)
+     nxa_g1(lv) = 0
+     do ig=ng,1,-1
+        if(cc/wlg(ig) > nu0) then
+           nxa_g1(lv) = ig
+           exit
+        endif
+     enddo
+     nxa_sgo(lv) = ntot
+     ntot = ntot + nxa_g1(lv)
+  enddo
+  allocate(nxa_sgm(max(ntot,1)),nxa_sgh(max(ntot,1)))
+  nxa_sgm = 0.
+  nxa_sgh = 0.
   do lv=1,nxa_nlv
      i = nxa_lvion(lv)
      k = lv - nxa_ion(i)%lvoff
      nu0 = nxa_ion(i)%nu0(k)
      i0 = nxa_ion(i)%pst(k)
      i1 = i0 + nxa_ion(i)%pn(k) - 1
-     nxa_g1(lv) = 0
-     do ig=ng,1,-1
+     o = nxa_sgo(lv)
+     do ig=nxa_g1(lv),1,-1
         nulo = cc/wlg(ig+1)
         nuhi = cc/wlg(ig)
-        if(nuhi <= nu0) cycle
-        nxa_g1(lv) = max(nxa_g1(lv),ig)
         ua = max(nulo,nu0)/nu0
         ub = nuhi/nu0
         dnu = nuhi - nulo
+        gm = 0d0
+        gh = 0d0
 !-- table segments overlapping [ua,ub]
         do j=i0,i1-1
            u1 = max(nxa_ion(i)%pu(j),ua)
@@ -768,8 +943,8 @@ subroutine nxa_groups(ng,wlg)
            s1 = nxa_ion(i)%ps(j) + sl*(u1 - nxa_ion(i)%pu(j))
            s2 = nxa_ion(i)%ps(j) + sl*(u2 - nxa_ion(i)%pu(j))
 !-- Int sigma du (trapezoid exact for linear sigma); Int sigma/u du
-           nxa_sgm(ig,lv) = nxa_sgm(ig,lv) + 0.5d0*(s1 + s2)*(u2 - u1)*nu0
-           nxa_sgh(ig,lv) = nxa_sgh(ig,lv) + ((s1 - sl*u1)*log(u2/u1) + sl*(u2 - u1))/hh
+           gm = gm + 0.5d0*(s1 + s2)*(u2 - u1)*nu0
+           gh = gh + ((s1 - sl*u1)*log(u2/u1) + sl*(u2 - u1))/hh
         enddo
 !-- below the first table point: its value
         ul = nxa_ion(i)%pu(i0)
@@ -777,8 +952,8 @@ subroutine nxa_groups(ng,wlg)
            u1 = ua
            u2 = min(ul,ub)
            s1 = nxa_ion(i)%ps(i0)
-           nxa_sgm(ig,lv) = nxa_sgm(ig,lv) + s1*(u2 - u1)*nu0
-           nxa_sgh(ig,lv) = nxa_sgh(ig,lv) + s1*log(u2/u1)/hh
+           gm = gm + s1*(u2 - u1)*nu0
+           gh = gh + s1*log(u2/u1)/hh
         endif
 !-- above the last point: sigma_l (u_l/u)^3
         ul = nxa_ion(i)%pu(i1)
@@ -786,10 +961,11 @@ subroutine nxa_groups(ng,wlg)
            u1 = max(ua,ul)
            u2 = ub
            sl3 = nxa_ion(i)%ps(i1)*ul**3
-           nxa_sgm(ig,lv) = nxa_sgm(ig,lv) + sl3*0.5d0*(1d0/u1**2 - 1d0/u2**2)*nu0
-           nxa_sgh(ig,lv) = nxa_sgh(ig,lv) + sl3*(1d0/u1**3 - 1d0/u2**3)/3d0/hh
+           gm = gm + sl3*0.5d0*(1d0/u1**2 - 1d0/u2**2)*nu0
+           gh = gh + sl3*(1d0/u1**3 - 1d0/u2**3)/3d0/hh
         endif
-        nxa_sgm(ig,lv) = nxa_sgm(ig,lv)/dnu
+        nxa_sgm(o+ig) = real(gm/dnu)
+        nxa_sgh(o+ig) = real(gh)
      enddo
   enddo
 end subroutine nxa_groups
@@ -907,6 +1083,250 @@ pure subroutine nxa_coll(ion,temp,qup,qdn,cion,c3b)
   enddo
 end subroutine nxa_coll
 !
+pure subroutine nxa_weights(temp,w)
+!-- share of each global level in its state at the electron temperature
+!-- (nxa_wel for all elements)
+  real*8,intent(in) :: temp
+  real*8,intent(out) :: w(nxa_nlv)
+  integer :: iel
+  do iel=1,nxa_nel
+     call nxa_wel(iel,temp,w(nxa_el(iel)%lvoff+1:nxa_el(iel)%lvoff+nxa_el(iel)%nlv))
+  enddo
+end subroutine nxa_weights
+!
+!
+pure subroutine nxa_wel(iel,temp,w)
+!-----------------------------------------------------------------------
+! Share of each level of element iel (element-local levels) in its state
+! at the electron temperature: Boltzmann within a super-level,
+! w_k = g_k e^{-E_k/kT}/sum_S g e^{-E/kT}; 1 for a level that is a state.
+!-----------------------------------------------------------------------
+  integer,intent(in) :: iel
+  real*8,intent(in) :: temp
+  real*8,intent(out) :: w(:)
+  integer :: j,i,k,lo
+  real*8 :: kt
+  real*8,allocatable :: zs(:)
+  w = 1d0
+  if(.not.nxa_anysl) return
+  kt = kb*temp
+  do j=1,nxa_el(iel)%nion
+     i = nxa_el(iel)%ion(j)
+     if(nxa_ion(i)%nsl == nxa_ion(i)%nlev) cycle
+     lo = nxa_ion(i)%lvoff - nxa_el(iel)%lvoff
+     allocate(zs(nxa_ion(i)%nsl))
+     zs = 0d0
+     do k=1,nxa_ion(i)%nlev
+        w(lo+k) = nxa_ion(i)%g(k)*exp(-min((nxa_ion(i)%e(k) - nxa_ion(i)%eref(nxa_ion(i)%sl(k)))/kt,700d0))
+        zs(nxa_ion(i)%sl(k)) = zs(nxa_ion(i)%sl(k)) + w(lo+k)
+     enddo
+     do k=1,nxa_ion(i)%nlev
+        w(lo+k) = w(lo+k)/zs(nxa_ion(i)%sl(k))
+     enddo
+     deallocate(zs)
+  enddo
+end subroutine nxa_wel
+!
+!
+pure subroutine nxa_eps(iel,w,eps)
+!-- energies of the states of element iel [erg] (above the ground state of
+!-- its lowest NLTE ion) for the level shares w (element-local levels):
+!-- the mean energy of a super-level
+  integer,intent(in) :: iel
+  real*8,intent(in) :: w(:)
+  real*8,intent(out) :: eps(:)
+  integer :: j,i,k,s,lo
+  real*8 :: e0
+  eps = 0d0
+  e0 = 0d0
+  do j=1,nxa_el(iel)%nion
+     i = nxa_el(iel)%ion(j)
+     lo = nxa_ion(i)%lvoff - nxa_el(iel)%lvoff
+     do k=1,nxa_ion(i)%nlev
+        s = nxa_ion(i)%soff + nxa_ion(i)%sl(k)
+        eps(s) = eps(s) + w(lo+k)*nxa_ion(i)%e(k)
+     enddo
+     eps(nxa_ion(i)%soff+1:nxa_ion(i)%soff+nxa_ion(i)%nsl) = &
+          eps(nxa_ion(i)%soff+1:nxa_ion(i)%soff+nxa_ion(i)%nsl) + e0
+     e0 = e0 + nxa_ion(i)%chi
+  enddo
+  eps(nxa_el(iel)%ns) = e0
+end subroutine nxa_eps
+!
+!
+pure subroutine nxa_coll_el(iel,temp,cq,eup,edn,cil,c3l)
+!-----------------------------------------------------------------------
+! Electron-impact rate coefficients of element iel at temperature temp
+! between its states (levels or super-levels; Boltzmann shares within a
+! super-level):
+!  cq(s,s')   transitions s -> s' per particle in s [cm^3/s]
+!  eup(s,s')  energy the electrons lose by them [erg cm^3/s] (excitations)
+!  edn(s,s')  energy the electrons gain by them [erg cm^3/s] (de-excitations)
+!  cil(k)     ionization from level k (element-local level) [cm^3/s]
+!  c3l(k)     three-body recombination into k per particle in level 1
+!             of the next ion [cm^6/s]
+! Omega as in nxa_coll.  Per pair l < u (energies increasing) and state
+! shares w_l = g_l e^{-(E_l-Eref_S)/kT}/Z_S:
+!   w_l q_lu = c Omega e^{-(E_u-Eref_S)/kT}/Z_S,  w_u q_ul = c Omega e^{-(E_u-Eref_S')/kT}/Z_S'
+! with c = 8.63e-6/sqrt(T).  The pairs with omegaset are summed over the
+! lower levels of each state with running counts (no loop over all level
+! pairs); the pairs with their own Omega (ion%xpl, xpu) add the difference.
+! Transitions within a super-level drop out.
+!-----------------------------------------------------------------------
+  integer,intent(in) :: iel
+  real*8,intent(in) :: temp
+  real*8,intent(out) :: cq(:,:),eup(:,:),edn(:,:),cil(:),c3l(:)
+  integer :: j,i,n,m,o,lo,u,s,su,l,ip,it,c,k
+  real*8 :: kt,co,om,gbar,fu,fd,de,emid,wt,t1,t2,sig0,uu,f
+  real*8,allocatable :: zs(:),gs(:),rs(:),au(:),cnt(:),esm(:)
+!
+  cq = 0d0
+  eup = 0d0
+  edn = 0d0
+  kt = kb*temp
+  co = nxa_colfac*8.63d-6/sqrt(temp)
+  do j=1,nxa_el(iel)%nion
+     i = nxa_el(iel)%ion(j)
+     n = nxa_ion(i)%nlev
+     m = nxa_ion(i)%nsl
+     o = nxa_ion(i)%soff
+     lo = nxa_ion(i)%lvoff - nxa_el(iel)%lvoff
+     allocate(zs(m),gs(m),rs(m),au(n),cnt(m),esm(m))
+!-- per level a_u = e^{-(E_u-Eref)/kT}; per state Z_S and G_S = e^{-(Eref_S-Emid)/kT}
+     emid = 0.5d0*(minval(nxa_ion(i)%eref) + maxval(nxa_ion(i)%eref))
+     zs = 0d0
+     do k=1,n
+        s = nxa_ion(i)%sl(k)
+        au(k) = exp(-min((nxa_ion(i)%e(k) - nxa_ion(i)%eref(s))/kt,700d0))
+        zs(s) = zs(s) + nxa_ion(i)%g(k)*au(k)
+     enddo
+     do s=1,m
+        gs(s) = exp(-min(max((nxa_ion(i)%eref(s) - emid)/kt,-700d0),700d0))
+        rs(s) = 1d0/(gs(s)*zs(s))
+     enddo
+!-- omegaset for all pairs
+     if(nxa_ion(i)%omset > 0d0) then
+        cnt = 0d0
+        esm = 0d0
+        do u=1,n
+           su = nxa_ion(i)%sl(u)
+           fd = co*nxa_ion(i)%omset*au(u)/zs(su)
+           wt = co*nxa_ion(i)%omset*au(u)*gs(su)
+           do s=1,m
+              if(cnt(s)==0d0 .or. s==su) cycle
+              t1 = cnt(s)
+              t2 = cnt(s)*nxa_ion(i)%e(u) - esm(s)
+              fu = wt*rs(s)
+              cq(o+s,o+su) = cq(o+s,o+su) + fu*t1
+              eup(o+s,o+su) = eup(o+s,o+su) + fu*t2
+              cq(o+su,o+s) = cq(o+su,o+s) + fd*t1
+              edn(o+su,o+s) = edn(o+su,o+s) + fd*t2
+           enddo
+           cnt(su) = cnt(su) + 1d0
+           esm(su) = esm(su) + nxa_ion(i)%e(u)
+        enddo
+     endif
+!-- pairs with their own Omega: tabulated (log-log in T, constant beyond
+!-- the table), else van Regemorter
+     it = 1
+     wt = 0d0
+     if(nxa_ion(i)%ncol>0) then
+        if(temp <= nxa_ion(i)%colt(1)) then
+           it = 1; wt = 0d0
+        elseif(temp >= nxa_ion(i)%colt(nxa_ion(i)%ncolt)) then
+           it = nxa_ion(i)%ncolt - 1; wt = 1d0
+        else
+           it = 1
+           do while(temp > nxa_ion(i)%colt(it+1))
+              it = it + 1
+           enddo
+           wt = log(temp/nxa_ion(i)%colt(it))/log(nxa_ion(i)%colt(it+1)/nxa_ion(i)%colt(it))
+        endif
+     endif
+     do ip=1,nxa_ion(i)%nxp
+        l = nxa_ion(i)%xpl(ip)
+        u = nxa_ion(i)%xpu(ip)
+        s = nxa_ion(i)%sl(l)
+        su = nxa_ion(i)%sl(u)
+        if(s==su) cycle
+        om = 0d0
+        c = nxa_ion(i)%xpc(ip)
+        if(c>0) om = tab(c)
+        if(om <= 0d0) then
+           k = nxa_ion(i)%xpk(ip)
+           if(k>0) then
+              om = vreg(k,l,u)
+           else
+              om = nxa_ion(i)%omset
+           endif
+        endif
+        om = om - nxa_ion(i)%omset
+        if(om==0d0) cycle
+        de = nxa_ion(i)%e(u) - nxa_ion(i)%e(l)
+        fu = co*om*au(u)*gs(su)*rs(s)
+        fd = co*om*au(u)/zs(su)
+        cq(o+s,o+su) = cq(o+s,o+su) + fu
+        eup(o+s,o+su) = eup(o+s,o+su) + fu*de
+        cq(o+su,o+s) = cq(o+su,o+s) + fd
+        edn(o+su,o+s) = edn(o+su,o+s) + fd*de
+     enddo
+!-- ionization and three-body recombination per level
+     do k=1,n
+        uu = hh*nxa_ion(i)%nu0(k)/kt
+        c = nxa_ion(i)%icol(k)
+        om = 0d0
+        if(c>0) om = tab(c)
+        if(om > 0d0) then
+           cil(lo+k) = co*om/nxa_ion(i)%g(k)*exp(-min(uu,700d0))
+           c3l(lo+k) = co*om/(2d0*nxa_ion(i)%gion)*nxa_sahac*temp**(-1.5d0)
+        else
+!-- Seaton with gbar = 0.1 min(zion,3)
+           sig0 = nxa_sigma(nxa_ion(i),k,nxa_ion(i)%nu0(k))
+           gbar = 0.1d0*min(nxa_ion(i)%zion,3d0)
+           f = nxa_colfac*1.55d13*gbar*sig0/sqrt(temp)/uu
+           cil(lo+k) = f*exp(-min(uu,700d0))
+           c3l(lo+k) = f*nxa_ion(i)%g(k)/(2d0*nxa_ion(i)%gion)*nxa_sahac*temp**(-1.5d0)
+        endif
+     enddo
+     deallocate(zs,gs,rs,au,cnt,esm)
+  enddo
+  cq = max(cq,0d0)
+  eup = max(eup,0d0)
+  edn = max(edn,0d0)
+contains
+  pure real*8 function tab(cc_)
+    integer,intent(in) :: cc_
+    real*8 :: a,b
+    a = nxa_ion(i)%com(it,cc_)
+    b = nxa_ion(i)%com(it+1,cc_)
+    if(a > 0d0 .and. b > 0d0) then
+       tab = exp((1d0-wt)*log(a) + wt*log(b))
+    else
+       tab = (1d0-wt)*a + wt*b
+    endif
+  end function tab
+  pure real*8 function vreg(kk,ll,uu_)
+!-- van Regemorter (CMFGEN OMEGA_GEN_V3)
+    integer,intent(in) :: kk,ll,uu_
+    real*8 :: xx,gb,gg,nu15
+    nu15 = (nxa_ion(i)%e(uu_) - nxa_ion(i)%e(ll))/hh*1d-15
+    xx = (nxa_ion(i)%e(uu_) - nxa_ion(i)%e(ll))/kt
+    if(nxa_ion(i)%zion <= 1.0001d0) then
+       if(xx <= 14d0) then
+          gb = 0.276d0*ex_e1x(xx)
+       else
+          gb = 0.066d0*(1d0 + 1.5d0/xx)/sqrt(xx)
+       endif
+    else
+       gg = 0.2d0
+       if(nxa_ion(i)%samen(kk)) gg = 0.7d0
+       gb = max(gg,0.276d0*ex_e1x(xx))
+    endif
+    vreg = 47.972d0*nxa_ion(i)%omscale*gb*nxa_ion(i)%f(kk)*nxa_ion(i)%g(ll)/nu15
+  end function vreg
+end subroutine nxa_coll_el
+!
+!
 subroutine nxa_read_cx(fname,lprint)
 !-----------------------------------------------------------------------
 ! Charge-exchange reactions (Tools/cmfgen2superlite_chgexch.py) among the
@@ -963,8 +1383,10 @@ subroutine nxa_read_cx(fname,lprint)
      endif
 !-- energy released by the forward reaction, lowest level of each term
      do k=1,4
-        iel = t(n)%el(k)
-        e(k) = minval(nxa_el(iel)%eps(t(n)%s(1:t(n)%nl(k),k)))
+        e(k) = huge(1d0)
+        do j=1,t(n)%nl(k)
+           e(k) = min(e(k),elev(t(n)%el(k),t(n)%s(j,k)))
+        enddo
      enddo
      t(n)%q = e(1) - e(3) + e(2) - e(4)
   enddo
@@ -980,7 +1402,7 @@ subroutine nxa_read_cx(fname,lprint)
            if(k==3) write(6,'(a)',advance='no') ' ->'
            if(k==2.or.k==4) write(6,'(a)',advance='no') ' +'
            if(i>0) then
-              lv = nxa_cx(j)%s(1,k) - nxa_ion(i)%soff
+              lv = nxa_cx(j)%s(1,k) - (nxa_ion(i)%lvoff - nxa_el(nxa_cx(j)%el(k))%lvoff)
               write(6,'(1x,a,1x,a,a,i0,a)',advance='no') trim(nxa_ion(i)%name), &
                    trim(nxa_ion(i)%lname(lv)),'(',nxa_cx(j)%nl(k),')'
            else
@@ -1017,7 +1439,7 @@ contains
     character(*),intent(in) :: name
     type(nxcx),intent(inout) :: r
     logical,intent(out) :: found,lground
-    integer :: je,jj,ji,l,m,a0,a1
+    integer :: je,jj,ji,l,m,a0,a1,lo
     character(64) :: alt,lnm,gnm
     found = .false.
     lground = .false.
@@ -1036,11 +1458,12 @@ contains
        if(stg/=nxa_ion(nxa_el(je)%ion(nxa_el(je)%nion))%stage+1) return
        r%ion(kk) = 0
        r%nl(kk) = 1
-       r%s(1,kk) = nxa_el(je)%ns
+       r%s(1,kk) = 0
        found = .true.
        return
     endif
     r%ion(kk) = ji
+    lo = nxa_ion(ji)%lvoff - nxa_el(je)%lvoff
     m = 0
     if(name/='ION') then
        a0 = 1
@@ -1053,9 +1476,9 @@ contains
           endif
           do l=1,nxa_ion(ji)%nlev
              lnm = normname(nxa_ion(ji)%lname(l))
-             if(lnm==alt .and. m<nxa_cxml .and. .not.any(r%s(1:m,kk)==nxa_ion(ji)%soff+l)) then
+             if(lnm==alt .and. m<nxa_cxml .and. .not.any(r%s(1:m,kk)==lo+l)) then
                 m = m + 1
-                r%s(m,kk) = nxa_ion(ji)%soff + l
+                r%s(m,kk) = lo + l
              endif
           enddo
           if(a1==0) exit
@@ -1069,13 +1492,31 @@ contains
        do l=1,nxa_ion(ji)%nlev
           if(normname(nxa_ion(ji)%lname(l))==gnm .and. m<nxa_cxml) then
              m = m + 1
-             r%s(m,kk) = nxa_ion(ji)%soff + l
+             r%s(m,kk) = lo + l
           endif
        enddo
     endif
     r%nl(kk) = m
     found = m>0
   end subroutine participant
+  real*8 function elev(je,ls)
+!-- energy of element-local level ls of element je above the ground state
+!-- of its lowest NLTE ion (ls = 0: the top state)
+    integer,intent(in) :: je,ls
+    integer :: jj,ji
+    real*8 :: e0
+    e0 = 0d0
+    do jj=1,nxa_el(je)%nion
+       ji = nxa_el(je)%ion(jj)
+       if(ls > nxa_ion(ji)%lvoff - nxa_el(je)%lvoff .and. &
+            ls <= nxa_ion(ji)%lvoff - nxa_el(je)%lvoff + nxa_ion(ji)%nlev) then
+          elev = e0 + nxa_ion(ji)%e(ls - (nxa_ion(ji)%lvoff - nxa_el(je)%lvoff))
+          return
+       endif
+       e0 = e0 + nxa_ion(ji)%chi
+    enddo
+    elev = e0
+  end function elev
   function normname(a) result(b)
 !-- level name without '_' and the J value in brackets
     character(*),intent(in) :: a
