@@ -15,7 +15,7 @@ subroutine emission_probability
 
   integer :: l,ig,igp1,iep,nepg
   real*8 :: t0,t1
-  real*8 :: help
+  real*8 :: help,helpk
   real*8 :: specarr(grp_ng)
 
   t0 = t_time()
@@ -32,6 +32,8 @@ subroutine emission_probability
        grd_emitprob(1,grd_idd1:grd_idd1+grd_ndd-1) = &
             grd_capgrey(grd_idd1:grd_idd1+grd_ndd-1)
      endif
+     grd_emitprobk(1,grd_idd1:grd_idd1+grd_ndd-1) = &
+          grd_capgrey(grd_idd1:grd_idd1+grd_ndd-1)
      return
   endif
 
@@ -42,6 +44,7 @@ subroutine emission_probability
 !-- cumulative sum of unnormalized emission probability
      ig = 1
      help = 0d0
+     helpk = 0d0
      do iep=1,grd_nep-1
         nepg = min(iep*grd_nepg,grp_ng) - ig + 1
         igp1 = ig + nepg - 1
@@ -51,7 +54,9 @@ subroutine emission_probability
         else !LTE
           help = help + sum(specarr(ig:igp1)*grd_cap(ig:igp1,l))
         endif
+        helpk = helpk + sum(specarr(ig:igp1)*grd_cap(ig:igp1,l))
         grd_emitprob(iep,l) = help
+        grd_emitprobk(iep,l) = helpk
         ig = igp1 + 1
      enddo !iep
      if(in_nlte) then !NLTE
@@ -59,6 +64,7 @@ subroutine emission_probability
      else !LTE
        grd_emitprob(grd_nep,l)=grd_capgrey(l)
      endif
+     grd_emitprobk(grd_nep,l)=grd_capgrey(l)
   enddo !l
 
   t1 = t_time()

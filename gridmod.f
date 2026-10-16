@@ -34,6 +34,10 @@ c-- compressed domain
 c
 c-- Probability of emission in a given zone and group
       real*8,allocatable :: grd_emitprob(:,:) !(nep,ncell)
+c-- DDMC with NLTE macro-atoms: Kirchhoff emission with all absorption
+c-- opacities (grd_emitprob uses the emission opacities without the NLTE
+c-- bound-free, which the macro-atom emits in IMC)
+      real*8,allocatable :: grd_emitprobk(:,:) !(nep,ncell)
 
 c-- Line+Cont extinction coeff
       real*4,allocatable :: grd_cap(:,:) !(ng,ncell)
@@ -95,6 +99,11 @@ c
       real*8,intent(in) :: r
       integer,intent(in) :: ic
       end function emitgroup
+      pure function emitgroupk(r,ic) result(ig)
+      integer :: ig
+      real*8,intent(in) :: r
+      integer,intent(in) :: ic
+      end function emitgroupk
       end interface
 c
       save
@@ -178,6 +187,7 @@ c
 c-- ndim=4 alloc
       allocate(grd_opaclump(11,grd_ncell))
       allocate(grd_emitprob(grd_nep,grd_ncell))
+      allocate(grd_emitprobk(grd_nep,grd_ncell))
 c-- ndim=4 alloc
       allocate(grd_cap(ng,grd_ncell))
       allocate(grd_capemit(ng,grd_ncell))
@@ -223,7 +233,7 @@ c-- ndim=3 integer
       deallocate(grd_methodswap)
 c-- ndim=4 alloc
       deallocate(grd_opaclump)
-      deallocate(grd_emitprob)
+      deallocate(grd_emitprob,grd_emitprobk)
 c-- ndim=4 alloc
       deallocate(grd_cap)
       deallocate(grd_capemit)

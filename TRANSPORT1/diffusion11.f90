@@ -13,6 +13,7 @@ pure subroutine diffusion11(ptcl,ptcl2,vx,vy,vz,cache,rndstate,&
   use transportmod
   use fluxmod
   use inputparmod
+  use nltextrmod, only:nxt_on
   implicit none
 !
   type(packet),target,intent(inout) :: ptcl
@@ -134,7 +135,9 @@ pure subroutine diffusion11(ptcl,ptcl2,vx,vy,vz,cache,rndstate,&
 !-- Planck x-section lump
         caplump = grd_opaclump(8,ic)*speclump
         capemitlump = grd_opaclump(9,ic)*speclump
-        if(in_nlte) then
+!-- (with the NLTE macro-atoms: Kirchhoff emission with all absorption
+!-- opacities; the macro-atom is not followed in DDMC)
+        if(in_nlte .and. .not.nxt_on) then
           emitlump = grd_opaclump(9,ic)*capemitgreyinv
         else
           emitlump = grd_opaclump(8,ic)*capgreyinv
@@ -174,10 +177,10 @@ pure subroutine diffusion11(ptcl,ptcl2,vx,vy,vz,cache,rndstate,&
      doplump = cache%doplump
   else
 !-- outside the lump
-     if(in_nlte) then !NLTE
+     if(in_nlte .and. .not.nxt_on) then !NLTE (H only)
        emitlump = specint0(grd_tempinv(ic),ig)* &
                   capemitgreyinv*grd_capemit(ig,ic)
-     else ! LTE
+     else ! LTE, NLTE macro-atoms (Kirchhoff)
        emitlump = specint0(grd_tempinv(ic),ig)* &
                   capgreyinv*grd_cap(ig,ic)
      endif
@@ -559,7 +562,11 @@ pure subroutine diffusion11(ptcl,ptcl2,vx,vy,vz,cache,rndstate,&
      if(glump==0) then
 !-- sample group
         call rnd_r(r1,rndstate)
-        iiig = emitgroup(r1,ic)
+        if(nxt_on) then
+           iiig = emitgroupk(r1,ic)
+        else
+           iiig = emitgroup(r1,ic)
+        endif
      else
 !
 !-- update specarr cache. this is slow
@@ -574,7 +581,7 @@ pure subroutine diffusion11(ptcl,ptcl2,vx,vy,vz,cache,rndstate,&
         denom3 = 0d0
         do iig=grp_ng,glump+1,-1
            iiig = glumps(iig)
-           if(in_nlte) then !NLTE
+           if(in_nlte .and. .not.nxt_on) then !NLTE (H only)
              help = cache%specarr(iiig)*grd_capemit(iiig,ic)&
                     *capemitgreyinv
            else

@@ -795,6 +795,10 @@ c
       call mpi_allgatherv(snd,n*grd_ndd,MPI_REAL8,
      &  grd_emitprob,n*counts,n*displs,MPI_REAL8,
      &  MPI_COMM_WORLD,ierr)
+      snd = grd_emitprobk(:,grd_idd1:grd_idd1+grd_ndd-1)
+      call mpi_allgatherv(snd,n*grd_ndd,MPI_REAL8,
+     &  grd_emitprobk,n*counts,n*displs,MPI_REAL8,
+     &  MPI_COMM_WORLD,ierr)
       deallocate(snd)
 c
       t1 = t_time()

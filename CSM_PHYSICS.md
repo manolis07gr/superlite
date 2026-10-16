@@ -133,7 +133,7 @@ for H, He and the abundant metals), charge exchange, core-shell X-ray opacity.
 4. Non-thermal deposition of ⁵⁶Co γ-rays (Kozma & Fransson 1992) with the same Shull & van Steenberg channels.
 5. Shock structure: adiabatic vs radiative from the cooling time; ~~cooling-function spectra (line cooling at 10⁵–10⁷ K) instead of bremsstrahlung shapes~~ (CIE spectra, `in_shock_cie`; non-equilibrium ionization behind the shock still missing); T_e ≠ T_i behind fast shocks.
 6. ~~NLTE macro-atoms for Fe II, Ca II, O I, Mg II~~ (stage 3; the ε treatment of stage 2 remains for the LTE elements and the lines beyond the model atoms).
-7. DDMC: macro-atom-aware absorption, non-thermal deposition and H lines (expansion opacity) in optically thick cells (at present DDMC re-emits absorbed energy thermally).
+7. DDMC: macro-atom-aware absorption, non-thermal deposition and the NLTE lines (Sobolev resonances exist only in IMC) and thermal Compton broadening in optically thick cells. With the NLTE macro-atoms DDMC now re-emits absorbed energy with the Kirchhoff emissivity of all absorption opacities (before: without the NLTE bound-free, which drained the H continua of thick cells); for line work in dense CSM use `in_puretran = t` (IMC everywhere; A4/A7 have only 4 cells with Δτ_es > 5, τ_es ≈ 50–65 in total).
 
 **Stage 3 — dynamics and geometry**
 8. Time-dependent radiation transport (SuperNu's IMC with census) with light-travel time, for interaction phases where t_diff ≈ t_dyn.
