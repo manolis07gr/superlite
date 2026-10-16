@@ -154,4 +154,6 @@ python3 Tools/make_wlgrid.py -o run
 mpirun -np 4 superlite
 ```
 Outputs: `output.flx_luminos` (spectrum per iteration), `output.nlteh` (populations,
-departure coefficients, Sobolev optical depths, escape probabilities per cell).
+departure coefficients, Sobolev optical depths, escape probabilities per cell),
+`output.tebal_<rank>` with `in_tesolve` (heating and cooling terms per cell at the last
+iteration).  Unit tests: `Tests/unit/run_tests.sh`.
