@@ -21,6 +21,12 @@ c-- wavelength (wl), polar (mu), and azimuthal (om) bins
       real*8,allocatable :: flx_luminos(:,:,:) !(flx_ng,flx_nmu,flx_nom)
 c-- escaped outside the wavelength range of the flux bins (this iteration)
       real*8 :: flx_lumout = 0d0
+c-- escaped luminosity by last emission process (packet%em: kind 0-6,
+c-- element Z 0-30) and wavelength band (flx_emband edges [cm])
+      integer,parameter :: flx_nemb = 8
+      real*8,parameter :: flx_emband(flx_nemb+1) = [0d0,912d-8,3000d-8,
+     &  5000d-8,7000d-8,1d-4,2.5d-4,1d-3,1d99]
+      real*8 :: flx_emch(0:6,0:30,flx_nemb) = 0d0
 !-- sampled devation of group luminosity
       real*8,allocatable :: flx_lumdev(:,:,:) !(flx_ng,flx_nmu,flx_nom)
 !-- number of escaped particles per group

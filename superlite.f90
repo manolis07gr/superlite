@@ -335,6 +335,7 @@ program superlite
         endif
         if(flx_lumout>0d0) write(6,'(1x,a,es10.3,a,f7.4,a)') 'escaped outside the flux bins:', &
              flx_lumout,' erg/s (',flx_lumout/max(flx_lumout+sum(flx_luminos),1d-300),' of the total)'
+        if(it==in_niter) call write_emitchan
         write(6,*)
      endif !impi
 !-- write timestep timing to file
@@ -372,6 +373,25 @@ program superlite
   call mpi_finalize(ierr) !MPI
 
 contains
+!
+subroutine write_emitchan
+!-- escaped luminosity by last emission process and element, per band
+  integer :: k,z,b
+  character(12),parameter :: kn(0:6) = [character(12) :: 'unknown','inner_bound', &
+       'thermal','bound-free','line','two-photon','shock']
+  open(4,file='output.emitchan',status='replace')
+  write(4,'(a)') '# escaped luminosity [erg/s] by last emission process and element (Z), per band [A]'
+  write(4,'(a12,a4,9a11)') '# process','Z','<912','912-3e3','3e3-5e3','5e3-7e3','7e3-1e4', &
+       '1e4-2.5e4','2.5e4-1e5','>1e5','total'
+  do k=0,6
+     do z=0,30
+        if(sum(flx_emch(k,z,:))<=0d0) cycle
+        write(4,'(a12,i4,1p,9e11.3)') kn(k),z,(flx_emch(k,z,b),b=1,flx_nemb),sum(flx_emch(k,z,:))
+     enddo
+  enddo
+  close(4)
+end subroutine write_emitchan
+
 
 subroutine atomfiles(str,n,files)
 !-- split a blank-separated list of model-atom files

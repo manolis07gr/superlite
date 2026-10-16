@@ -8,6 +8,10 @@ module particlemod
      real*8 :: x, y, z
      real*8 :: mu, om
      real*8 :: e, e0, wl
+!-- last emission (diagnostics, output.emitchan): 1 inner boundary,
+!-- 2 thermal emissivity, 3 bound-free, 4 line, 5 two-photon, 6 shock;
+!-- + 100 Z of the emitting element for 3-5
+     integer :: em = 0
   end type packet
 !
 !-- secondary particle properties

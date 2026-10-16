@@ -487,7 +487,10 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
 !-- converting comoving wavelength to lab frame wavelength
         wl = wl*(1d0-vx*mu*cinv)
      endif
-     if(lremit) call nx_reemit(kind,idx,wlcmf,ig,wl,e,e0,mu,vx,x,ix,ic,ptcl2,totevelo,rndstate)
+     if(lremit) then
+        call nx_reemit(kind,idx,wlcmf,ig,wl,e,e0,mu,vx,x,ix,ic,ptcl2,totevelo,rndstate)
+        ptcl%em = nxt_emcode(kind,idx)
+     endif
 
 !
 !-- outer radial bound
@@ -621,6 +624,7 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
         e = e*help
         e0 = e0*help
         call nx_reemit(kind,idx,wlcmf,ig,wl,e,e0,mu,vx,x,ix,ic,ptcl2,totevelo,rndstate)
+        ptcl%em = nxt_emcode(kind,idx)
      else
 !-- passes the resonance: now on the far side of the line
         ptcl2%iline = jres

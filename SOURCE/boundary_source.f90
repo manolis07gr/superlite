@@ -92,6 +92,7 @@ subroutine boundary_source
 !-- particle properties are saved in comoving frame
     ptcl%e = esurfpart
     ptcl%e0 = esurfpart
+    ptcl%em = 1
     ptcl%wl = wl0
 
 !-- save particle result

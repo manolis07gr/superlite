@@ -121,6 +121,13 @@ subroutine interior_source!(it)
         endif
         wlc = min(max(wlc,grp_wl(1)),grp_wl(grp_ng+1)*(1d0-1d-12))
         ptcl%wl = wlc
+        if(src_tsh(l)>0d0) then
+           ptcl%em = 6
+        elseif(nxt_on) then
+           ptcl%em = nxt_emcode(kind,idx)
+        else
+           ptcl%em = 2
+        endif
         ep0 = grd_emit(l)/dble(nemit)
         ptcl%e = ep0
         ptcl%e0 = ep0

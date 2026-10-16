@@ -995,7 +995,7 @@ c     ---------------------------
       integer :: n
       integer :: isnd3f(flx_ng,flx_nmu,flx_nom)
       real*8 :: snd3f(flx_ng,flx_nmu,flx_nom)
-      real*8 :: help
+      real*8 :: help,emch(0:6,0:30,flx_nemb)
 c
 c-- flux dim==3
       n = flx_ng*flx_nmu*flx_nom
@@ -1013,6 +1013,9 @@ c
 c
       help = flx_lumout
       call mpi_reduce(help,flx_lumout,1,MPI_REAL8,MPI_SUM,
+     &  impi0,MPI_COMM_WORLD,ierr)
+      emch = flx_emch
+      call mpi_reduce(emch,flx_emch,size(emch),MPI_REAL8,MPI_SUM,
      &  impi0,MPI_COMM_WORLD,ierr)
 c
       end subroutine reduce_fluxtally

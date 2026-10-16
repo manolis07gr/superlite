@@ -112,7 +112,7 @@ module nltextrmod
   public :: nxt_init,nxt_gas_solve,nxt_store_jg,nxt_tally_reset,nxt_tally_finish
   public :: nxt_tables,nxt_neighbors,nxt_activate,nxt_activate_line,nxt_kpacket
   public :: nxt_bfabs,nxt_nonthermal,nxt_ntdep,nxt_ntrates,nxt_write,nxt_bffreq
-  public :: nxt_shares,nxt_dealloc
+  public :: nxt_shares,nxt_dealloc,nxt_emcode
 !
 contains
 !
@@ -965,6 +965,24 @@ pure subroutine emit_state(ic,gs,state,kind,idx,wlc)
      wlc = cc/(nlteh_twophoton_y(r)*nxt_2pnu(idx))
   end select
 end subroutine emit_state
+!
+!
+pure function nxt_emcode(kind,idx) result(code)
+!-- emission process for the diagnostics (packet%em): 2 thermal emissivity,
+!-- 3 bound-free, 4 line, 5 two-photon, + 100 Z of the element
+  integer,intent(in) :: kind,idx
+  integer :: code
+  code = 2
+  if(idx <= 0) return
+  select case(kind)
+  case(em_line)
+     code = 4 + 100*nxa_el(nxa_lel(idx))%z
+  case(em_bf)
+     code = 3 + 100*nxa_el(nxa_lvel(idx))%z
+  case(em_2ph)
+     code = 5 + 100*nxa_el(nxa_ion(nxt_2pion(idx))%el)%z
+  end select
+end function nxt_emcode
 !
 !
 pure subroutine nxt_kpacket(ic,state,kind,idx,wlc)
