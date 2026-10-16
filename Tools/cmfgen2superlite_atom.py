@@ -8,6 +8,10 @@ SuperLite NLTE model-atom file.
 Input (one ion):
   --osc   oscillator file (energy levels, f-values, A-values)
   --phot  photoionization file (route A: to the ground state of the next ion)
+  --phot-b  (repeatable) files of the further routes (B, C, ...: to excited
+          terms of the next ion), with --next-osc, the oscillator file of the
+          next ion (energy of the final term: g-weighted mean of its levels,
+          matched by name as in CMFGEN's RDPHOT_GEN)
   --col   collision-strength file (Omega(T), T in 10^4 K)
   --hyd   directory with hyd_l_data.dat and gbf_n_data.dat (hydrogenic
           cross-sections; needed for cross-section types 2, 3 and 8)
@@ -17,7 +21,11 @@ Input (one ion):
 
 The photoionization cross-sections are evaluated with the formulae of
 CMFGEN's SUB_PHOT_GEN (types 1-9, 20, 21) and tabulated against
-u = nu/nu_edge.  Collision strengths are copied; SuperLite computes the
+u = nu/nu_edge.  Further routes are added to route A (one cross-section to
+the ground state of the next ion): with the final term in Boltzmann
+equilibrium with the ground state of the next ion at T_e (metastable terms
+of dense gas), the Milne recombination of the sum is that of the separate
+routes.  Collision strengths are copied; SuperLite computes the
 missing ones at run time with CMFGEN's rules (OMEGA_GEN_V3): van Regemorter
 with the Auer & Mihalas (neutrals) or max(0.2|0.7, 0.276 e^x E1(x)) (ions)
 Gaunt factor for f > 1e-5, OMEGA_SET otherwise; Seaton's formula for
@@ -266,6 +274,22 @@ def read_phot(path):
             continue
         i += 1
     return hdr, terms
+
+
+def norm_name(s):
+    return s.split('[')[0].replace('_', '').replace(' ', '')
+
+
+def final_term_energy(final, levels):
+    """g-weighted energy [cm^-1] of the levels of the next ion whose name
+    (without J) is one of the '/'-separated alternatives of 'final'."""
+    alts = [norm_name(a) for a in final.split('/')]
+    gs = es = 0.0
+    for lv in levels:
+        if norm_name(lv['name']) in alts:
+            gs += lv['g']
+            es += lv['g'] * lv['e']
+    return es / gs if gs > 0 else None
 
 
 def term_for_level(levname, terms, split_j):
@@ -549,6 +573,8 @@ def main():
     ap.add_argument('--ion', type=int, required=True, help='ion stage (1 = neutral)')
     ap.add_argument('--osc', required=True)
     ap.add_argument('--phot', required=True)
+    ap.add_argument('--phot-b', action='append', default=[])
+    ap.add_argument('--next-osc', default=None)
     ap.add_argument('--col', required=True)
     ap.add_argument('--hyd', default=None)
     ap.add_argument('--ftos', default=None)
@@ -572,8 +598,26 @@ def main():
     # the cross-sections are functions of nu/(edge + exc)
     exc15 = exc * CLIGHT * 1e-15
     nroutes = int(fnum(hdr.get('!Number of photoionization routes', '1')))
-    if nroutes > 1:
-        print('note: %d photoionization routes in the file; only route A is used' % nroutes,
+    # further routes: (terms, split_j, excitation of the final term [1e15 Hz])
+    routes = []
+    nxt = read_osc(args.next_osc)['levels'] if args.next_osc else None
+    for pb in args.phot_b:
+        hb, tb = read_phot(pb)
+        fin = None
+        for s0 in read_lines(pb):
+            if '!Final state in ion' in s0:
+                fin = s0.split('!')[0].strip()
+                break
+        eb = final_term_energy(fin, nxt) if (nxt is not None and fin) else None
+        if eb is None:
+            print('note: final state %s of %s not found in the next ion: route skipped' % (fin, pb),
+                  file=sys.stderr)
+            continue
+        routes.append((tb, hb.get('!Split J levels', 'False').strip().lower().startswith('t'),
+                       eb * CLIGHT * 1e-15, fin))
+        print('note: route %s to %s at %.2f cm^-1 added' % (os.path.basename(pb), fin, eb), file=sys.stderr)
+    if nroutes > 1 + len(routes):
+        print('note: %d photoionization routes in the data, %d used' % (nroutes, 1 + len(routes)),
               file=sys.stderr)
     hyd = Hyd(args.hyd)
     nu_inf = 1e-15 * RINF * CLIGHT
@@ -643,6 +687,41 @@ def main():
             if sig[0] <= 0 and len(sig) > 1:
                 # threshold value as the first tabulated value above it (CMFGEN SET_TO_EDGE)
                 sig[0] = sig[1]
+            # further routes: summed on the union of the grids
+            extra = []
+            for tb, sjb, eb15, fin in routes:
+                try:
+                    termb = term_for_level(lv['name'], tb, sjb)
+                except KeyError:
+                    continue
+                if termb[0] == 0:
+                    continue                    # no cross-section on this route
+                edgeb = edge0 + eb15
+                nefb = zion * math.sqrt(nu_inf / edgeb)
+                ugb = u_grid(termb)
+                sgb = np.array([cross_section(termb, u * edgeb, edgeb, nefb, zion, hyd) for u in ugb])
+                if sgb[0] <= 0 and len(sgb) > 1:
+                    sgb[0] = sgb[1]
+                extra.append((termb, edgeb, nefb, ugb * edgeb / edge0, sgb))
+            if extra:
+                grid = [ug] + [e[3] for e in extra] + [np.array([e[3][0] * (1 - 1e-7) for e in extra])]
+                # the table is interpolated linearly in u: where a route is in
+                # its nu^-3 tail, 40 points per decade up to the last point
+                ends = [ug[-1]] + [e[3][-1] for e in extra]
+                if max(ends) > 1.05 * min(ends):
+                    grid.append(np.geomspace(min(ends), max(ends),
+                                             int(40 * math.log10(max(ends) / min(ends))) + 2))
+                ugm = np.unique(np.concatenate(grid))
+                sigm = np.interp(ugm, ug, sig, right=np.nan)
+                tail = ugm > ug[-1]
+                sigm[tail] = sig[-1] * (ug[-1] / ugm[tail]) ** 3
+                for termb, edgeb, nefb, ub, sb in extra:
+                    add = np.interp(ugm, ub, sb, left=0.0, right=np.nan)
+                    tl = ugm > ub[-1]
+                    add[tl] = sb[-1] * (ub[-1] / ugm[tl]) ** 3
+                    add[ugm < ub[0]] = 0.0
+                    sigm = sigm + add
+                ug, sig = ugm, sigm
             w('%5d %5d\n' % (i + 1, len(ug)))
             for u, s in zip(ug, sig):
                 w('%14.7e %12.5e\n' % (u, s))

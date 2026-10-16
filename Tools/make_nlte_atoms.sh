@@ -57,14 +57,28 @@ ni3 28 3 NICK/III/19apr23 60
 ni4 28 4 NICK/IV/19apr23 60
 "
 want=" $* "
+roman="I II III IV V VI VII VIII IX X"
 echo "$table" | while read -r name z stage dir nlev osc phot col; do
   [ -z "$name" ] && continue
   if [ $# -gt 0 ] && [[ "$want" != *" $name "* ]]; then continue; fi
   d="$A/$dir"
   osc=${osc:-osc_data}; phot=${phot:-phot_data_A}; col=${col:-col_data}
+# further photoionization routes (to excited terms of the next ion) and the
+# levels of the next ion (same data date if present, else the latest)
+  extra=()
+  for r in B C D E; do
+    [ -f "$d/phot_data_$r" ] && extra+=(--phot-b "$d/phot_data_$r")
+  done
+  if [ ${#extra[@]} -gt 0 ]; then
+    el=${dir%%/*}; date=${dir##*/}
+    nr=$(echo $roman | cut -d' ' -f$((stage+1)))
+    nosc="$A/$el/$nr/$date/osc_data"
+    [ -f "$nosc" ] || nosc=$(ls -d "$A/$el/$nr"/*/osc_data 2>/dev/null | tail -1)
+    if [ -f "$nosc" ]; then extra+=(--next-osc "$nosc"); else extra=(); fi
+  fi
   python3 -I "$here/cmfgen2superlite_atom.py" --z "$z" --ion "$stage" \
     --osc "$d/$osc" --phot "$d/$phot" --col "$d/$col" --hyd "$A/HYD/I/5dec96" \
-    --nlev "$nlev" -o "$out/$name.atom" 2>&1 | grep -v "^note:"
+    "${extra[@]}" --nlev "$nlev" -o "$out/$name.atom" 2>&1 | grep -v "^note: [0-9]* photo\|^note: no "
 done
 # charge-exchange reactions among the NLTE elements (SuperLite reads
 # chgexch.dat from the model-atom directory, see in_nltex_chgexch)
