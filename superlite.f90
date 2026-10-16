@@ -306,6 +306,9 @@ program superlite
 !-- NLTE elements: Sobolev strengths, macro-atom and k-packet tables
      if(in_nltex) call nxt_tables(grd_ncell,grd_tempinv,grd_radtemp, &
           grd_capemitgrey,grd_xarr,grd_vxarr)
+     if(in_nltex .and. lmpi0 .and. nxt_bfstat(1)>0d0) write(6,'(1x,a,f7.4,a,f7.4)') &
+          'NLTE bound-free sampling: mean share of full walks',nxt_bfstat(2)/nxt_bfstat(1), &
+          ', groups above 0.1:',nxt_bfstat(3)/nxt_bfstat(1)
 !-- microclumping: the transport sees the volume-mean opacities
      if(lclump) call clump_scale
 

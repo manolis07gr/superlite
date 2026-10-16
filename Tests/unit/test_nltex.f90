@@ -401,7 +401,94 @@ contains
     enddo
     write(*,'(a,i3)') '  all-element LTE test, elements off LTE:', nbad
     if(nbad > 0) nfail = nfail + 1
+    call bf_pick_test
   end subroutine all_lte
+!
+  subroutine bf_pick_test
+!-- bound-free absorption: the level choice (nxt_bfpick) against the
+!-- weights n_l <sigma_l>_g at a few groups, all atoms at LTE (25 000 K),
+!-- with the default lists and with lists of 4 levels (most choices then
+!-- walk the other levels); chi-square over the levels expected at least
+!-- 10 times, the others lumped
+    real*8,allocatable :: p(:)
+    integer,allocatable :: cnt(:)
+    real*8 :: wls(4), chi2, e, ptot, elump, olump, tb, nhb, neb
+    integer :: k, iw, ig, lv, iel, j, ndr, nbin, kb, lsel, nbad, kbs(2)
+    type(rnd_t) :: st
+    nbad = 0
+    tb = 2.5d4; nhb = 1d17
+    do k = 1, ng
+       jg(k) = bplanck(nug(k), tb)
+    enddo
+    jb = [(bplanck(nxa_lnu(k), tb), k=1,nxa_nlin)]; ljb = .true.
+    nel = nhb*1d-4; nel(1) = nhb
+    call nx_lte(tb, nhb, x)
+    nti = 0d0; ntx = 0d0
+    call nx_solve_cell(tb, tb, nel, 0d0, 1d0/1.7d6, 1d0/1.7d6, ng, nug, dnug, jg, jb, ljb, nti, ntx, x, neb, beta, ierr)
+    nxt_x(:,1) = x; nxt_nel(:,1) = nel; nxt_ne(1) = neb
+    nxt_jg(:,1) = jg; nxt_jb(:,1) = jb; nxt_ljb(:,1) = ljb; nxt_have_mc = .true.
+    if(.not.allocated(grd_tempinv)) allocate(grd_tempinv(1))
+    grd_tempinv = 1d0/tb
+    allocate(p(nxa_nlv), cnt(nxa_nlv))
+    wls = [3000d-8, 900d-8, 500d-8, 200d-8]
+    kbs = [256, 4]
+    if(.not.allocated(rnd_states)) call rnd_init(1, 11)
+    st = rnd_states(1)
+    do kb = 1, 2
+       nxt_bfk = kbs(kb)
+       call nxt_tables(1, [1d0/tb], [tb], [0d0], [1d15, 1.001d15], [1d15/1.7d6, 1.001d15/1.7d6])
+       ndr = 200000; if(kb == 2) ndr = 50000
+       do iw = 1, 4
+          ig = minloc(abs(wlg(1:ng) - wls(iw)), 1)
+          do lv = 1, nxa_nlv
+             p(lv) = 0d0
+             if(ig > nxa_g1(lv)) cycle
+             iel = nxa_lvel(lv)
+             p(lv) = nxt_nel(iel,1)*nxt_x(nxa_el(iel)%xoff+nxa_lvs(lv),1)*nxt_w(lv,1)*nxa_sgm(nxa_sgo(lv)+ig)
+          enddo
+          ptot = sum(p)
+          if(ptot <= 0d0) cycle
+          p = p/ptot
+          cnt = 0
+          do j = 1, ndr
+             call nxt_bfpick(1, ig, st, lsel)
+             if(lsel < 1) then
+                nbad = nbad + 1
+                exit
+             endif
+             cnt(lsel) = cnt(lsel) + 1
+          enddo
+          chi2 = 0d0; nbin = 0; elump = 0d0; olump = 0d0
+          do lv = 1, nxa_nlv
+             if(p(lv) <= 0d0 .and. cnt(lv) > 0) nbad = nbad + 1
+             e = p(lv)*ndr
+             if(e >= 10d0) then
+                chi2 = chi2 + (cnt(lv) - e)**2/e
+                nbin = nbin + 1
+             else
+                elump = elump + e
+                olump = olump + cnt(lv)
+             endif
+          enddo
+          if(elump >= 10d0) then
+             chi2 = chi2 + (olump - elump)**2/elump
+             nbin = nbin + 1
+          endif
+          write(*,'(a,i4,a,f7.1,a,i3,a,f8.1,a,i4,a,es9.2)') '  bound-free level choice: list', nxt_bfk, ', ', &
+               wlg(ig)*1d8, ' A:', nbin, ' bins, chi2 =', chi2, ' for', max(nbin-1,1), &
+               '; mean share of walks', nxt_bfstat(2)/max(nxt_bfstat(1),1d0)
+          if(nbin > 1) then
+             if(chi2 > nbin - 1 + 5d0*sqrt(2d0*(nbin - 1))) nbad = nbad + 1
+          endif
+       enddo
+    enddo
+    nxt_bfk = 256
+    deallocate(p, cnt)
+    if(nbad > 0) then
+       write(*,'(a,i4)') '  bound-free level choice: failed checks', nbad
+       nfail = nfail + 1
+    endif
+  end subroutine bf_pick_test
 !
   real*8 function ionfr(o, j)
     integer, intent(in) :: o, j

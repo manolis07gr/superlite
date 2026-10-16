@@ -137,12 +137,29 @@ module nltextrmod
 !-- The populations are those of the clumps; the Sobolev strengths K of
 !-- the transport and of the escape probabilities are volume means, f K
   real*8,allocatable,public :: nxt_fcl(:)    !(ncell)
+!-- bound-free absorption: per block of groups and cell the nxt_bfk levels
+!-- of largest bound n_l w_l max_{g in block} sigma_l(g) of their weight
+!-- (decreasing), their weight at each group, and the sum of the bounds of
+!-- all other levels (nxt_bfabs)
+  integer,parameter :: nxt_nbb = 256
+  integer,public :: nxt_bfk = 256            !levels per list
+  integer :: nxt_bsz = 0                     !groups per block
+  integer :: nxt_nwm = 0                     !64-bit words of a level mask
+  real*4,allocatable :: nxt_smaxb(:,:)      !(nlv,nbb) largest sigma of the level in the block
+  integer,allocatable :: nxt_bfl(:,:,:)     !(bfk,nbb,ncell) the levels
+  integer,allocatable :: nxt_bfn(:,:)       !(nbb,ncell) their number
+  integer*8,allocatable :: nxt_bfm(:,:,:)   !(nwm,nbb,ncell) mask of the listed levels
+  real*8,allocatable :: nxt_bfr(:,:)        !(nbb,ncell) bound of the others
+  real*8,allocatable :: nxt_bfs(:,:)        !(ng,ncell) weight of the listed levels
+!-- (groups with bound-free absorption, sum over them of the share of
+!-- absorptions that walk the other levels, groups where it exceeds 0.1)
+  real*8,public :: nxt_bfstat(3) = 0d0
 !-- emission kinds returned by the macro-atom
   integer,parameter,public :: em_line = 1, em_bf = 2, em_thermal = 3, em_2ph = 4
 !
   public :: nxt_init,nxt_gas_solve,nxt_store_jg,nxt_tally_reset,nxt_tally_finish
   public :: nxt_tables,nxt_neighbors,nxt_activate,nxt_activate_line,nxt_kpacket
-  public :: nxt_bfabs,nxt_nonthermal,nxt_ntdep,nxt_ntrates,nxt_write,nxt_bffreq
+  public :: nxt_bfabs,nxt_bfpick,nxt_nonthermal,nxt_ntdep,nxt_ntrates,nxt_write,nxt_bffreq
   public :: nxt_shares,nxt_dealloc,nxt_emcode
   public :: nxt_write_state,nxt_read_prev,nxt_release,nxt_activate_rel
 !
@@ -399,6 +416,7 @@ subroutine nxt_dealloc
   if(allocated(nxt_etop)) deallocate(nxt_etop)
   if(allocated(nxt_xprev)) deallocate(nxt_xprev)
   if(allocated(nxt_fcl)) deallocate(nxt_fcl)
+  if(allocated(nxt_bfl)) deallocate(nxt_bfl,nxt_bfn,nxt_bfm,nxt_bfr,nxt_bfs,nxt_smaxb)
   if(allocated(nxt_erel)) deallocate(nxt_erel,nxt_prel,nxt_rcum)
   nxt_dtinv = 0d0
   nxt_elh = 0; nxt_elhe = 0; nxt_kha = 0
@@ -604,6 +622,8 @@ subroutine nxt_tables(ncell,tempinv,radtemp,capemitgrey,xarr,vxarr)
   real*8,intent(in) :: xarr(ncell+1),vxarr(ncell+1)
   integer :: ic,iel,ig,k,j,s,nfail,info,lv,l0,l1,ns,o,ko,ch0,ch1,lo,m
   real*8 :: t,ne,qb,qv,ww,wth
+  real*8 :: bnd(nxa_nlv),bnb(nxa_nlv) !bound-free weights and their bounds in a block of groups
+  integer :: ixb(nxa_nlv)
   real*8 :: jg(nxt_ng),jb(nxa_nlin),jl(nxa_nlin),btab(0:nx_nbt)
   logical :: ljb(nxa_nlin)
   real*8 :: kw(nxt_nko)            !k-packet: non-returning flows
@@ -746,6 +766,73 @@ subroutine nxt_tables(ncell,tempinv,radtemp,capemitgrey,xarr,vxarr)
      nxt_kcum(nxt_nko,ic) = 1d0
   enddo
   if(nfail>0) write(0,*) 'nxt_tables: singular macro-atom chain in cells:',nfail
+!
+!-- bound-free absorption: per block of groups the levels of largest bound
+!-- of their weight, their weight at each group of the block, and the bound
+!-- of all others
+  if(allocated(nxt_bfl)) then
+     if(size(nxt_bfl,1)/=nxt_bfk .or. size(nxt_bfl,3)/=ncell) &
+          deallocate(nxt_bfl,nxt_bfn,nxt_bfm,nxt_bfr,nxt_bfs,nxt_smaxb)
+  endif
+  if(.not.allocated(nxt_bfl)) then
+     nxt_bsz = (nxt_ng + nxt_nbb - 1)/nxt_nbb
+     nxt_nwm = (nxa_nlv + 63)/64
+     allocate(nxt_smaxb(nxa_nlv,nxt_nbb),nxt_bfl(nxt_bfk,nxt_nbb,ncell),nxt_bfn(nxt_nbb,ncell), &
+          nxt_bfm(nxt_nwm,nxt_nbb,ncell),nxt_bfr(nxt_nbb,ncell),nxt_bfs(nxt_ng,ncell))
+     nxt_smaxb = 0.
+     do lv=1,nxa_nlv
+        do ig=1,min(nxa_g1(lv),nxt_ng)
+           j = (ig-1)/nxt_bsz + 1
+           nxt_smaxb(lv,j) = max(nxt_smaxb(lv,j),nxa_sgm(nxa_sgo(lv)+ig))
+        enddo
+     enddo
+  endif
+  nxt_bfstat = 0d0
+  do ic=1,ncell
+     do lv=1,nxa_nlv
+        iel = nxa_lvel(lv)
+        bnd(lv) = nxt_nel(iel,ic)*nxt_x(nxa_el(iel)%xoff+nxa_lvs(lv),ic)*nxt_w(lv,ic)
+     enddo
+     do j=1,nxt_nbb
+        do lv=1,nxa_nlv
+           bnb(lv) = bnd(lv)*nxt_smaxb(lv,j)
+           ixb(lv) = lv
+        enddo
+        k = min(nxt_bfk,nxa_nlv)
+        call top_k(bnb,k,ixb)
+        nxt_bfr(j,ic) = sum(bnb(ixb(k+1:nxa_nlv)))
+        call sort_desc(bnb,ixb(1:k))
+!-- (levels without weight in the block stay out)
+        do while(k>0)
+           if(bnb(ixb(k))>0d0) exit
+           k = k - 1
+        enddo
+        nxt_bfn(j,ic) = k
+        nxt_bfl(1:k,j,ic) = ixb(1:k)
+        nxt_bfm(:,j,ic) = 0_8
+        do m=1,k
+           lv = ixb(m)
+           nxt_bfm((lv-1)/64+1,j,ic) = ibset(nxt_bfm((lv-1)/64+1,j,ic),mod(lv-1,64))
+        enddo
+        do ig=(j-1)*nxt_bsz+1,min(j*nxt_bsz,nxt_ng)
+           nxt_bfs(ig,ic) = 0d0
+           do m=1,k
+              lv = ixb(m)
+              if(ig > nxa_g1(lv)) cycle
+              nxt_bfs(ig,ic) = nxt_bfs(ig,ic) + bnd(lv)*nxa_sgm(nxa_sgo(lv)+ig)
+           enddo
+!-- (share of the absorptions at the group that walk the other levels)
+           if(nxt_bfr(j,ic)>0d0) then
+              ww = nxt_bfr(j,ic)/(nxt_bfr(j,ic) + nxt_bfs(ig,ic))
+              nxt_bfstat(1) = nxt_bfstat(1) + 1d0
+              nxt_bfstat(2) = nxt_bfstat(2) + ww
+              if(ww>0.1d0) nxt_bfstat(3) = nxt_bfstat(3) + 1d0
+           elseif(nxt_bfs(ig,ic)>0d0) then
+              nxt_bfstat(1) = nxt_bfstat(1) + 1d0
+           endif
+        enddo
+     enddo
+  enddo
 !
 !-- active lines: tau > nxt_taumin for the smallest projected gradient
   nxt_nact = 0
@@ -1179,38 +1266,22 @@ end function nxt_ntdep
 pure subroutine nxt_bfabs(ic,ig,nu,state,kind,idx,wlc)
 !-----------------------------------------------------------------------
 ! NLTE bound-free absorption of a packet of comoving frequency nu (group
-! ig) in cell ic: choose the level by n_l <sigma_l>_g, then activate its
-! continuum state with probability nu_l/nu (the ionization energy) or the
-! thermal pool (the photo-electron's kinetic energy).
+! ig) in cell ic: choose the level by n_l <sigma_l>_g (nxt_bfpick), then
+! activate its continuum state with probability nu_l/nu (the ionization
+! energy) or the thermal pool (the photo-electron's kinetic energy).
 !-----------------------------------------------------------------------
   integer,intent(in) :: ic,ig
   real*8,intent(in) :: nu
   type(rnd_t),intent(inout) :: state
   integer,intent(out) :: kind,idx
   real*8,intent(out) :: wlc
-  real*8 :: s,r,w
-  integer :: lv,iel,lsel
-  s = 0d0
-  do lv=1,nxa_nlv
-     if(ig > nxa_g1(lv)) cycle
-     iel = nxa_lvel(lv)
-     s = s + nxt_nel(iel,ic)*nxt_x(nxa_el(iel)%xoff+nxa_lvs(lv),ic)*nxt_w(lv,ic)*nxa_sgm(nxa_sgo(lv)+ig)
-  enddo
-  if(s<=0d0) then
+  real*8 :: r
+  integer :: lsel
+  call nxt_bfpick(ic,ig,state,lsel)
+  if(lsel==0) then
      call nxt_kpacket(ic,state,kind,idx,wlc)
      return
   endif
-  call rnd_r(r,state)
-  r = r*s
-  w = 0d0
-  lsel = 0
-  do lv=1,nxa_nlv
-     if(ig > nxa_g1(lv)) cycle
-     iel = nxa_lvel(lv)
-     w = w + nxt_nel(iel,ic)*nxt_x(nxa_el(iel)%xoff+nxa_lvs(lv),ic)*nxt_w(lv,ic)*nxa_sgm(nxa_sgo(lv)+ig)
-     lsel = lv
-     if(w >= r) exit
-  enddo
   call rnd_r(r,state)
   if(r < nxa_lvnu0(lsel)/nu) then
      call nxt_activate(ic,nxa_lvel(lsel),nxa_lvc(lsel),state,kind,idx,wlc)
@@ -1218,6 +1289,203 @@ pure subroutine nxt_bfabs(ic,ig,nu,state,kind,idx,wlc)
      call nxt_kpacket(ic,state,kind,idx,wlc)
   endif
 end subroutine nxt_bfabs
+!
+!
+pure subroutine nxt_bfpick(ic,ig,state,lsel)
+!-----------------------------------------------------------------------
+! Level of a bound-free absorption in group ig of cell ic, with
+! probability n_l <sigma_l>_g over the sum of all levels (0: none absorbs).
+! The choice is exact and mostly from the list of the group's block
+! (nxt_tables), of weight s at the group: a uniform number on [0, s + R),
+! with R the bound of the weight of all other levels, selects from the
+! list below s.  Above s the other levels are walked with their weights,
+! which fill [s, s + s') with s' <= R; a number beyond s + s' is drawn
+! again on [0, s + s').  The other levels are walked with probability
+! R/(s + R).
+!-----------------------------------------------------------------------
+  integer,intent(in) :: ic,ig
+  type(rnd_t),intent(inout) :: state
+  integer,intent(out) :: lsel
+  real*8 :: s,so,r
+  integer :: ib,nk
+!
+  lsel = 0
+  if(allocated(nxt_bfl)) then
+     ib = (ig-1)/nxt_bsz + 1
+     nk = nxt_bfn(ib,ic)
+     s = nxt_bfs(ig,ic)
+     call rnd_r(r,state)
+     r = r*(s + nxt_bfr(ib,ic))
+     if(r < s) then
+        lsel = from_list(r)
+     else
+        call others(r - s,lsel,so)
+     endif
+  else
+!-- (no lists: all levels)
+     ib = 1
+     nk = 0
+     s = 0d0
+     call others(huge(1d0),lsel,so)
+     lsel = 0
+  endif
+  if(lsel==0) then
+     if(s + so <= 0d0) return
+     call rnd_r(r,state)
+     r = r*(s + so)
+     if(r < s) then
+        lsel = from_list(r)
+     else
+        call others(r - s,lsel,so)
+        if(lsel==0) lsel = lastpos()
+     endif
+  endif
+contains
+  pure real*8 function wgt(lv_)
+!-- n_l <sigma_l>_g of level lv_ (0 below its edge)
+    integer,intent(in) :: lv_
+    integer :: iel_
+    wgt = 0d0
+    if(ig > nxa_g1(lv_)) return
+    iel_ = nxa_lvel(lv_)
+    wgt = nxt_nel(iel_,ic)*nxt_x(nxa_el(iel_)%xoff+nxa_lvs(lv_),ic)*nxt_w(lv_,ic)*nxa_sgm(nxa_sgo(lv_)+ig)
+  end function wgt
+  pure integer function from_list(rr)
+!-- listed level where the cumulative weight passes rr (< s)
+    real*8,intent(in) :: rr
+    integer :: k_,l_
+    real*8 :: w_,c_
+    from_list = 0
+    c_ = 0d0
+    do k_=1,nk
+       l_ = nxt_bfl(k_,ib,ic)
+       w_ = wgt(l_)
+       if(w_ <= 0d0) cycle
+       c_ = c_ + w_
+       from_list = l_
+       if(c_ > rr) return
+    enddo
+  end function from_list
+  pure subroutine others(rr,lsel_,so_)
+!-- other level where their cumulative weight passes rr (0: not reached;
+!-- so_ is then their total weight)
+    real*8,intent(in) :: rr
+    integer,intent(out) :: lsel_
+    real*8,intent(out) :: so_
+    integer :: l_,iw_
+    real*8 :: w_
+    lsel_ = 0
+    so_ = 0d0
+    do l_=1,nxa_nlv
+       if(ig > nxa_g1(l_)) cycle
+       if(nk>0) then
+          iw_ = (l_-1)/64 + 1
+          if(btest(nxt_bfm(iw_,ib,ic),mod(l_-1,64))) cycle
+       endif
+       w_ = wgt(l_)
+       if(w_ <= 0d0) cycle
+       so_ = so_ + w_
+       if(so_ > rr) then
+          lsel_ = l_
+          return
+       endif
+    enddo
+  end subroutine others
+  pure integer function lastpos()
+!-- (rounding) the last level with weight
+    integer :: l_
+    lastpos = 0
+    do l_=nxa_nlv,1,-1
+       if(wgt(l_) > 0d0) then
+          lastpos = l_
+          return
+       endif
+    enddo
+  end function lastpos
+end subroutine nxt_bfpick
+!
+!
+pure subroutine top_k(a,k,ix)
+!-- partial ordering of the index ix (quickselect): the k largest a(ix)
+!-- first, in no particular order
+  real*8,intent(in) :: a(:)
+  integer,intent(in) :: k
+  integer,intent(inout) :: ix(:)
+  integer :: lo,hi,i,j,t
+  real*8 :: p
+  lo = 1
+  hi = size(ix)
+  if(k<1 .or. k>=hi) return
+  do while(hi>lo)
+     p = a(ix((lo+hi)/2))
+     i = lo
+     j = hi
+     do while(i<=j)
+        do while(a(ix(i)) > p)
+           i = i + 1
+        enddo
+        do while(a(ix(j)) < p)
+           j = j - 1
+        enddo
+        if(i<=j) then
+           t = ix(i)
+           ix(i) = ix(j)
+           ix(j) = t
+           i = i + 1
+           j = j - 1
+        endif
+     enddo
+!-- a(ix(lo:j)) >= p >= a(ix(i:hi)), and = p between
+     if(k<=j) then
+        hi = j
+     elseif(k>=i) then
+        lo = i
+     else
+        exit
+     endif
+  enddo
+end subroutine top_k
+!
+!
+pure subroutine sort_desc(a,ix)
+!-- heap sort of the index ix by decreasing a(ix)
+  real*8,intent(in) :: a(:)
+  integer,intent(inout) :: ix(:)
+  integer :: n,i,j,l,ir,t
+  n = size(ix)
+  if(n<2) return
+  l = n/2 + 1
+  ir = n
+  do
+     if(l>1) then
+        l = l - 1
+        t = ix(l)
+     else
+        t = ix(ir)
+        ix(ir) = ix(1)
+        ir = ir - 1
+        if(ir==1) then
+           ix(1) = t
+           exit
+        endif
+     endif
+     i = l
+     j = l + l
+     do while(j<=ir)
+        if(j<ir) then
+           if(a(ix(j)) > a(ix(j+1))) j = j + 1
+        endif
+        if(a(t) > a(ix(j))) then
+           ix(i) = ix(j)
+           i = j
+           j = j + j
+        else
+           j = ir + 1
+        endif
+     enddo
+     ix(i) = t
+  enddo
+end subroutine sort_desc
 !
 !
 subroutine nxt_write(ncell,rcell,vcell,tempinv,radtemp)
