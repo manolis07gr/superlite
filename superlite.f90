@@ -327,6 +327,8 @@ program superlite
      call leakage_opacity       !IMC-DDMC albedo coefficients and DDMC leakage opacities
      call emission_probability  !emission probabilities for ep-group in each cell
      call allgather_leakage !MPI
+!-- DDMC group lumping of all cells
+     if(.not.in_puretran) call ddmc_lumps
 
      if(lmpi0) write(6,*) "--> Assign source particles"
      call sourcenumbers         !number of source prt_particles

@@ -47,9 +47,7 @@ pure subroutine diffusion11(ptcl,ptcl2,vx,vy,vz,cache,rndstate,&
   real*8 :: opacleak(2)
   real*8 :: probleak(2)
   real*8 :: resopacleak, resdopleak
-  integer :: glump, gunlump
-  integer*2,pointer :: glumps(:)
-  logical*2,pointer :: llumps(:)
+  integer :: glump
   real*8,pointer :: capgreyinv
   real*8,pointer :: capemitgreyinv
   real*8,pointer :: speclump
@@ -78,8 +76,6 @@ pure subroutine diffusion11(ptcl,ptcl2,vx,vy,vz,cache,rndstate,&
   capgreyinv => cache%capgreyinv
   capemitgreyinv => cache%capemitgreyinv
   speclump => cache%speclump
-  glumps => cache%glumps
-  llumps => cache%llumps
 !
   dummy = vy
   dummy = vz
@@ -93,67 +89,17 @@ pure subroutine diffusion11(ptcl,ptcl2,vx,vy,vz,cache,rndstate,&
   dist = dx(ix)
 
 !
-!-- update cache
+!-- update cache: the lumping of the cell (ddmc_lumps, once per iteration)
   if(ic/=cache%ic) then
      cache%ic = ic
-!-- (Planck integrals of the cell over the groups: the table of the iteration)
-     cache%specarr = grd_planck(:,ic)
      capgreyinv = max(1d0/grd_capgrey(ic),0d0) !catch nans
      capemitgreyinv = max(1d0/grd_capemitgrey(ic),0d0)
-
-!
-!-- lump testing ---------------------------------------------
-     glump = 0
-     gunlump = grp_ng
-     glumps = 0
-!
-!-- find lumpable groups
      speclump = grd_opaclump(7,ic)
-     if(speclump==0d0) then
-        glump=0
-     else
-        do iig=1,grp_ng
-           if(grd_cap(iig,ic)*dist >= trn_taulump .and. &
-                (grd_sig(ic) + grd_cap(iig,ic)+grd_capsc(iig,ic))*dist >= trn_tauddmc) then
-              llumps(iig) = .true.
-              glump=glump+1
-              glumps(glump) = int(iig,2)
-           else
-              llumps(iig) = .false.
-              glumps(gunlump) = int(iig,2)
-              gunlump=gunlump-1
-           endif
-        enddo
-     endif
-!
-!-- calculate lumped values
-     if(glump==grp_ng) then
-        emitlump = 1d0
-        caplump = grd_capgrey(ic)
-        capemitlump = grd_capemitgrey(ic)
-        doplump = 0d0
-     else
-!-- Planck x-section lump
-        caplump = grd_opaclump(8,ic)*speclump
-        capemitlump = grd_opaclump(9,ic)*speclump
-!-- (with the NLTE macro-atoms: Kirchhoff emission with all absorption
-!-- opacities; the macro-atom is not followed in DDMC)
-        if(in_nlte .and. .not.nxt_on) then
-          emitlump = grd_opaclump(9,ic)*capemitgreyinv
-        else
-          emitlump = grd_opaclump(8,ic)*capgreyinv
-        endif
-        emitlump = min(emitlump,1d0)
-        doplump = grd_opaclump(11,ic)*speclump
-     endif
-!
-!-- save
-     cache%nlump = glump
-     cache%emitlump = emitlump
-     cache%caplump = caplump
-     cache%capemitlump = capemitlump
-     cache%doplump = doplump
-
+     cache%nlump = grd_nlump(ic)
+     cache%emitlump = grd_vlump(1,ic)
+     cache%caplump = grd_vlump(2,ic)
+     cache%capemitlump = grd_vlump(3,ic)
+     cache%doplump = grd_vlump(4,ic)
   endif !cache%ic /= ic
 
 !
@@ -189,10 +135,10 @@ pure subroutine diffusion11(ptcl,ptcl2,vx,vy,vz,cache,rndstate,&
      capemitlump = grd_capemit(ig,ic)
      if(ig/=grp_ng.and.grd_divv(ix).ge.0) then ! redshift
        doplump = dopspeccalc(grd_tempinv(ic),ig)*grd_divv(ix) &
-                   /(cache%specarr(ig)*3*pc_c)
+                   /(grd_planck(ig,ic)*3*pc_c)
      elseif(ig/=1.and.grd_divv(ix).lt.0) then ! blueshift
        doplump = -1*dopspeccalc(grd_tempinv(ic),ig-1)*grd_divv(ix) &
-                   /(cache%specarr(ig)*3*pc_c)
+                   /(grd_planck(ig,ic)*3*pc_c)
      else
        doplump = 0d0
      endif
@@ -288,10 +234,10 @@ pure subroutine diffusion11(ptcl,ptcl2,vx,vy,vz,cache,rndstate,&
         help = 1d0/doplump
         if(grd_divv(ix).ge.0) then ! redshift
           do iig=1,glump
-             iiig = glumps(iig)
+             iiig = grd_glump(iig,ic)
              if(iiig == grp_ng) cycle
              if(grd_cap(iiig+1,ic)*dist >= trn_taulump) cycle
-             specig = cache%specarr(iiig)
+             specig = grd_planck(iiig,ic)
              resdopleak = dopspeccalc(grd_tempinv(ic),iiig)&
                           *grd_divv(ix)/(3*pc_c)
              denom2 = denom2+resdopleak*speclump*help
@@ -299,10 +245,10 @@ pure subroutine diffusion11(ptcl,ptcl2,vx,vy,vz,cache,rndstate,&
           enddo
          else ! blueshift
            do iig=glump,1,-1
-             iiig = glumps(iig)
+             iiig = grd_glump(iig,ic)
              if(iiig == 1) cycle
              if(grd_cap(iiig-1,ic)*dist >= trn_taulump) cycle
-             specig = cache%specarr(iiig)
+             specig = grd_planck(iiig,ic)
              resdopleak = dopspeccalc(grd_tempinv(ic),iiig-1)&
                           *grd_divv(ix)/(3*pc_c)
              denom2 = denom2-resdopleak*speclump*help
@@ -373,8 +319,8 @@ pure subroutine diffusion11(ptcl,ptcl2,vx,vy,vz,cache,rndstate,&
            denom2 = 0d0
            help = 1d0/opacleak(1)
            do iig=1,glump
-              iiig = glumps(iig)
-              specig = cache%specarr(iiig)
+              iiig = grd_glump(iig,ic)
+              specig = grd_planck(iiig,ic)
               !specig = specint0(grd_tempinv(ic),iiig)
 !-- calculating resolved leakage opacities
               if((grd_cap(iiig,l)+grd_capsc(iiig,l)+ &
@@ -445,8 +391,8 @@ pure subroutine diffusion11(ptcl,ptcl2,vx,vy,vz,cache,rndstate,&
            denom2 = 0d0
            help = 1d0/opacleak(2)
            do iig=1,glump
-              iiig=glumps(iig)
-              specig = cache%specarr(iiig)
+              iiig=grd_glump(iig,ic)
+              specig = grd_planck(iiig,ic)
               !specig = specint0(grd_tempinv(ic),iiig)
 !-- calculating resolved leakage opacities
               mfphelp = (grd_cap(iiig,ic)+grd_capsc(iiig,ic)+grd_sig(ic))*dx(ix)
@@ -487,8 +433,8 @@ pure subroutine diffusion11(ptcl,ptcl2,vx,vy,vz,cache,rndstate,&
            denom2 = 0d0
            help = 1d0/opacleak(2)
            do iig=1,glump
-              iiig = glumps(iig)
-              specig = cache%specarr(iiig)
+              iiig = grd_glump(iig,ic)
+              specig = grd_planck(iiig,ic)
 !-- calculating resolved leakage opacities
               if((grd_cap(iiig,l)+grd_capsc(iiig,l)+ &
                    grd_sig(l))*dx(ix+1)<trn_tauddmc) then
@@ -566,12 +512,12 @@ pure subroutine diffusion11(ptcl,ptcl2,vx,vy,vz,cache,rndstate,&
         denom2 = 1d0/(1d0-emitlump)
         denom3 = 0d0
         do iig=grp_ng,glump+1,-1
-           iiig = glumps(iig)
+           iiig = grd_glump(iig,ic)
            if(in_nlte .and. .not.nxt_on) then !NLTE (H only)
-             help = cache%specarr(iiig)*grd_capemit(iiig,ic)&
+             help = grd_planck(iiig,ic)*grd_capemit(iiig,ic)&
                     *capemitgreyinv
            else
-             help = cache%specarr(iiig)*grd_cap(iiig,ic)*capgreyinv
+             help = grd_planck(iiig,ic)*grd_cap(iiig,ic)*capgreyinv
            endif
            denom3 = denom3 + help*denom2
            if(denom3>r1) exit
