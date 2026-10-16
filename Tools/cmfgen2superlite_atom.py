@@ -20,6 +20,10 @@ Input (one ion):
           index of its super-level; SuperLite solves for the super-levels,
           with Boltzmann shares at T_e within each
   --gfmin keep only the lines with g_l f >= gfmin (default: all)
+  --gfcut, --gflev, --mintrans  CMFGEN's cut (GENOSC_V9; GF_CUT, GF_LEV_CUT,
+          MIN_TRANS of VADAT): a line is dropped if g_l f < gfcut, its lower
+          level is above gflev and it is not among the mintrans strongest
+          (A) downward transitions of its upper level
 
 The photoionization cross-sections are evaluated with the formulae of
 CMFGEN's SUB_PHOT_GEN (types 1-9, 20, 21) and tabulated against
@@ -582,6 +586,9 @@ def main():
     ap.add_argument('--ftos', default=None)
     ap.add_argument('--nlev', type=int, default=0, help='levels to keep (0: all)')
     ap.add_argument('--gfmin', type=float, default=0.0, help='keep lines with g_l f >= gfmin')
+    ap.add_argument('--gfcut', type=float, default=0.0, help='CMFGEN GF_CUT')
+    ap.add_argument('--gflev', type=int, default=0, help='CMFGEN GF_LEV_CUT')
+    ap.add_argument('--mintrans', type=int, default=0, help='CMFGEN MIN_TRANS')
     ap.add_argument('-o', '--out', required=True)
     args = ap.parse_args()
 
@@ -629,6 +636,19 @@ def main():
     trans = [t for t in osc['trans'] if t['u'] <= nlev and t['l'] < t['u']]
     if args.gfmin > 0:
         trans = [t for t in trans if levs[t['l'] - 1]['g'] * t['f'] >= args.gfmin]
+    if args.gfcut > 0 and max(args.mintrans, args.gflev) < nlev:
+        # GENOSC_V9: upper levels above max(gflev, mintrans, 1); keep the
+        # mintrans largest A of each upper level
+        k0 = max(args.gflev, 1, args.mintrans)
+        down = {}
+        for t in trans:
+            down.setdefault(t['u'], []).append(t['a'])
+        thr = {}
+        for u, a in down.items():
+            a = sorted(a, reverse=True)
+            thr[u] = a[args.mintrans - 1] if 0 < args.mintrans <= len(a) else 0.0
+        trans = [t for t in trans if t['u'] <= k0 or not (
+            levs[t['l'] - 1]['g'] * t['f'] < args.gfcut and t['l'] > args.gflev and t['a'] < thr[t['u']])]
     col = read_col(args.col, names, [lv['g'] for lv in levs])
 
     ename = ELEM.get(args.z, 'Z%d' % args.z)
