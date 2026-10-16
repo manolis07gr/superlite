@@ -154,6 +154,38 @@ c
 c
 c
 c
+      pure function bfxs_inner(nz,ne,e) result(xs)
+c     --------------------------------------------
+      implicit none
+      integer,intent(in) :: nz,ne
+      real*8,intent(in) :: e
+      real*8 :: xs
+************************************************************************
+* Photoionization cross-section of the core shells only [Mb] (1s for
+* ne >= 3; 1s-2p for ne >= 11; 1s-3p for ne >= 19), Verner & Yakovlev
+* (1995) fits: the X-ray absorption of an ion whose valence shell is
+* described elsewhere (NLTE model atoms).
+************************************************************************
+      integer :: nint,is
+      real*8 :: p1,y,q,a,b
+      xs = 0d0
+      if(nz<1 .or. nz>30) return
+      if(ne<3 .or. ne>nz) return
+      nint = ninn(ne)
+      do is=1,nint
+       if(e<bf_ph1(1,is,nz,ne)) cycle
+       if(bf_ph1(2,is,nz,ne)<=0.) cycle
+       p1 = -bf_ph1(5,is,nz,ne)
+       y = e/bf_ph1(2,is,nz,ne)
+       q = -0.5*p1 - ll(is) - 5.5
+       a = bf_ph1(3,is,nz,ne)*((y - 1.0)**2 + bf_ph1(6,is,nz,ne)**2)
+       b = sqrt(y/bf_ph1(4,is,nz,ne)) + 1.0
+       xs = xs + a*y**q*b**p1
+      enddo
+      end function bfxs_inner
+c
+c
+c
 !      subroutine write_verner
 !c     -----------------------
 !      implicit none

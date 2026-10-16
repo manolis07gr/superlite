@@ -6,7 +6,7 @@ c$    use omp_lib
       use physconstmod
       use inputparmod
       use ffxsmod
-      use bfxsmod, only:bfxs
+      use bfxsmod, only:bfxs,bfxs_inner
       use bbxsmod, only:bb_xs,bb_nline
       use nltemod
       use ionsmod
@@ -19,7 +19,7 @@ c$    use omp_lib
      &  nxa_lvphi,nxa_lvnu0,nxa_g1,nxa_sgm
       use nltextrmod, only:nxt_xloc,nxt_nelloc,nxt_neloc,gas_capnbf,
      &  nxt_isel,nxt_elz,nxt_ionzs,nxt_etop
-      use nlteatommod, only:nxa_ion
+      use nlteatommod, only:nxa_ion,nxa_nion
       use gridmod, only:grd_xarr,grd_vxarr
       use bbsobmod
       implicit none
@@ -95,6 +95,8 @@ c-- NLTE hydrogen bound-free
       real*8 :: nu,xstar,nl
       integer :: lv,iel,o,jion
       real*8,allocatable :: capn(:)
+c-- core-shell cross-sections of the NLTE ions and top states [cm^2]
+      real*8,allocatable :: sinn(:,:)
 c-- NLTE ions, lines to levels above the model atom: reference state
 c-- (model level at or below the lower level, or the top state), its weight,
 c-- and the excitation energy of the lower level above it [cm^-1]
@@ -595,6 +597,22 @@ c-- comes from the macro-atom.
       if(in_nltex) then
        gas_capnbf = 0.
        allocate(capn(ngsub))
+c-- core shells of the NLTE ions and top states (Verner & Yakovlev 1995):
+c-- X-ray absorption next to the valence shell of the model atoms;
+c-- absorption only (fast photoelectrons), not in gas_capnbf
+       allocate(sinn(ngsub,nxa_nion+size(nxa_el)))
+       do igs=1,ngsub
+        en = pc_h*pc_c/(pc_ev*0.5d0*(wlsub(igs)+wlsub(igs+1)))
+        do jion=1,nxa_nion
+         sinn(igs,jion) = pc_mbarn*bfxs_inner(nxa_ion(jion)%z,
+     &     nxa_ion(jion)%z-nxa_ion(jion)%stage+1,en)
+        enddo
+        do iel=1,size(nxa_el)
+         jion = nxa_el(iel)%ion(nxa_el(iel)%nion)
+         sinn(igs,nxa_nion+iel) = pc_mbarn*bfxs_inner(nxa_el(iel)%z,
+     &     nxa_el(iel)%z-nxa_ion(jion)%stage,en)
+        enddo
+       enddo
        do i=1,gas_ncell
         if(gas_mass(i)<=0d0) cycle
         capn = 0d0
@@ -624,8 +642,22 @@ c-- stimulated recombination: from the edge up to h(nu-nu0) = 40 kT
          cap(i,igs) = cap(i,igs) + capn(igs)
          gas_capnbf(igs,i) = sngl(capn(igs))
         enddo !igs
+c-- core shells
+        do iel=1,size(nxa_el)
+         nl = nxt_nelloc(iel,i)
+         if(nl<=0d0) cycle
+         o = nxa_el(iel)%xoff
+         do j=1,nxa_el(iel)%nion
+          jion = nxa_el(iel)%ion(j)
+          help = nl*sum(nxt_xloc(o+nxa_ion(jion)%soff+1:
+     &      o+nxa_ion(jion)%soff+nxa_ion(jion)%nlev,i))
+          cap(i,:) = cap(i,:) + help*sinn(:,jion)
+         enddo
+         help = nl*nxt_xloc(o+nxa_el(iel)%ns,i)
+         cap(i,:) = cap(i,:) + help*sinn(:,nxa_nion+iel)
+        enddo !iel
        enddo !i
-       deallocate(capn)
+       deallocate(capn,sinn)
       endif
 c
       endif !in_nobfopac
