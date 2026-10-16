@@ -406,6 +406,21 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
 !
 !-- effective scattering
   elseif(d == dcol) then
+     if(nht_on) then
+!-- H bound-free absorption activates the macro-atom, the rest the thermal pool
+        call rnd_r(r1,rndstate)
+        if(r1*grd_cap(ig,ic) < grd_caphbf(ig,ic)) then
+           call nlteh_bfabs(ic,pc_c*elabfact/wl,rndstate,kind,idx,wlcmf)
+        else
+           call nlteh_kpacket(ic,rndstate,kind,idx,wlcmf)
+        endif
+        lremit = .true.
+!-- an H line photon leaves its Sobolev resonance along directions of large |Q(mu)|
+        if(kind==em_line) then
+           call line_mu(nht_kq(idx,ic),dvdr(ix),vx/x,rndstate,mucmf)
+           mu = (mucmf+vx*cinv)/(1d0+vx*mucmf*cinv)
+        endif
+     endif
      call rnd_r(r1,rndstate)
 !-- transforming to lab
      help = elabfact/(1d0-mu*vx*cinv)
@@ -421,14 +436,7 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
         emitlump = grd_opaclump(8,ic)/grd_capgrey(ic)
      endif
      if(nht_on) then
-!-- H bound-free absorption activates the macro-atom, the rest the thermal pool
-        call rnd_r(r1,rndstate)
-        if(r1*grd_cap(ig,ic) < grd_caphbf(ig,ic)) then
-           call nlteh_bfabs(ic,pc_c*elabfact/wl,rndstate,kind,idx,wlcmf)
-        else
-           call nlteh_kpacket(ic,rndstate,kind,idx,wlcmf)
-        endif
-        lremit = .true.
+!-- outcome chosen above
      elseif(grp_ng==1) then
         !-- do nothing
      else
@@ -566,7 +574,7 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
      jbval = e*elabfact*pc_c/(nh_nu(kres)*qmu)
      call rnd_r(r1,rndstate)
      if(tau>0d0 .and. r1<1d0-exp(-tau)) then
-!-- absorbed: macro-atom in the upper level, re-emitted isotropically
+!-- absorbed: macro-atom in the upper level
         if(nht_tau0>0d0) then
 !-- benchmark: pure scattering in the same line
            kind = em_line
@@ -575,9 +583,14 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
         else
            call nlteh_activate(ic,nh_lu(kres),rndstate,kind,idx,wlcmf)
         endif
-        call rnd_r(r1,rndstate)
-        mu = 1d0-2d0*r1
-        mu = (mu+vx*cinv)/(1d0+vx*mu*cinv)
+!-- line photons escape along directions of large |Q(mu)|, continuum isotropically
+        if(kind==em_line) then
+           call line_mu(nht_kq(idx,ic),dvdr(ix),vx/x,rndstate,mucmf)
+        else
+           call rnd_r(r1,rndstate)
+           mucmf = 1d0-2d0*r1
+        endif
+        mu = (mucmf+vx*cinv)/(1d0+vx*mucmf*cinv)
         help = elabfact/(1d0-mu*vx*cinv)
         totevelo = totevelo+e*(1d0-help)
         e = e*help
@@ -674,6 +687,36 @@ contains
     enddo
     wlp = pc_h*pc_c/(pc_kb*temp*(-log(max(u(1)*u(2)*u(3)*u(4),1d-300))/dble(l2)))
   end subroutine planck_wl
+
+  pure subroutine line_mu(tau0,a,b,rndstate,mucmf)
+!-----------------------------------------------------------------------
+! Comoving direction of a photon leaving a Sobolev resonance in a flow
+! with dv/dr = a and v/r = b.  After any number of local scatterings the
+! photon escapes in direction mu with probability density proportional to
+! beta(mu) = (1-exp(-tau(mu)))/tau(mu), tau(mu) = tau0/|Q(mu)|,
+! Q(mu) = mu**2*a + (1-mu**2)*b (rejection sampling; isotropic when
+! a = b, as in homologous flows, or for optically thin lines).
+!-----------------------------------------------------------------------
+    real*8,intent(in) :: tau0,a,b
+    type(rnd_t),intent(inout) :: rndstate
+    real*8,intent(out) :: mucmf
+    real*8 :: qmax,qlo,q,fmax,rr
+    integer :: itry
+    qmax = max(abs(a),abs(b))
+    call rnd_r(rr,rndstate)
+    mucmf = 1d0-2d0*rr
+    if(tau0<=0d0 .or. qmax<=0d0) return
+    qlo = 1d-3*qmax
+!-- q*(1-exp(-tau0/q)) grows with q: maximal at qmax
+    fmax = qmax*(1d0-exp(-tau0/qmax))
+    do itry=1,10000
+       q = max(abs(mucmf**2*a+(1d0-mucmf**2)*b),qlo)
+       call rnd_r(rr,rndstate)
+       if(rr*fmax <= q*(1d0-exp(-tau0/q))) return
+       call rnd_r(rr,rndstate)
+       mucmf = 1d0-2d0*rr
+    enddo
+  end subroutine line_mu
 
   pure subroutine nlteh_reemit(kind,idx,wlcmf,ig,wl,e,e0,mu,vx,x,ix,ic,ptcl2,totevelo,rndstate)
 !-----------------------------------------------------------------------

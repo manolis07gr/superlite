@@ -379,8 +379,10 @@ c     ----------------------
       integer :: iz,ii
 c
       if(nlte_nelem.gt.0) then
-       deallocate(nlte_ndens)
-       do iz=1,nlte_nelem
+       if(allocated(nlte_ndens)) deallocate(nlte_ndens)
+c-- nlte_data is empty when the bb opacity is off
+       if(.not.allocated(nlte_data)) return
+       do iz=1,min(nlte_nelem,size(nlte_data))
         do ii=1,iz
           deallocate(nlte_data(iz)%i(ii)%chilev)
           deallocate(nlte_data(iz)%i(ii)%levid)
