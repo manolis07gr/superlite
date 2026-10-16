@@ -47,8 +47,9 @@ subroutine leakage_opacity11
 !-- distance
      dist = dx(i)
 !
-!-- initializing Planck integral vectorized
-     call specintv(grd_tempinv(l),grp_ng,specarr)
+!-- spectral weights: Planck integrals at T_e, with the NLTE macro-atoms
+!-- the source spectrum of the absorption opacity (ddmc_spectra)
+     specarr = grd_spk(:,l)
 !     endif
      speclump = sum(specarr, grd_cap(:,l)*dist>=trn_taulump .and. &
         (grd_sig(l) + grd_cap(:,l)+grd_capsc(:,l))*dist >= trn_tauddmc)
@@ -93,7 +94,7 @@ subroutine leakage_opacity11
           if(grd_cap(ig+1,l)*dist >= trn_taulump) cycle
           if((grd_sig(l) + grd_cap(ig,l)+grd_capsc(ig,l))*dist < trn_tauddmc) cycle
           help = dopspeccalc(grd_tempinv(l),ig)*grd_divv(l)/(3*pc_c)
-          doplump = doplump + help
+          doplump = doplump + help*spratio(ig)
         enddo
      else
        do ig=grp_ng,2,-1
@@ -101,7 +102,7 @@ subroutine leakage_opacity11
          if(grd_cap(ig-1,l)*dist >= trn_taulump) cycle
          if((grd_sig(l) + grd_cap(ig,l)+grd_capsc(ig,l))*dist < trn_tauddmc) cycle
          help = dopspeccalc(grd_tempinv(l),ig-1)*grd_divv(l)/(3*pc_c)
-         doplump = doplump - help
+         doplump = doplump - help*spratio(ig)
        enddo
      endif
 !-- store regrouped data
@@ -172,5 +173,13 @@ subroutine leakage_opacity11
   enddo !k
 
 
+contains
+  real*8 function spratio(jg)
+!-- ratio of the DDMC spectral weight to the Planck weight of group jg (1 in
+!-- LTE): the Doppler flux at the lump edge scales with the source function
+    integer,intent(in) :: jg
+    spratio = 0d0
+    if(grd_planck(jg,l)>0d0) spratio = grd_spk(jg,l)/grd_planck(jg,l)
+  end function spratio
 end subroutine leakage_opacity11
 ! vim: fdm=marker

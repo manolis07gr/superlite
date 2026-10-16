@@ -19,7 +19,7 @@ c$    use omp_lib
      &  nxa_lvphi,nxa_lvnu0,nxa_g1,nxa_sgm,nxa_lvcl,nxa_weights,
      &  nxa_sgo
       use nltextrmod, only:nxt_xloc,nxt_nelloc,nxt_neloc,gas_capnbf,
-     &  nxt_isel,nxt_elz,nxt_ionzs,nxt_etop
+     &  nxt_isel,nxt_elz,nxt_ionzs,nxt_etop,gas_emnbf
       use nlteatommod, only:nxa_ion,nxa_nion
       use gridmod, only:grd_xarr,grd_vxarr
       use bbsobmod
@@ -95,7 +95,8 @@ c-- NLTE hydrogen bound-free
       integer :: n
       real*8 :: nu,xstar,nl
       integer :: lv,iel,o,jion
-      real*8,allocatable :: capn(:)
+      real*8,allocatable :: capn(:),emn(:)
+      real*8 :: nu1,nu2
 c-- core-shell cross-sections of the NLTE ions and top states [cm^2]
       real*8,allocatable :: sinn(:,:)
 c-- NLTE ions, lines to levels above the model atom: reference state
@@ -617,7 +618,8 @@ c-- stimulated recombination.  Absorption only: the recombination emission
 c-- comes from the macro-atom.
       if(in_nltex) then
        gas_capnbf = 0.
-       allocate(capn(ngsub))
+       gas_emnbf = 0.
+       allocate(capn(ngsub),emn(ngsub))
 c-- core shells of the NLTE ions and top states (Verner & Yakovlev 1995):
 c-- X-ray absorption next to the valence shell of the model atoms;
 c-- absorption only (fast photoelectrons), not in gas_capnbf
@@ -637,6 +639,7 @@ c-- absorption only (fast photoelectrons), not in gas_capnbf
        do i=1,gas_ncell
         if(gas_mass(i)<=0d0) cycle
         capn = 0d0
+        emn = 0d0
         do lv=1,nxa_nlv
          iel = nxa_lvel(lv)
          nl = nxt_nelloc(iel,i)
@@ -659,12 +662,22 @@ c-- stimulated recombination: from the edge up to h(nu-nu0) = 40 kT
           if(argx>40d0) exit
           capn(igs) = capn(igs) - nl*xstar*exp(-argx)*
      &    nxa_sgm(nxa_sgo(lv)+igs)
+          emn(igs) = emn(igs) + nl*xstar*exp(-argx)*
+     &    nxa_sgm(nxa_sgo(lv)+igs)
          enddo !igs
         enddo !lv
         do igs=1,ngsub
          capn(igs) = max(0d0,capn(igs))
          cap(i,igs) = cap(i,igs) + capn(igs)
          gas_capnbf(igs,i) = sngl(capn(igs))
+c-- recombination emissivity (Milne): eta = 2h nu^3/c^2 n* e^-h nu/kT sigma,
+c-- integrated over the group (midpoint) and divided by sigma_SB T^4/pi, as
+c-- the Planck group integrals (the DDMC source spectrum, ddmc_spectra)
+         nu1 = pc_c/wlsub(igs+1)
+         nu2 = pc_c/wlsub(igs)
+         nu = 0.5d0*(nu1+nu2)
+         gas_emnbf(igs,i) = sngl(emn(igs)*2d0*pc_h*nu**3/pc_c**2*
+     &     (nu2-nu1)/(pc_sb*gas_temp(i)**4/pc_pi))
         enddo !igs
 c-- core shells
         do iel=1,size(nxa_el)
@@ -681,7 +694,7 @@ c-- core shells
          cap(i,:) = cap(i,:) + help*sinn(:,nxa_nion+iel)
         enddo !iel
        enddo !i
-       deallocate(capn,sinn)
+       deallocate(capn,emn,sinn)
       endif
 c
 c-- Rayleigh scattering by H I in the ground state (Kurucz 1970, ATLAS9

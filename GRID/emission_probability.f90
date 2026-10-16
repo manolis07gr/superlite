@@ -20,10 +20,8 @@ subroutine emission_probability
 
   t0 = t_time()
 
-!-- Planck integrals of all cells over the groups (the transport's table)
-  do l=1,grd_ncell
-     call specintv(grd_tempinv(l),grp_ng,grd_planck(:,l))
-  enddo
+!-- (Planck integrals of all cells over the groups and the DDMC source
+!-- spectrum: ddmc_spectra)
 
 !-- grouped volume emission probabilities:
 
@@ -38,7 +36,7 @@ subroutine emission_probability
             grd_capgrey(grd_idd1:grd_idd1+grd_ndd-1)
      endif
      grd_emitprobk(1,grd_idd1:grd_idd1+grd_ndd-1) = &
-          grd_capgrey(grd_idd1:grd_idd1+grd_ndd-1)
+          grd_capgreyk(grd_idd1:grd_idd1+grd_ndd-1)
      return
   endif
 
@@ -59,7 +57,7 @@ subroutine emission_probability
         else !LTE
           help = help + sum(specarr(ig:igp1)*grd_cap(ig:igp1,l))
         endif
-        helpk = helpk + sum(specarr(ig:igp1)*grd_cap(ig:igp1,l))
+        helpk = helpk + sum(grd_spk(ig:igp1,l)*grd_cap(ig:igp1,l))
         grd_emitprob(iep,l) = help
         grd_emitprobk(iep,l) = helpk
         ig = igp1 + 1
@@ -69,7 +67,7 @@ subroutine emission_probability
      else !LTE
        grd_emitprob(grd_nep,l)=grd_capgrey(l)
      endif
-     grd_emitprobk(grd_nep,l)=grd_capgrey(l)
+     grd_emitprobk(grd_nep,l)=grd_capgreyk(l)
   enddo !l
 
   t1 = t_time()

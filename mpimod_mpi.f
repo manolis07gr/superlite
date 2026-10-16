@@ -751,6 +751,9 @@ c-- NLTE populations, element densities and bound-free opacity
        call mpi_allgatherv(gas_capnbf,grp_ng*gas_ncell,MPI_REAL,
      &   grd_capnbf,grp_ng*counts,grp_ng*displs,MPI_REAL,
      &   MPI_COMM_WORLD,ierr)
+       call mpi_allgatherv(gas_emnbf,grp_ng*gas_ncell,MPI_REAL,
+     &   grd_emnbf,grp_ng*counts,grp_ng*displs,MPI_REAL,
+     &   MPI_COMM_WORLD,ierr)
       endif
 c-- line scattering opacity
       if(bbs_on) then

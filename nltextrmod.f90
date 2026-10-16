@@ -77,12 +77,16 @@ module nltextrmod
   real*8,allocatable,public :: nxt_jbsum(:,:) !(nlin,ncell) tally: sum e c/(nu |Q|)
   real*8,allocatable,public :: nxt_jbcnt(:,:) !(nlin,ncell) tally: crossings
   real*4,allocatable,public :: grd_capnbf(:,:) !(ng,ncell) NLTE bound-free part of grd_cap
+!-- NLTE recombination emission per group, in the units of the Planck group
+!-- integrals times opacity (int eta dnu/(sigma T^4/pi)): DDMC source spectrum
+  real*4,allocatable,public :: grd_emnbf(:,:) !(ng,ncell)
 !-- this rank's gas cells
   real*8,allocatable,public :: nxt_xloc(:,:)  !(nst,gas_ncell)
   real*8,allocatable,public :: nxt_neloc(:)   !(gas_ncell)
   real*8,allocatable,public :: nxt_nelloc(:,:) !(nel,gas_ncell)
   real*8,allocatable,public :: nxt_neothloc(:) !(gas_ncell) electrons per atom from the other elements
   real*4,allocatable,public :: gas_capnbf(:,:) !(ng,gas_ncell)
+  real*4,allocatable,public :: gas_emnbf(:,:) !(ng,gas_ncell)
 !-- lines and groups
   integer,allocatable,public :: nxt_lgrp(:)   !(nlin) group of the line
   integer,allocatable,public :: nxt_isrt(:)   !(nlin) position of line k in the active list, 0 if inactive
@@ -212,14 +216,14 @@ subroutine nxt_init(ncell,gncell,ng,wlg,nfile,files,hnlev)
   allocate(nxt_kq(nxa_nlin,ncell),nxt_beta(nxa_nlin,ncell))
   allocate(nxt_jg(ng,ncell),nxt_jb(nxa_nlin,ncell),nxt_ljb(nxa_nlin,ncell))
   allocate(nxt_jbsum(nxa_nlin,ncell),nxt_jbcnt(nxa_nlin,ncell))
-  allocate(grd_capnbf(ng,ncell))
+  allocate(grd_capnbf(ng,ncell),grd_emnbf(ng,ncell))
   allocate(nxt_xloc(nst,gncell),nxt_neloc(gncell),nxt_nelloc(nxa_nel,gncell),nxt_neothloc(gncell))
-  allocate(gas_capnbf(ng,gncell))
+  allocate(gas_capnbf(ng,gncell),gas_emnbf(ng,gncell))
   allocate(nxt_lgrp(nxa_nlin),nxt_isrt(nxa_nlin),nxt_nug(ng),nxt_dnug(ng))
   allocate(nxt_act(nxa_nlin),nxt_wlact(nxa_nlin))
   nxt_x = 0d0; nxt_nel = 0d0; nxt_ne = 0d0; nxt_kq = 0d0; nxt_beta = 1d0
   nxt_jg = 0d0; nxt_jb = 0d0; nxt_ljb = .false.; nxt_jbsum = 0d0; nxt_jbcnt = 0d0
-  grd_capnbf = 0.; gas_capnbf = 0.
+  grd_capnbf = 0.; gas_capnbf = 0.; grd_emnbf = 0.; gas_emnbf = 0.
   nxt_xloc = 0d0; nxt_neloc = 0d0; nxt_nelloc = 0d0; nxt_neothloc = 0d0
 !
   do ig=1,ng
@@ -414,6 +418,7 @@ subroutine nxt_dealloc
 !-- free the cell arrays and tables (set up again by nxt_init)
   if(allocated(nxt_x)) deallocate(nxt_x,nxt_nel,nxt_ne,nxt_kq,nxt_beta,nxt_jg,nxt_jb,nxt_ljb, &
        nxt_jbsum,nxt_jbcnt,grd_capnbf,nxt_xloc,nxt_neloc,nxt_nelloc,nxt_neothloc,gas_capnbf, &
+       grd_emnbf,gas_emnbf, &
        nxt_lgrp,nxt_isrt,nxt_nug,nxt_dnug,nxt_act,nxt_wlact,nxt_w)
   if(allocated(nxt_lch)) deallocate(nxt_lch,nxt_bch,nxt_2pch)
   if(allocated(nxt_inl)) deallocate(nxt_inl)

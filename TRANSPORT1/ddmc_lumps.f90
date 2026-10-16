@@ -22,7 +22,7 @@ subroutine ddmc_lumps
   do ix=1,grd_nx
      ic = grd_icell(ix,1,1)
      dist = grd_xarr(ix+1) - grd_xarr(ix)
-     capgreyinv = max(1d0/grd_capgrey(ic),0d0) !catch nans
+     capgreyinv = max(1d0/grd_capgreyk(ic),0d0) !catch nans
      capemitgreyinv = max(1d0/grd_capemitgrey(ic),0d0)
      glump = 0
      gunlump = grp_ng
@@ -56,4 +56,49 @@ subroutine ddmc_lumps
      endif
   enddo
 end subroutine ddmc_lumps
+! vim: fdm=marker
+!
+!
+subroutine ddmc_spectra
+!-----------------------------------------------------------------------
+! Spectral weights of the radiation in the DDMC cells, once per iteration
+! for all cells: the Planck group integrals at T_e (grd_planck) and, with
+! the NLTE macro-atoms, the source function S = (kappa_LTE B + eta)/kappa
+! of the absorption opacity kappa (grd_spk, normalized; eta: the
+! recombination emissivity of the NLTE levels, grd_emnbf), with the mean
+! absorption opacity over it (grd_capgreyk).  DDMC samples leakage and
+! re-emission with these weights: in LTE S = B and nothing changes; in a
+! thick NLTE continuum S = B/b (the Lyman continuum of a wind, b1 << 1),
+! where the Planck weights at T_e would thermalize the radiation.
+!-----------------------------------------------------------------------
+  use gridmod
+  use groupmod
+  use nltextrmod, only:nxt_on,grd_emnbf
+  implicit none
+  integer :: l,ig
+  real*8 :: s(grp_ng),tot
+!
+  do l=1,grd_ncell
+     call specintv(grd_tempinv(l),grp_ng,grd_planck(:,l))
+     if(.not.nxt_on) then
+        grd_spk(:,l) = grd_planck(:,l)
+        grd_capgreyk(l) = grd_capgrey(l)
+        cycle
+     endif
+     do ig=1,grp_ng
+        if(grd_cap(ig,l)>0.) then
+           s(ig) = (grd_planck(ig,l)*grd_capemit(ig,l) + grd_emnbf(ig,l))/grd_cap(ig,l)
+        else
+           s(ig) = grd_planck(ig,l)
+        endif
+     enddo
+     tot = sum(s)
+     if(tot>0d0) then
+        grd_spk(:,l) = s/tot
+     else
+        grd_spk(:,l) = grd_planck(:,l)
+     endif
+     grd_capgreyk(l) = sum(grd_spk(:,l)*grd_cap(:,l))
+  enddo
+end subroutine ddmc_spectra
 ! vim: fdm=marker

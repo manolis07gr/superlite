@@ -324,6 +324,7 @@ program superlite
 !
      if(lmpi0) write(6,*) "--> Calculating leakage opacity and Emission probability"
 !-- source energy
+     call ddmc_spectra          !Planck and DDMC source spectra of all cells
      call leakage_opacity       !IMC-DDMC albedo coefficients and DDMC leakage opacities
      call emission_probability  !emission probabilities for ep-group in each cell
      call allgather_leakage !MPI
@@ -468,6 +469,7 @@ subroutine clump_scale
      grd_capemitgrey(l) = grd_fcl(l)*grd_capemitgrey(l)
      grd_capross(l) = grd_fcl(l)*grd_capross(l)
      if(in_nltex) grd_capnbf(:,l) = f4*grd_capnbf(:,l)
+     if(in_nltex) grd_emnbf(:,l) = f4*grd_emnbf(:,l)
      if(bbs_on) grd_capsc(:,l) = f4*grd_capsc(:,l)
   enddo
 end subroutine clump_scale

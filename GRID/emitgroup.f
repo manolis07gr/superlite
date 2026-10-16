@@ -77,12 +77,12 @@ c     --------------------------------------
       real*8 :: emitprob
 c
 c-- search unnormalized cumulative emission probability values
-      r1 = r*grd_capgrey(ic)
+      r1 = r*grd_capgreyk(ic)
       iep = binsrch(r1,grd_emitprobk(:,ic),grd_nep,.true.)
       ig = iep*grd_nepg + 1
       igp1 = min(ig + grd_nepg - 1, grp_ng)
       nepg = igp1 - ig + 1
-      specval(:nepg) = grd_planck(ig:igp1,ic)
+      specval(:nepg) = grd_spk(ig:igp1,ic)
 c
 c-- start value
       if(iep==0) then

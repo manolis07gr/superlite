@@ -92,7 +92,8 @@ pure subroutine diffusion11(ptcl,ptcl2,vx,vy,vz,cache,rndstate,&
 !-- update cache: the lumping of the cell (ddmc_lumps, once per iteration)
   if(ic/=cache%ic) then
      cache%ic = ic
-     capgreyinv = max(1d0/grd_capgrey(ic),0d0) !catch nans
+!-- (mean absorption opacity over the DDMC source spectrum, ddmc_spectra)
+     capgreyinv = max(1d0/grd_capgreyk(ic),0d0) !catch nans
      capemitgreyinv = max(1d0/grd_capemitgrey(ic),0d0)
      speclump = grd_opaclump(7,ic)
      cache%nlump = grd_nlump(ic)
@@ -127,7 +128,9 @@ pure subroutine diffusion11(ptcl,ptcl2,vx,vy,vz,cache,rndstate,&
      if(in_nlte .and. .not.nxt_on) then !NLTE (H only)
        emitlump = specint0(grd_tempinv(ic),ig)* &
                   capemitgreyinv*grd_capemit(ig,ic)
-     else ! LTE, NLTE macro-atoms (Kirchhoff)
+     elseif(nxt_on) then ! NLTE macro-atoms: source spectrum (ddmc_spectra)
+       emitlump = grd_spk(ig,ic)*capgreyinv*grd_cap(ig,ic)
+     else ! LTE
        emitlump = specint0(grd_tempinv(ic),ig)* &
                   capgreyinv*grd_cap(ig,ic)
      endif
@@ -237,9 +240,10 @@ pure subroutine diffusion11(ptcl,ptcl2,vx,vy,vz,cache,rndstate,&
              iiig = grd_glump(iig,ic)
              if(iiig == grp_ng) cycle
              if(grd_cap(iiig+1,ic)*dist >= trn_taulump) cycle
-             specig = grd_planck(iiig,ic)
+             specig = 0d0
+             if(grd_planck(iiig,ic)>0d0) specig = grd_spk(iiig,ic)/grd_planck(iiig,ic)
              resdopleak = dopspeccalc(grd_tempinv(ic),iiig)&
-                          *grd_divv(ix)/(3*pc_c)
+                          *grd_divv(ix)/(3*pc_c)*specig
              denom2 = denom2+resdopleak*speclump*help
              if(denom2>r1) exit
           enddo
@@ -248,9 +252,10 @@ pure subroutine diffusion11(ptcl,ptcl2,vx,vy,vz,cache,rndstate,&
              iiig = grd_glump(iig,ic)
              if(iiig == 1) cycle
              if(grd_cap(iiig-1,ic)*dist >= trn_taulump) cycle
-             specig = grd_planck(iiig,ic)
+             specig = 0d0
+             if(grd_planck(iiig,ic)>0d0) specig = grd_spk(iiig,ic)/grd_planck(iiig,ic)
              resdopleak = dopspeccalc(grd_tempinv(ic),iiig-1)&
-                          *grd_divv(ix)/(3*pc_c)
+                          *grd_divv(ix)/(3*pc_c)*specig
              denom2 = denom2-resdopleak*speclump*help
              if(denom2>r1) exit
            enddo
@@ -320,7 +325,7 @@ pure subroutine diffusion11(ptcl,ptcl2,vx,vy,vz,cache,rndstate,&
            help = 1d0/opacleak(1)
            do iig=1,glump
               iiig = grd_glump(iig,ic)
-              specig = grd_planck(iiig,ic)
+              specig = grd_spk(iiig,ic)
               !specig = specint0(grd_tempinv(ic),iiig)
 !-- calculating resolved leakage opacities
               if((grd_cap(iiig,l)+grd_capsc(iiig,l)+ &
@@ -392,7 +397,7 @@ pure subroutine diffusion11(ptcl,ptcl2,vx,vy,vz,cache,rndstate,&
            help = 1d0/opacleak(2)
            do iig=1,glump
               iiig=grd_glump(iig,ic)
-              specig = grd_planck(iiig,ic)
+              specig = grd_spk(iiig,ic)
               !specig = specint0(grd_tempinv(ic),iiig)
 !-- calculating resolved leakage opacities
               mfphelp = (grd_cap(iiig,ic)+grd_capsc(iiig,ic)+grd_sig(ic))*dx(ix)
@@ -434,7 +439,7 @@ pure subroutine diffusion11(ptcl,ptcl2,vx,vy,vz,cache,rndstate,&
            help = 1d0/opacleak(2)
            do iig=1,glump
               iiig = grd_glump(iig,ic)
-              specig = grd_planck(iiig,ic)
+              specig = grd_spk(iiig,ic)
 !-- calculating resolved leakage opacities
               if((grd_cap(iiig,l)+grd_capsc(iiig,l)+ &
                    grd_sig(l))*dx(ix+1)<trn_tauddmc) then
@@ -517,7 +522,7 @@ pure subroutine diffusion11(ptcl,ptcl2,vx,vy,vz,cache,rndstate,&
              help = grd_planck(iiig,ic)*grd_capemit(iiig,ic)&
                     *capemitgreyinv
            else
-             help = grd_planck(iiig,ic)*grd_cap(iiig,ic)*capgreyinv
+             help = grd_spk(iiig,ic)*grd_cap(iiig,ic)*capgreyinv
            endif
            denom3 = denom3 + help*denom2
            if(denom3>r1) exit

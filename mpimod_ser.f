@@ -124,6 +124,7 @@ c-- NLTE hydrogen
        nxt_ne = nxt_neloc
        nxt_nel = nxt_nelloc
        grd_capnbf = gas_capnbf
+       grd_emnbf = gas_emnbf
       endif
 c-- line scattering opacity
       if(bbs_on) grd_capsc = gas_capsc

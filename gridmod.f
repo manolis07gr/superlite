@@ -40,6 +40,10 @@ c-- bound-free, which the macro-atom emits in IMC)
       real*8,allocatable :: grd_emitprobk(:,:) !(nep,ncell)
 c-- Planck integrals over the groups at T_e (specintv), per iteration
       real*8,allocatable :: grd_planck(:,:) !(ng,ncell)
+c-- DDMC spectral weights (ddmc_spectra): the normalized source function of
+c-- the absorption opacity (Planck in LTE), and the mean opacity over it
+      real*8,allocatable :: grd_spk(:,:) !(ng,ncell)
+      real*8,allocatable :: grd_capgreyk(:) !(ncell)
 c-- DDMC group lumping per iteration (ddmc_lumps): number of lumped groups,
 c-- the groups (lumped first), lumped emission share, absorption, emission
 c-- and Doppler opacities
@@ -202,6 +206,7 @@ c-- ndim=4 alloc
       allocate(grd_emitprobk(grd_nep,grd_ncell))
 c-- ndim=4 alloc
       allocate(grd_planck(ng,grd_ncell))
+      allocate(grd_spk(ng,grd_ncell),grd_capgreyk(grd_ncell))
       allocate(grd_nlump(grd_ncell),grd_glump(ng,grd_ncell))
       allocate(grd_vlump(4,grd_ncell))
       allocate(grd_cap(ng,grd_ncell))
@@ -249,6 +254,7 @@ c-- ndim=3 integer
 c-- ndim=4 alloc
       deallocate(grd_opaclump)
       deallocate(grd_emitprob,grd_emitprobk,grd_planck)
+      deallocate(grd_spk,grd_capgreyk)
       deallocate(grd_nlump,grd_glump,grd_vlump)
 c-- ndim=4 alloc
       deallocate(grd_cap)
