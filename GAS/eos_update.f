@@ -7,6 +7,7 @@ c     --------------------------------
       use timingmod
       use inputparmod
       use nltemod
+      use nltehtrmod, only:nht_neothloc
       implicit none
       logical,intent(in) :: do_output
 ************************************************************************
@@ -32,6 +33,9 @@ c-- loop over all gas_vals cells
          call ions_solve_eos(gas_natomfr(1,i),
      &     gas_temp(i),ndens,gas_nelec(i),niter)
        endif
+c-- electrons per atom from elements other than H (for NLTE H)
+       if(in_nlteh) nht_neothloc(i) = max(0d0,
+     &   gas_nelec(i) - gas_natomfr(1,i)*ion_el(1)%ne)
 c
 c-- store occupation numbers of each ion's ground states
        do iz=1,gas_nelem

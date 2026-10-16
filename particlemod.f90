@@ -19,6 +19,8 @@ module particlemod
      integer :: itype        !IMC or DDMC type
      integer :: ipart, istep !particle number and transport step number
      integer :: idist        !transport distance identifier
+     integer :: iline = 0    !sorted H line the packet sits on (comoving wavelength = line), 0 if none
+     integer :: ilside = 0   !+1 red side, -1 blue side of that line
   end type packet2
 !
   type(packet),allocatable,target :: prt_particles(:)  !(prt_npartmax)

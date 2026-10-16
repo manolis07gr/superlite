@@ -14,13 +14,31 @@ subroutine sourceenergy
 !A fraction of the source particle number src_ns is given
 !to each cell based on the amount of energy emitted by the cell.
 !##################################################
-  ! integer :: i
+  integer :: i
+  real*8 :: help
   ! real*8,dimension(grd_ncell) :: P_adia
   ! real*8,dimension(grp_ng) :: wlm,dwl
 
 ! Calculating fictitious emission energy per cell
 !-- thermal source
   grd_emit = 0.d0
+  if(in_srctype=='lumg') then
+!-- energy injected where the luminosity of the input model grows outward
+!-- (shock dissipation, cooling, diffusion from the interior); grd_lum(i) is
+!-- L at the inner edge of cell i and in_L_bol the emergent luminosity.  The
+!-- luminosity entering at the inner boundary is a boundary source.
+     do i=1,grd_ncell-1
+        grd_emit(i) = max(0d0, grd_lum(i+1) - grd_lum(i))
+     enddo
+     grd_emit(grd_ncell) = max(0d0, in_L_bol - grd_lum(grd_ncell))
+     tot_esurf = max(0d0, grd_lum(1))
+     help = sum(grd_emit) + tot_esurf
+     if(help<=0d0) stop 'sourceenergy: lumg source needs a lum column'
+     grd_emit = grd_emit*in_L_bol/help
+     tot_esurf = tot_esurf*in_L_bol/help
+     tot_sthermal = sum(grd_emit) + tot_esurf
+     return
+  endif
 !-- surface source
   grd_emit = pc_pi*pc_c*grd_rcell**2*pc_acoef*grd_radtemp**4
 !-- volume source (experimental)

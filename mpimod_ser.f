@@ -92,6 +92,8 @@ c
       use groupmod
       use sourcemod
       use particlemod
+      use inputparmod, only:in_nlteh
+      use nltehtrmod
 ************************************************************************
 * Broadcast the data that changes with time.
 * - stub
@@ -111,6 +113,13 @@ c
       grd_capross = reshape(gas_capross,[grd_ncell])
       grd_nelec = reshape(gas_nelec,[grd_ncell])
       grd_natom = reshape(gas_natom,[grd_ncell])
+c-- NLTE hydrogen
+      if(in_nlteh) then
+       nht_x = nht_xloc
+       nht_ne = nht_neloc
+       nht_nh = nht_nhloc
+       grd_caphbf = gas_caphbf
+      endif
 c
       src_nvacantall(1) = count(prt_isvacant)
       end subroutine bcast_nonpermanent
@@ -141,6 +150,10 @@ c
       use groupmod
       gas_jrad = reshape(grd_jrad,[grp_ng,grd_ncell])
       end subroutine allreduce_jrad
+c
+c
+      subroutine allreduce_nlteh
+      end subroutine allreduce_nlteh
 c
 c
       subroutine scatter_jrad

@@ -56,6 +56,10 @@ c-- transport
       logical :: in_puretran = .false. !use IMC only instead of IMC+DDMC hybrid
       logical :: in_trn_noamp = .true.  !disable amplification factor
       logical :: in_thm_aniso = .false. !experimental anisotropic scattering
+      logical :: in_thm_thermal = .false. !Thomson scattering off thermal (Maxwellian) electrons:
+!                                          line broadening and Comptonization by electron scattering
+      logical :: in_trn_doplegacy = .false. !legacy Doppler shifts: divergence-based distance and
+!                                            lab wavelength reset at each group crossing
 c
 c-- debugging
       logical :: in_noeos = .false.     !don't use the EOS
@@ -76,6 +80,21 @@ c
 c-- NLTE treatment for hydrogen b-b opacity calculations
       logical :: in_nlte = .false. ! turn on NLTE
       integer :: in_nlte_nelem = 1 ! number of elements treated with nLTE ! for now keep =1 for h
+c-- NLTE hydrogen with Sobolev line resonances and a macro-atom (requires in_nlte)
+      logical :: in_nlteh = .false.
+      integer :: in_nlteh_nlev = 30 !bound levels n = 1..in_nlteh_nlev
+      real*8 :: in_nlteh_damp = 0.5d0 !weight of the new populations per iteration
+c-- interior source: 'surf' blackbody surfaces at T_rad (legacy),
+c-- 'lumg' energy injected where the luminosity L(r) of the input ('lum'
+c-- column, at the cell's inner edge) grows outward, emitted isotropically
+c-- with the local emissivity, plus L at the inner boundary
+      character(4) :: in_srctype = 'surf'
+c-- shocks (velocity dropping outward by at least in_shock_dvmin): the
+c-- injected energy of shock cells is emitted as a radiatively cooling
+c-- flow, T uniform between the gas temperature and the post-shock
+c-- temperature (capped at in_shock_tmax), bremsstrahlung shape at each T
+      real*8 :: in_shock_dvmin = 3d7 ![cm/s]
+      real*8 :: in_shock_tmax = 1d7 ![K]
 c
 c-- analytic opacities
       character(4) :: in_opacanaltype = 'none'    !none|grey|mono|line: group opacity structure type
@@ -119,11 +138,12 @@ c-- runtime parameter namelist
      & in_trn_errorfatal,in_puretran,
      & in_trn_noamp,
      & in_trn_tauddmc,in_taulump,
-     & in_thm_aniso,
+     & in_thm_aniso,in_thm_thermal,in_trn_doplegacy,
 !gas
      & in_noeos,
      & in_nebular,in_R_phot,
-     & in_nlte,in_nlte_nelem,
+     & in_nlte,in_nlte_nelem,in_nlteh,in_nlteh_nlev,in_nlteh_damp,
+     & in_srctype,in_shock_dvmin,in_shock_tmax,
 !phys opac
      & in_opacmixrossel,
      & in_nobbopac,in_nobfopac,in_noffopac,in_nothmson,
@@ -209,6 +229,8 @@ c
       call insertr(in_trn_tauddmc,in_r,ir)
       call insertr(in_taulump,in_r,ir)
       call insertl(in_thm_aniso,in_l,il)
+      call insertl(in_trn_doplegacy,in_l,il)
+      call insertl(in_thm_thermal,in_l,il)
       call inserti(in_grp_ng,in_i,ii)
       call inserti(in_grp_ngs,in_i,ii)
       call insertr(in_grp_wlmin,in_r,ir)
@@ -233,6 +255,12 @@ c
       call insertr(in_R_phot,in_r,ir)
       call insertl(in_nlte,in_l,il)
       call inserti(in_nlte_nelem,in_i,ii)
+      call insertl(in_nlteh,in_l,il)
+      call inserti(in_nlteh_nlev,in_i,ii)
+      call insertr(in_nlteh_damp,in_r,ir)
+      call insertc(in_srctype,in_c,ic)
+      call insertr(in_shock_dvmin,in_r,ir)
+      call insertr(in_shock_tmax,in_r,ir)
       call insertl(in_nobbopac,in_l,il)
       call insertl(in_nobfopac,in_l,il)
       call insertl(in_noffopac,in_l,il)
@@ -407,6 +435,11 @@ c
       endif
 c
       if(in_nebular.and.in_R_phot.le.0) stop 'in_R_phot<=0'
+      if(in_nlteh.and..not.in_nlte) stop 'in_nlteh requires in_nlte'
+      if(in_nlteh.and.in_grp_ngs/=1) stop 'in_nlteh: in_grp_ngs=1'
+      if(in_nlteh_nlev<4 .or. in_nlteh_nlev>60) stop 'in_nlteh_nlev'
+      if(in_srctype/='surf' .and. in_srctype/='lumg')
+     &  stop 'in_srctype must be surf or lumg'
 c
       if(in_nlte.and.in_nlte_nelem.ne.1) stop 'in_nlte_nelem!=1'
 c
@@ -473,6 +506,8 @@ c
       trn_tauddmc = in_trn_tauddmc
       trn_taulump = in_taulump
       trn_thm_aniso = in_thm_aniso
+      trn_dopexact = .not.in_trn_doplegacy
+      trn_thm_thermal = in_thm_thermal
       trn_errorfatal = in_trn_errorfatal
       trn_noampfact = in_trn_noamp
 c

@@ -24,6 +24,8 @@ program superlite
   use ffxsmod, only:ffxs_read_data
   use timingmod
   use countersmod
+  use nltehmod, only:nlteh_set_collfits
+  use nltehtrmod
 
   implicit none
 !***********************************************************************
@@ -109,10 +111,25 @@ program superlite
   call transportmod_init(grd_igeom)
 !-- source particles
   call sourcemod_init(nmpi)
+  call shock_temperatures
+  if(lmpi0 .and. in_srctype=='lumg') write(6,'(1x,a,i4,a,es9.2,a)') 'shock cells:', &
+       count(src_tsh>0d0),', max post-shock T',maxval(src_tsh),' K'
 
 !-- allocate arrays of sizes retreived in bcast_permanent
   call ions_alloc_grndlev(gas_nelem,gas_ncell)  !ground state occupation numbers
   if(in_nlte) call nlte_alloc_nlev(nlte_nelem,gas_ncell) !NLTE
+!-- NLTE hydrogen with line resonances and macro-atom
+  if(in_nlteh) then
+     call nlteh_tr_init(in_nlteh_nlev,grd_ncell,gas_ncell,grp_ng,grp_wl)
+     nht_damp = in_nlteh_damp
+     call nlteh_set_collfits(nlte_data(1)%i(1)%nlev,nlte_data(1)%i(1)%nplev, &
+          nlte_data(1)%i(1)%glev,nlte_data(1)%i(1)%coll_nlin, &
+          nlte_data(1)%i(1)%llw_coll,nlte_data(1)%i(1)%lup_coll, &
+          nlte_data(1)%i(1)%C0,nlte_data(1)%i(1)%C1,nlte_data(1)%i(1)%C2, &
+          nlte_data(1)%i(1)%C3,nlte_data(1)%i(1)%delE)
+     if(lmpi0) write(6,'(1x,a,i3,a,i5,a)') 'NLTE H:',in_nlteh_nlev,' levels,', &
+          (in_nlteh_nlev*(in_nlteh_nlev-1))/2,' lines (Sobolev resonances, macro-atom)'
+  endif
   call particle_alloc(lmpi0)
 
 !-- initialize random number generator, use different seeds for each rank
@@ -161,6 +178,9 @@ program superlite
 
 !-- gather from gas workers and broadcast to world ranks
      call bcast_nonpermanent !MPI
+!-- NLTE hydrogen: Sobolev strengths, macro-atom and k-packet tables
+     if(in_nlteh) call nlteh_tables(grd_ncell,grd_tempinv,grd_radtemp, &
+          grd_capemitgrey,grd_xarr,grd_vxarr)
 
 !-- source energy
      call sourceenergy
@@ -199,9 +219,16 @@ program superlite
 !-- advance particles
      if(lmpi0) write(6,*) "--> Particle MC tranport"
      t_timelin(3) = t_time() !timeline
+     if(in_nlteh) call nlteh_tally_reset
      call particle_advance
      call reduce_gridtally !MPI  !collect transport results from all workers
      call allreduce_jrad !MPI !NLTE !collect radiation intensity from all workers
+!-- NLTE hydrogen: Monte Carlo estimators for the next iteration
+     if(in_nlteh) then
+        call allreduce_nlteh !MPI
+        call nlteh_store_jg(grd_ncell,grp_ng,grd_jrad,grd_vol)
+        call nlteh_tally_finish(grd_ncell,grd_vol)
+     endif
      call scatter_jrad !MPI
 
 !-- estimated radiation energy
@@ -235,6 +262,8 @@ program superlite
         call output_grp
         if(it>1.and.in_io_opacdump=='one') in_io_opacdump = 'off'
         if(it==in_niter.and.in_io_profdump) call output_profile
+        if(it==in_niter.and.in_nlteh) call nlteh_write(grd_ncell,grd_rcell, &
+             0.5d0*(grd_vxarr(:grd_ncell)+grd_vxarr(2:)),grd_tempinv,grd_radtemp)
 
 !-- write stdout
         write(6,*)

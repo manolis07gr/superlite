@@ -15,6 +15,8 @@ c$    use omp_lib
       use miscmod
       use timingmod
       use mpimod
+      use nltehmod, only:nh_nlev,nh_nu0,nlteh_sigma
+      use nltehtrmod, only:nht_xloc,nht_nhloc,nht_neloc,gas_caphbf
       implicit none
       ! integer,intent(in) :: it
 ************************************************************************
@@ -73,6 +75,9 @@ c-- thomson scattering
      &  *pc_c**4)
 c-- warn once
       logical :: lwarn
+c-- NLTE hydrogen bound-free
+      integer :: n
+      real*8 :: nu,caphbf,xstar,sahaf
       ! character(40) :: fname
 c-- temporary population arrays
       type level_populations
@@ -132,6 +137,9 @@ c-- bound-bound
        enddo !iz
 c
 c-- NLTE opacity calculation
+c-- (with in_nlteh the H lines are Sobolev resonances in the transport and
+c-- the populations come from nlteh_gas_update)
+       if(.not.in_nlteh) then
        allocate(npop(gas_ncell,nlte_nspecies,nlte_nelem))
 c
        do iz=1,nlte_nelem
@@ -346,6 +354,7 @@ c-- emissivity for output
        enddo !iz
 c
        deallocate(npop)
+       endif !.not.in_nlteh
 c
 c-- LTE opacity calculations
 c$omp parallel default(none)
@@ -433,6 +442,7 @@ c$omp&  cap,capemit,emiss,ion_el)
         wl = wlsub(igs)  !in cm
         en = pc_h*pc_c/(pc_ev*wl) !photon energy in eV
         do iz=1,gas_nelem
+         if(in_nlteh .and. iz==1) cycle !NLTE H below
          do ii=1,min(iz,ion_el(iz)%ni - 1) !last stage is bare nucleus
           ie = iz - ii + 1
           xs = bfxs(iz,ie,en)
@@ -454,6 +464,31 @@ c-- emissivity for output
 !       write(6,*) cap(:,igs) !DEBUG
        enddo !igs
 c$omp end parallel do
+c
+c-- NLTE hydrogen: all levels, with stimulated recombination.  Absorption
+c-- only: the recombination emission comes from the macro-atom.
+      if(in_nlteh) then
+       gas_caphbf = 0.
+       do i=1,gas_ncell
+        if(gas_mass(i)<=0d0) cycle
+        sahaf = nht_neloc(i)*nht_xloc(0,i)*4.1412d-16*
+     &    gas_temp(i)**(-1.5d0)
+        do igs=1,ngsub
+         nu = 2d0*pc_c/(wlsub(igs)+wlsub(igs+1))
+         if(nu<nh_nu0(nh_nlev)) cycle
+         caphbf = 0d0
+         do n=1,nh_nlev
+          if(nu<nh_nu0(n)) exit
+          xstar = sahaf*n*n*
+     &      exp(-pc_h*(nu-nh_nu0(n))/(pc_kb*gas_temp(i)))
+          caphbf = caphbf + (nht_xloc(n,i)-xstar)*nlteh_sigma(n,nu)
+         enddo
+         caphbf = max(0d0,caphbf*nht_nhloc(i))
+         cap(i,igs) = cap(i,igs) + caphbf
+         gas_caphbf(igs,i) = sngl(caphbf)
+        enddo !igs
+       enddo !i
+      endif
 c
       endif !in_nobfopac
 c

@@ -14,13 +14,15 @@ c
       real*8 :: trn_tauddmc
       real*8 :: trn_taulump
       logical :: trn_thm_aniso !experimental !evaluates anisotropic scattering angle for Thomson scattering
+      logical :: trn_dopexact = .true. !exact comoving group crossings, lab wavelength conserved in free flight
+      logical :: trn_thm_thermal = .false. !Thomson scattering off thermal electrons (non-coherent)
 c
 c-- explicit interfaces
       interface
 c
 c-- transport
       pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,
-     &  rndstate,eraddens,eamp,jrad,totevelo,ierr)
+     &  rndstate,eraddens,eamp,jrad,totevelo,ierr,jbk,jbval)
       use randommod
       use particlemod
       type(packet),target,intent(inout) :: ptcl
@@ -31,6 +33,8 @@ c-- transport
       real*8,intent(out) :: jrad
       real*8,intent(inout) :: totevelo
       integer,intent(out) :: ierr
+      integer,intent(out) :: jbk
+      real*8,intent(out) :: jbval
       end subroutine transport11
 c
 c-- diffusion
@@ -62,7 +66,7 @@ c     -------------------------------------------
       end subroutine direction2lab_
 c
       pure subroutine transport_(ptcl,ptcl2,vx,vy,vz,
-     &  rndstate,eraddens,eamp,jrad,totevelo,ierr)
+     &  rndstate,eraddens,eamp,jrad,totevelo,ierr,jbk,jbval)
       use randommod
       use groupmod
       use particlemod
@@ -74,6 +78,8 @@ c
       real*8,intent(out) :: jrad
       real*8,intent(inout) :: totevelo
       integer,intent(out) :: ierr
+      integer,intent(out) :: jbk
+      real*8,intent(out) :: jbval
       end subroutine transport_
 c
       pure subroutine diffusion_(ptcl,ptcl2,vx,vy,vz,

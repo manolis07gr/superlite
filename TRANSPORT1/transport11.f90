@@ -1,7 +1,7 @@
 !This file is part of SuperLite. SuperLite is released under the terms of the GNU GPLv3, see COPYING.
 !Copyright (c) 2023 Gururaj A. Wagle.  All rights reserved.
 pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
-  eraddens,eamp,jrad,totevelo,ierr)
+  eraddens,eamp,jrad,totevelo,ierr,jbk,jbval)
 
   use randommod
   use miscmod
@@ -11,6 +11,10 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
   use particlemod
   use transportmod
   use inputparmod
+  use dopplermod
+  use comptonmod
+  use nltehmod, only:nh_nu,nh_lu,nh_wl
+  use nltehtrmod
   implicit none
 !
   type(packet),target,intent(inout) :: ptcl
@@ -21,6 +25,8 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
   real*8,intent(out) :: jrad
   real*8,intent(inout) :: totevelo
   integer,intent(out) :: ierr
+  integer,intent(out) :: jbk      !H line crossed (resonance estimator), 0 if none
+  real*8,intent(out) :: jbval     !its contribution e*c/(nu*|Q|)
 !##################################################
 !This subroutine passes particle parameters as input and modifies
 !them through one IMC transport event (Fleck&Cummings, 1971).  If
@@ -54,6 +60,13 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
   ! logical :: lsuplum
   real*8 :: shelp,xhelp,epstol,phi,dphi
   integer :: it
+  integer :: idop !direction of the comoving group crossing
+!-- thermal electron scattering
+  real*8 :: mucmf,wlcmf,nuratio
+!-- NLTE hydrogen: line resonances and macro-atom
+  integer :: jlo,jhi,jres,kres,kind,idx,ilin0,ilsd0
+  real*8 :: wlo_e,whi_e,qmu,tau,qmin
+  logical :: lremit
 
 !-- statement function
   integer :: l
@@ -82,6 +95,17 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
   eraddens = 0d0
   eamp = 0d0
   jrad = 0d0
+  jbk = 0
+  jbval = 0d0
+  lremit = .false.
+!-- the packet sits on an H line only right after a resonance event
+  ilin0 = ptcl2%iline
+  ilsd0 = ptcl2%ilside
+  ptcl2%iline = 0
+  ptcl2%ilside = 0
+  jlo = 0
+  jhi = 0
+  jres = 0
 !
 !-- calculating initial transformation factors
   elabfact = 1d0 - mu*vx*cinv
@@ -125,7 +149,37 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
   endif
 !
 !-- Doppler shift distance
-!-- \tilde{v} frame
+  if(trn_dopexact) then
+!-- exact distance to the first comoving group boundary or H line along the
+!-- path, for the cell's linear v(r) of any slope (decelerating and
+!-- non-monotonic flows have blueshifts and repeated resonances)
+     wlo_e = grp_wl(ig)
+     whi_e = grp_wl(ig+1)
+     if(nht_on) then
+        call nlteh_neighbors(wl/elabfact,ilin0,ilsd0,jlo,jhi)
+        if(jlo>0) then
+           if(nht_wlact(jlo)>wlo_e) then
+              wlo_e = nht_wlact(jlo)
+           else
+              jlo = 0
+           endif
+        endif
+        if(jhi>0) then
+           if(nht_wlact(jhi)<whi_e) then
+              whi_e = nht_wlact(jhi)
+           else
+              jhi = 0
+           endif
+        endif
+     endif
+     call doppler_crossing(x,mu,grd_xarr(ix),grd_xarr(ix+1),grd_vxarr(ix), &
+          grd_vxarr(ix+1),wl,wlo_e,whi_e,db,pc_c,ddop,idop)
+     if(idop==0) ddop = far
+     if(idop>0 .and. jhi>0) jres = jhi
+     if(idop<0 .and. jlo>0) jres = jlo
+     goto 66
+  endif
+!-- legacy: \tilde{v} frame
   vhelp = grd_vxarr(ix) - dvdr(ix)*grd_xarr(ix)
   muhelp = (mu - vx*cinv) / (1 - mu*vx*cinv)
   wlhelp = (wl/elabfact) / (1 + (muhelp*(vx-vhelp)*cinv))
@@ -253,7 +307,15 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
 !
 
 !-- common manipulations for collisions
-  if(d==dthm.or.d==dcol) then
+  nuratio = 1d0
+  if(d==dthm.and.trn_thm_thermal) then
+!-- scattering off a thermal electron: new comoving direction and frequency
+     mucmf = (mu-vx*cinv)/(1d0-mu*vx*cinv)
+     wlcmf = wl/elabfact
+     call thermal_thomson(mucmf,wlcmf,1d0/grd_tempinv(ic),trn_thm_aniso, &
+          rndstate,mu,nuratio)
+     mu=(mu+vx*cinv)/(1d0+vx*mu*cinv)
+  elseif(d==dthm.or.d==dcol) then
      call rnd_r(r1,rndstate)
 !-- anisotropic scattering (experimental)
      if(d==dthm.and.trn_thm_aniso) then
@@ -298,14 +360,26 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
 !
 !-- Thomson scatter
   if(d == dthm) then
-!-- lab wavelength
-     wl = wl*(1d0-mu*vx*cinv)/elabfact
-     help = elabfact/(1d0-mu*vx*cinv)
-!-- velocity effects accounting
+!-- lab wavelength (comoving frequency changed by nuratio for thermal electrons)
+     wl = wl*(1d0-mu*vx*cinv)/(elabfact*nuratio)
+     help = elabfact*nuratio/(1d0-mu*vx*cinv)
+!-- velocity effects accounting (bulk flow and electron thermal motion)
      totevelo=totevelo+e*(1d0-help)
 !-- energy weight
      e = e*help
      e0 = e0*help
+     if(nuratio/=1d0) then
+!-- new comoving group
+        ig = binsrch(wl/(1d0-mu*vx*cinv),grp_wl,grp_ng+1,.false.)
+        if(((grd_sig(ic)+grd_cap(ig,ic))*dx(ix) >= trn_tauddmc) &
+             .and. .not.in_puretran) then
+           ptcl2%itype = 2
+           totevelo = totevelo+e*vx*mu*cinv
+           e = e*(1d0-vx*mu*cinv)
+           e0 = e0*(1d0-vx*mu*cinv)
+           wl = wl/(1d0-vx*mu*cinv)
+        endif
+     endif
 
 !
 !-- effective scattering
@@ -324,7 +398,16 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
      else !LTE
         emitlump = grd_opaclump(8,ic)/grd_capgrey(ic)
      endif
-     if(grp_ng==1) then
+     if(nht_on) then
+!-- H bound-free absorption activates the macro-atom, the rest the thermal pool
+        call rnd_r(r1,rndstate)
+        if(r1*grd_cap(ig,ic) < grd_caphbf(ig,ic)) then
+           call nlteh_bfabs(ic,pc_c*elabfact/wl,rndstate,kind,idx,wlcmf)
+        else
+           call nlteh_kpacket(ic,rndstate,kind,idx,wlcmf)
+        endif
+        lremit = .true.
+     elseif(grp_ng==1) then
         !-- do nothing
      else
         call rnd_r(r1,rndstate)
@@ -342,13 +425,14 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
         e = e*(1d0-vx*mu*cinv)
         e0 = e0*(1d0-vx*mu*cinv)
         !wl = 0d0 !workaround ifort 13.1.3 bug
-     else
+     elseif(.not.lremit) then
 !-- uniformly in new group
         call rnd_r(r1,rndstate)
         wl = 1d0/((1d0-r1)*grp_wlinv(ig)+r1*grp_wlinv(ig+1))
 !-- converting comoving wavelength to lab frame wavelength
         wl = wl*(1d0-vx*mu*cinv)
      endif
+     if(lremit) call nlteh_reemit(kind,idx,wlcmf,ig,wl,e,e0,mu,vx,x,ix,ic,ptcl2,totevelo,rndstate)
 
 !
 !-- outer radial bound
@@ -447,8 +531,58 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
 
 !
 !-- Doppler shift
+  elseif(d == ddop .and. jres>0) then
+!-- H line resonance (Sobolev): projected velocity gradient at this point
+     kres = nht_act(jres)
+     mucmf = (mu-vx*cinv)/(1d0-mu*vx*cinv)
+     qmu = mucmf**2*dvdr(ix) + (1d0-mucmf**2)*vx/x
+     qmin = 1d-3*max(abs(dvdr(ix)),abs(vx/x))
+     qmu = max(abs(qmu),qmin)
+     tau = nht_kq(kres,ic)/qmu
+!-- resonance estimator of the incident intensity
+     jbk = kres
+     jbval = e*elabfact*pc_c/(nh_nu(kres)*qmu)
+     call rnd_r(r1,rndstate)
+     if(tau>0d0 .and. r1<1d0-exp(-tau)) then
+!-- absorbed: macro-atom in the upper level, re-emitted isotropically
+        call nlteh_activate(ic,nh_lu(kres),rndstate,kind,idx,wlcmf)
+        call rnd_r(r1,rndstate)
+        mu = 1d0-2d0*r1
+        mu = (mu+vx*cinv)/(1d0+vx*mu*cinv)
+        help = elabfact/(1d0-mu*vx*cinv)
+        totevelo = totevelo+e*(1d0-help)
+        e = e*help
+        e0 = e0*help
+        call nlteh_reemit(kind,idx,wlcmf,ig,wl,e,e0,mu,vx,x,ix,ic,ptcl2,totevelo,rndstate)
+     else
+!-- passes the resonance: now on the far side of the line
+        ptcl2%iline = jres
+        ptcl2%ilside = idop
+     endif
   elseif(d == ddop) then
-     if(dvdr(ix).gt.0) then ! redshit
+     if(trn_dopexact) then
+!-- the lab-frame wavelength does not change in free flight; only the
+!-- comoving group does
+        if(idop>0) then
+           if(ig<grp_ng) then
+              ig = ig+1
+           else
+!-- resampling wavelength in highest group
+              call rnd_r(r1,rndstate)
+              wl=1d0/(r1*grp_wlinv(grp_ng+1) + (1d0-r1)*grp_wlinv(grp_ng))
+              wl = wl*elabfact
+           endif
+        else
+           if(ig>1) then
+              ig = ig-1
+           else
+!-- resampling wavelength in lowest group
+              call rnd_r(r1,rndstate)
+              wl=1d0/(r1*grp_wlinv(1) + (1d0-r1)*grp_wlinv(2))
+              wl = wl*elabfact
+           endif
+        endif
+     elseif(dvdr(ix).gt.0) then ! redshit
         if(ig<grp_ng) then
 !-- shifting group
           ig = ig+1
@@ -487,6 +621,63 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
      ierr = 17
      return
   endif
+
+  return
+
+contains
+
+  pure subroutine nlteh_reemit(kind,idx,wlcmf,ig,wl,e,e0,mu,vx,x,ix,ic,ptcl2,totevelo,rndstate)
+!-----------------------------------------------------------------------
+! Re-emit the packet after a macro-atom/k-packet process with comoving
+! wavelength wlcmf (kind em_line/em_bf/em_2ph) or the thermal emissivity
+! (em_thermal).  mu (lab) and the lab energy are already set for the new
+! direction.
+!-----------------------------------------------------------------------
+    integer,intent(in) :: kind,idx,ix,ic
+    real*8,intent(in) :: wlcmf,mu,vx,x
+    integer,intent(inout) :: ig
+    real*8,intent(inout) :: wl,e,e0,totevelo
+    type(packet2),intent(inout) :: ptcl2
+    type(rnd_t),intent(inout) :: rndstate
+    real*8 :: wlc,qn,rr,dvdrl
+    if(kind==em_thermal) then
+       call rnd_r(rr,rndstate)
+       ig = emitgroup(rr,ic)
+       call rnd_r(rr,rndstate)
+       wlc = 1d0/((1d0-rr)*grp_wlinv(ig)+rr*grp_wlinv(ig+1))
+    else
+       wlc = wlcmf
+       if(kind==em_line) then
+          ig = nht_lgrp(idx)
+       else
+          ig = 0
+       endif
+       if(ig<1) ig = binsrch(wlc,grp_wl,grp_ng+1,.false.)
+       if(wlc<grp_wl(1) .or. wlc>=grp_wl(grp_ng+1)) then
+!-- outside the group grid: put it in the edge group
+          call rnd_r(rr,rndstate)
+          wlc = 1d0/((1d0-rr)*grp_wlinv(ig)+rr*grp_wlinv(ig+1))
+       elseif(kind==em_line .and. nht_isrt(idx)>0) then
+!-- the packet sits on the (active) line it was emitted in
+          ptcl2%iline = nht_isrt(idx)
+          dvdrl = (grd_vxarr(ix+1)-grd_vxarr(ix))/(grd_xarr(ix+1)-grd_xarr(ix))
+          qn = ((mu-vx*cinv)/(1d0-mu*vx*cinv))**2
+          qn = qn*dvdrl + (1d0-qn)*vx/x
+          ptcl2%ilside = merge(1,-1,qn>=0d0)
+       endif
+    endif
+    wl = wlc*(1d0-vx*mu*cinv)
+!-- DDMC in the new group
+    if(((grd_sig(ic)+grd_cap(ig,ic))*(grd_xarr(ix+1)-grd_xarr(ix)) >= trn_tauddmc) &
+         .and. .not.in_puretran) then
+       ptcl2%itype = 2
+       ptcl2%iline = 0
+       totevelo = totevelo+e*vx*mu*cinv
+       e = e*(1d0-vx*mu*cinv)
+       e0 = e0*(1d0-vx*mu*cinv)
+       wl = wlc
+    endif
+  end subroutine nlteh_reemit
 
 ! !-- updating the co-moving group for superluminal flow for \tilde{v} frame
 !   if(lsuplum.and.ptcl2%itype == 1) then

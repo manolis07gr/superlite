@@ -17,6 +17,7 @@ subroutine particle_advance
   use countersmod
   use fluxmod
   use sourcemod
+  use nltehtrmod, only:nht_on,nht_jbsum,nht_jbcnt
   implicit none
 !
 !##################################################
@@ -40,6 +41,8 @@ subroutine particle_advance
   integer :: icold, igold, ierr
   real*8 :: eraddens, eamp
   real*8 :: jrad
+  integer :: jbk
+  real*8 :: jbval
 !-- specint cache
   integer :: nstepmax, ndist(-3:7)
 !
@@ -90,14 +93,14 @@ subroutine particle_advance
 !$omp    grp_ng,grp_wl,grd_igeom,grd_sig,grd_cap,grd_eamp, &
 !$omp    trn_tauddmc,trn_noampfact,trn_errorfatal, &
 !$omp    grd_vxarr,grd_methodswap,t_pckt_stat,transport,diffusion, &
-!$omp    in_puretran,in_io_dogrdtally,in_nomp) &
+!$omp    in_puretran,in_io_dogrdtally,in_nomp,nht_on) &
 !$omp private(ptcl,ptcl2,cache, &
 !$omp    specarr,glumps,llumps, &
 !$omp    x,y,z,mu,om,wl,e,e0,ix,iy,iz,ic,ig,icold,igold, &
 !$omp    vx,vy,vz,help1,help2,vhelp1,vhelp2, &
 !$omp    i,t0,t1,help,tau,labfact,jrad, &
-!$omp    rndstate,eraddens,eamp,ierr,iomp) &
-!$omp reduction(+:grd_tally,grd_jrad, &
+!$omp    rndstate,eraddens,eamp,ierr,iomp,jbk,jbval) &
+!$omp reduction(+:grd_tally,grd_jrad,nht_jbsum,nht_jbcnt, &
 !$omp    tot_evelo,tot_eout,tot_sflux, &
 !$omp    npckt,nflux, &
 !$omp    nstepddmc,nstepimc,nmethodswap,ndist) &
@@ -200,6 +203,8 @@ subroutine particle_advance
      ptcl2%istep = 0
      ptcl2%idist = 0
      ptcl2%stat = 'live'
+     ptcl2%iline = 0
+     ptcl2%ilside = 0
 
      do while (ptcl2%stat=='live')
         ptcl2%istep = ptcl2%istep + 1
@@ -208,7 +213,12 @@ subroutine particle_advance
         if(ptcl2%itype==1 .or. in_puretran) then
            nstepimc = nstepimc + 1
            call transport(ptcl,ptcl2,vx,vy,vz,rndstate, &
-                eraddens,eamp,jrad,tot_evelo,ierr)
+                eraddens,eamp,jrad,tot_evelo,ierr,jbk,jbval)
+!-- H line resonance estimator
+           if(jbk>0) then
+              nht_jbsum(jbk,icold) = nht_jbsum(jbk,icold) + jbval
+              nht_jbcnt(jbk,icold) = nht_jbcnt(jbk,icold) + 1d0
+           endif
            if(ptcl2%itype/=1) then
               nmethodswap = nmethodswap + 1
               if(in_io_dogrdtally) grd_methodswap(icold) = grd_methodswap(icold) + 1
@@ -217,6 +227,7 @@ subroutine particle_advance
            if(.not.trn_noampfact) grd_eamp(icold) = grd_eamp(icold) + eamp
         else
            nstepddmc = nstepddmc + 1
+           ptcl2%iline = 0
            call diffusion(ptcl,ptcl2,vx,vy,vz,cache,rndstate, &
                 eraddens,jrad,tot_evelo,ierr)
            if(ptcl2%itype==1) then

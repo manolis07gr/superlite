@@ -651,6 +651,9 @@ c     -----------------------------
       use particlemod
       use timingmod
       use transportmod, only:trn_noampfact
+      use inputparmod, only:in_nlteh
+      use nltehmod, only:nh_nlev
+      use nltehtrmod
       implicit none
 ************************************************************************
 * Broadcast the data that changes with time/temperature.
@@ -709,6 +712,22 @@ c
       call mpi_allgatherv(gas_lum,gas_ncell,MPI_REAL8,
      &  grd_lum,counts,displs,MPI_REAL8,
      &  MPI_COMM_WORLD,ierr)
+c
+c-- NLTE hydrogen populations and bound-free opacity
+      if(in_nlteh) then
+       call mpi_allgatherv(nht_xloc,(nh_nlev+1)*gas_ncell,MPI_REAL8,
+     &   nht_x,(nh_nlev+1)*counts,(nh_nlev+1)*displs,MPI_REAL8,
+     &   MPI_COMM_WORLD,ierr)
+       call mpi_allgatherv(nht_neloc,gas_ncell,MPI_REAL8,
+     &   nht_ne,counts,displs,MPI_REAL8,
+     &   MPI_COMM_WORLD,ierr)
+       call mpi_allgatherv(nht_nhloc,gas_ncell,MPI_REAL8,
+     &   nht_nh,counts,displs,MPI_REAL8,
+     &   MPI_COMM_WORLD,ierr)
+       call mpi_allgatherv(gas_caphbf,grp_ng*gas_ncell,MPI_REAL,
+     &   grd_caphbf,grp_ng*counts,grp_ng*displs,MPI_REAL,
+     &   MPI_COMM_WORLD,ierr)
+      endif
 c
 c-- broadcast
       call mpi_bcast(tot_esurf,1,MPI_REAL8,
@@ -800,8 +819,9 @@ c
 c
       allocate(snd(grd_ncell))
       snd = grd_tally
-      call mpi_reduce(snd,grd_tally,n,MPI_REAL8,MPI_SUM,
-     &  impi0,MPI_COMM_WORLD,ierr)
+c-- allreduce: every rank updates the radiation temperature from it
+      call mpi_allreduce(snd,grd_tally,n,MPI_REAL8,MPI_SUM,
+     &  MPI_COMM_WORLD,ierr)
       deallocate(snd)
 c
 c
@@ -858,6 +878,33 @@ c
       call timereg(t_mpireduc, t1-t0)
 c
       end subroutine allreduce_jrad
+c
+c
+c
+      subroutine allreduce_nlteh
+c     --------------------------
+      use nltehtrmod
+      use timingmod
+      implicit none
+************************************************************************
+* Sum the H line resonance estimators over all ranks.
+************************************************************************
+      integer :: n
+      real*8,allocatable :: snd2(:,:)
+      real*8 :: t0,t1
+      t0 = t_time()
+      n = size(nht_jbsum)
+      allocate(snd2(size(nht_jbsum,1),size(nht_jbsum,2)))
+      snd2 = nht_jbsum
+      call mpi_allreduce(snd2,nht_jbsum,n,MPI_REAL8,MPI_SUM,
+     &  MPI_COMM_WORLD,ierr)
+      snd2 = nht_jbcnt
+      call mpi_allreduce(snd2,nht_jbcnt,n,MPI_REAL8,MPI_SUM,
+     &  MPI_COMM_WORLD,ierr)
+      deallocate(snd2)
+      t1 = t_time()
+      call timereg(t_mpireduc, t1-t0)
+      end subroutine allreduce_nlteh
 c
 c
 c

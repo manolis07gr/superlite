@@ -12,6 +12,7 @@ subroutine interior_source!(it)
   use physconstmod
   use inputparmod
   use countersmod
+  use nltehtrmod
 
   implicit none
   ! integer, intent(in) :: it !experimental iterative approach
@@ -34,6 +35,9 @@ subroutine interior_source!(it)
 !
   real*8 :: emitprob(grp_ng)
   real*8 :: tradinv
+!-- lumg source: emission with the local emissivity (macro-atom with NLTE H)
+  integer :: kind,idx
+  real*8 :: wlc,thelp
   type(packet),pointer :: ptcl
 !-- statement functions
   integer :: l
@@ -92,6 +96,44 @@ subroutine interior_source!(it)
 !-- setting particle index to not vacant
      prt_isvacant(ivac) = .false.
 
+!-- lumg source: thermal energy of the gas, emitted isotropically from a
+!-- uniform position in the cell with the local emissivity
+     if(in_srctype=='lumg') then
+        if(src_tsh(l)>0d0) then
+!-- shock cell: radiatively cooling post-shock gas, T uniform between the gas
+!-- temperature and the post-shock temperature, bremsstrahlung shape
+           call rnd_r(r1,rnd_state)
+           thelp = 1d0/grd_tempinv(l)
+           thelp = thelp + r1*max(0d0,min(src_tsh(l),in_shock_tmax) - thelp)
+           call rnd_r(r1,rnd_state)
+           wlc = pc_h*pc_c/(-log(max(r1,1d-300))*pc_kb*thelp)
+           kind = em_line  !not thermal: wavelength set
+        elseif(nht_on) then
+           call nlteh_kpacket(l,rnd_state,kind,idx,wlc)
+        else
+           kind = em_thermal
+        endif
+        if(kind==em_thermal) then
+           call rnd_r(r1,rnd_state)
+           ig = emitgroup(r1,l)
+           call rnd_r(r1,rnd_state)
+           wlc = 1d0/((1d0-r1)*grp_wlinv(ig)+r1*grp_wlinv(ig+1))
+        endif
+        wlc = min(max(wlc,grp_wl(1)),grp_wl(grp_ng+1)*(1d0-1d-12))
+        ptcl%wl = wlc
+        ep0 = grd_emit(l)/dble(nemit)
+        ptcl%e = ep0
+        ptcl%e0 = ep0
+        call rnd_r(r1,rnd_state)
+        ptcl%mu = 1d0-2d0*r1
+        call rnd_r(r1,rnd_state)
+        ptcl%om = pc_pi2*r1
+        call rnd_r(r1,rnd_state)
+        ptcl%x = (r1*grd_xarr(i+1)**3+(1d0-r1)*grd_xarr(i)**3)**(1d0/3d0)
+        ptcl%y = grd_yarr(1)
+        ptcl%z = grd_zarr(1)
+        cycle
+     endif
 !-- calculating wavelength
      denom2 = 0d0
      call rnd_r(r1,rnd_state)

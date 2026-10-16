@@ -11,6 +11,9 @@ c
       integer,allocatable :: src_ivacant(:) !array of vacant particle array locations
       integer*8,allocatable :: src_nvacantall(:) !(nmpi) number of vacancies on each of the ranks
 c
+c-- post-shock temperature of shock cells, 0 elsewhere
+      real*8,allocatable :: src_tsh(:) !(grd_ncell)
+c
 c-- source sampling for output
       real*8,allocatable :: src_energy(:,:) !(grd_ncell,grp_ng) spectral energy distribution of particles for each cell
       integer,allocatable :: src_number(:,:) !(grd_ncell,grp_ng) number distribution of source particles for each cell
@@ -32,9 +35,13 @@ c     ----------------------------------------
       src_nvacantall = 0
       allocate(src_energy(grd_ncell,grp_ng))
       allocate(src_number(grd_ncell,grp_ng))
+      allocate(src_tsh(grd_ncell))
+      src_tsh = 0d0
       end subroutine sourcemod_init
 c
+c
       subroutine source_dealloc
+      if(allocated(src_tsh)) deallocate(src_tsh)
       deallocate(src_energy)
       deallocate(src_number)
       end subroutine source_dealloc
