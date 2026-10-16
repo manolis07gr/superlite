@@ -45,11 +45,13 @@ program test_shockcie
      call random_number(r1); call random_number(r2); call random_number(r3)
      call shc_sample(2, t, r1, r2, r3, wl)
      wl = wl*1d8
-     if(wl >= edges(5) .and. wl < edges(6)) then
+!-- (bins with a relative tolerance of 1e-6: the table holds the edges to 7
+!-- digits)
+     if(inbin(wl, 5)) then
         n5 = n5 + 1
-     elseif(wl >= edges(10) .and. wl < edges(11)) then
+     elseif(inbin(wl, 10)) then
         n10 = n10 + 1
-     elseif(wl >= edges(20) .and. wl < edges(21)) then
+     elseif(inbin(wl, 20)) then
         n20 = n20 + 1
      else
         nbad = nbad + 1
@@ -70,4 +72,10 @@ program test_shockcie
      stop 1
   endif
   write(*,'(a)') 'test_shockcie: PASS'
+contains
+  logical function inbin(w, i)
+    real*8, intent(in) :: w
+    integer, intent(in) :: i
+    inbin = w >= edges(i)*(1d0 - 1d-6) .and. w < edges(i+1)*(1d0 + 1d-6)
+  end function inbin
 end program test_shockcie
