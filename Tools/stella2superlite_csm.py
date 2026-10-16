@@ -200,7 +200,7 @@ in_comment = 'CSM physics branch, {os.path.basename(a.profile)}'
 
 !-- particle numbers and source
  in_src_n2s = {a.n2s}
- in_L_bol = {lbol:.4e}
+ in_L_bol = {lbol:.7e}
  in_srctype = 'lumg'
  in_surfsrcmu = 'isot'
 

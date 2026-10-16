@@ -31,6 +31,9 @@ subroutine sourceenergy
         grd_emit(i) = max(0d0, grd_lum(i+1) - grd_lum(i))
      enddo
      grd_emit(grd_ncell) = max(0d0, in_L_bol - grd_lum(grd_ncell))
+!-- a difference of in_L_bol and the input's outer L below 1e-4 is rounding
+!-- (it would heat the outermost, often near-empty cell)
+     if(grd_emit(grd_ncell) < 1d-4*in_L_bol) grd_emit(grd_ncell) = 0d0
      tot_esurf = max(0d0, grd_lum(1))
      help = sum(grd_emit) + tot_esurf
      if(help<=0d0) stop 'sourceenergy: lumg source needs a lum column'

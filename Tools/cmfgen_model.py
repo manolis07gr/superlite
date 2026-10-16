@@ -123,6 +123,35 @@ def read_pop(path, nd):
     return total, ions
 
 
+def read_dc(path):
+    """XzVOUT (departure coefficients): per depth r [1e10 cm], n_ion, n_e,
+    T [1e4 K], ..., then b of each level.  Returns r [cm], ne, T [K], b
+    (depth, level)."""
+    lines = [l for l in open(path, errors='replace').read().splitlines()]
+    head = None
+    for k, l in enumerate(lines):
+        t = l.split()
+        if len(t) == 4 and '!' not in l:
+            head = (k, int(t[2]), int(t[3]))
+            break
+    if head is None:
+        raise ValueError('no header in %s' % path)
+    k0, nlev, nd = head
+    vals = []
+    for l in lines[k0 + 1:]:
+        vals += numbers(l)          # (the integer depth index is not matched)
+    rec = 7 + nlev
+    r, ne, t, b = [], [], [], []
+    for d in range(nd):
+        v = vals[d * rec:(d + 1) * rec]
+        r.append(v[0] * 1e10)
+        ne.append(v[2])
+        t.append(v[3] * 1e4)
+        b.append(v[7:])
+    import numpy as np
+    return np.array(r), np.array(ne), np.array(t), np.array(b)
+
+
 def abundances_vadat(moddir):
     """Mass fractions from VADAT ([XXX/X] keys: positive = number abundance,
     negative = mass fraction; lines starting with '!' are inactive)."""
@@ -216,7 +245,7 @@ def cmd_input(a):
     print(f'{n} cells, r = {edges[0]:.4e} - {edges[-1]:.4e} cm, v = {vedges[0]/1e5:.3g} - {vedges[-1]/1e5:.4g} km/s, '
           f'M = {mass.sum()/MSUN:.4e} Msun, L* = {lstar:.4e} erg/s, T(R*) = {t[0]:.0f} K')
     print('mass fractions: ' + ', '.join(f'{k} {xab[k]/tot:.3e}' for k in labels))
-    print(f'in_L_bol = {lstar:.4e};  rad_temp of cell 1 (inner boundary) {tmid[0]:.0f} K')
+    print(f'in_L_bol = {lstar:.7e};  rad_temp of cell 1 (inner boundary) {tmid[0]:.0f} K')
 
 
 def cmd_ions(a):
