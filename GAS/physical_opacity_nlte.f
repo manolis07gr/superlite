@@ -680,6 +680,30 @@ c-- core shells
        deallocate(capn,sinn)
       endif
 c
+c-- Rayleigh scattering by H I in the ground state (Kurucz 1970, ATLAS9
+c-- HRAYOP: Dalgarno's fit, frequency capped at Lyman alpha), in the
+c-- scattering opacity: cool dense H I gas in the blue and UV
+      if(bbs_on) then
+       do igs=1,ngsub
+        wl = max(0.5d8*(wlsub(igs)+wlsub(igs+1)),1217.2d0)
+        en = wl*wl
+        xs = (5.799d-13 + 1.422d-6/en + 2.784d0/(en*en))/(en*en)
+        do i=1,gas_ncell
+         if(gas_mass(i)<=0d0) cycle
+         if(nxt_isel(1)) then
+          iel = nxt_elz(1)
+          nl = nxt_nelloc(iel,i)*nxt_xloc(nxa_el(iel)%xoff+1,i)*
+     &      wlv(nxa_el(iel)%lvoff+1,i)
+         elseif(gas_nelem>=1) then
+          nl = grndlev(i,1,1)
+         else
+          nl = 0d0
+         endif
+         capsc(i,igs) = capsc(i,igs) + nl*xs
+        enddo !i
+       enddo !igs
+      endif
+c
       endif !in_nobfopac
 c
       t2 = t_time()
