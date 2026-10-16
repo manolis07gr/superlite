@@ -29,7 +29,7 @@ c-- search unnormalized cumulative emission probability values
       ig = iep*grd_nepg + 1
       igp1 = min(ig + grd_nepg - 1, grp_ng)
       nepg = igp1 - ig + 1
-      call specintv(grd_tempinv(ic),nepg,specval,offset=ig)
+      specval(:nepg) = grd_planck(ig:igp1,ic)
 c
 c-- start value
       if(iep==0) then
@@ -82,7 +82,7 @@ c-- search unnormalized cumulative emission probability values
       ig = iep*grd_nepg + 1
       igp1 = min(ig + grd_nepg - 1, grp_ng)
       nepg = igp1 - ig + 1
-      call specintv(grd_tempinv(ic),nepg,specval,offset=ig)
+      specval(:nepg) = grd_planck(ig:igp1,ic)
 c
 c-- start value
       if(iep==0) then

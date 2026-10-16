@@ -38,6 +38,8 @@ c-- DDMC with NLTE macro-atoms: Kirchhoff emission with all absorption
 c-- opacities (grd_emitprob uses the emission opacities without the NLTE
 c-- bound-free, which the macro-atom emits in IMC)
       real*8,allocatable :: grd_emitprobk(:,:) !(nep,ncell)
+c-- Planck integrals over the groups at T_e (specintv), per iteration
+      real*8,allocatable :: grd_planck(:,:) !(ng,ncell)
 
 c-- Line+Cont extinction coeff
       real*4,allocatable :: grd_cap(:,:) !(ng,ncell)
@@ -193,6 +195,7 @@ c-- ndim=4 alloc
       allocate(grd_emitprob(grd_nep,grd_ncell))
       allocate(grd_emitprobk(grd_nep,grd_ncell))
 c-- ndim=4 alloc
+      allocate(grd_planck(ng,grd_ncell))
       allocate(grd_cap(ng,grd_ncell))
       allocate(grd_capemit(ng,grd_ncell))
       allocate(grd_emiss(ng,grd_ncell))
@@ -237,7 +240,7 @@ c-- ndim=3 integer
       deallocate(grd_methodswap)
 c-- ndim=4 alloc
       deallocate(grd_opaclump)
-      deallocate(grd_emitprob,grd_emitprobk)
+      deallocate(grd_emitprob,grd_emitprobk,grd_planck)
 c-- ndim=4 alloc
       deallocate(grd_cap)
       deallocate(grd_capemit)

@@ -96,7 +96,8 @@ pure subroutine diffusion11(ptcl,ptcl2,vx,vy,vz,cache,rndstate,&
 !-- update cache
   if(ic/=cache%ic) then
      cache%ic = ic
-     cache%istat = 0 !specarr is not cached yet
+!-- (Planck integrals of the cell over the groups: the table of the iteration)
+     cache%specarr = grd_planck(:,ic)
      capgreyinv = max(1d0/grd_capgrey(ic),0d0) !catch nans
      capemitgreyinv = max(1d0/grd_capemitgrey(ic),0d0)
 
@@ -274,14 +275,6 @@ pure subroutine diffusion11(ptcl,ptcl2,vx,vy,vz,cache,rndstate,&
 
 !-- Doppler shift
   pdop = doplump*denom
-
-!-- update specarr cache only when necessary. this is slow
-  if(r1>=pa .and. r1<pa+sum(probleak) .and. speclump>0d0 .and. &
-        iand(cache%istat,2)==0) then
-     cache%istat = cache%istat + 2
-     call specintv(grd_tempinv(ic),grp_ng,cache%specarr,&
-        mask=llumps,maskval=.true.)
-  endif
 
 !-- doppler shift
   if (r1>=pa .and. r1<pa+pdop) then
@@ -568,13 +561,6 @@ pure subroutine diffusion11(ptcl,ptcl2,vx,vy,vz,cache,rndstate,&
            iiig = emitgroup(r1,ic)
         endif
      else
-!
-!-- update specarr cache. this is slow
-        if(iand(cache%istat,1)==0) then
-           cache%istat = cache%istat + 1
-           call specintv(grd_tempinv(ic),grp_ng,cache%specarr, &
-              mask=llumps,maskval=.false.)
-        endif
 !
         call rnd_r(r1,rndstate)
         denom2 = 1d0/(1d0-emitlump)

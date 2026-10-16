@@ -20,6 +20,11 @@ subroutine emission_probability
 
   t0 = t_time()
 
+!-- Planck integrals of all cells over the groups (the transport's table)
+  do l=1,grd_ncell
+     call specintv(grd_tempinv(l),grp_ng,grd_planck(:,l))
+  enddo
+
 !-- grouped volume emission probabilities:
 
 !-- one group
@@ -40,7 +45,7 @@ subroutine emission_probability
 !-- multi-group
   do l=grd_idd1,grd_idd1+grd_ndd-1
 !-- piecewise integration of planck function
-     call specintv(grd_tempinv(l),grp_ng,specarr)
+     specarr = grd_planck(:,l)
 !-- cumulative sum of unnormalized emission probability
      ig = 1
      help = 0d0
