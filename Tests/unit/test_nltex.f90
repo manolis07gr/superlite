@@ -303,8 +303,9 @@ contains
     write(*,'(a,i3,a,i3,a,i5,a,i7)') '  all atoms:', nxa_nel, ' elements', nxa_nion, ' ions', nxa_nst, &
          ' states', nxa_nlin
     nbad = 0
-    do j = 1, 2
-       t = 8d3; if(j == 2) t = 2.5d4
+!-- (1e5 K for the highest ions: He III, C V, N V-VI, O V-VII)
+    do j = 1, 3
+       t = 8d3; if(j == 2) t = 2.5d4; if(j == 3) t = 1d5
        nh = 1d17
        do k = 1, ng
           jg(k) = bplanck(nug(k), t)

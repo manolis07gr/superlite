@@ -34,10 +34,13 @@ n1  7 1 NIT/I/19apr23    40
 n2  7 2 NIT/II/19apr23   45
 n3  7 3 NIT/III/19apr23  40
 n4  7 4 NIT/IV/19apr23   30
+n5  7 5 NIT/V/19apr23    67:f_to_s_split_sm
 o1  8 1 OXY/I/19apr23    51
 o2  8 2 OXY/II/19apr23   50
 o3  8 3 OXY/III/19apr23  50
 o4  8 4 OXY/IV/19apr23   30
+o5  8 5 OXY/V/19apr23    234:f_to_s_55
+o6  8 6 OXY/VI/19apr23   65:f_to_s_split
 ne1 10 1 NEON/I/19apr23  40
 ne2 10 2 NEON/II/19apr23 40
 ne3 10 3 NEON/III/19apr23 30
