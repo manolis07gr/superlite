@@ -13,6 +13,9 @@ c
 c
 c-- post-shock temperature of shock cells, 0 elsewhere
       real*8,allocatable :: src_tsh(:) !(grd_ncell)
+c-- temperature of the inner-boundary spectrum: the input radiation
+c-- temperature of the innermost cell (set at the first boundary source)
+      real*8 :: src_tinner = 0d0
 c
 c-- source sampling for output
       real*8,allocatable :: src_energy(:,:) !(grd_ncell,grp_ng) spectral energy distribution of particles for each cell

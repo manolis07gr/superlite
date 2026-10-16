@@ -35,10 +35,15 @@ subroutine boundary_source
     stop 'boundary_source: invalid igeom'
   endselect
 
+!-- Planck spectrum at in_srcmax, else at the input radiation temperature
+!-- of the innermost cell (fixed: the radiation temperature of the cell from
+!-- the Monte Carlo field, hardened by the continuum absorption near the
+!-- boundary, drove the injected spectrum ever harder)
+  if(src_tinner<=0d0) src_tinner = grd_radtemp(1)
   if(in_srcmax>0d0) then
     srftemp = in_srcmax
   else
-    srftemp = grd_radtemp(1)
+    srftemp = src_tinner
   endif
 
   do ig = 1, grp_ng
