@@ -797,7 +797,7 @@ subroutine milne(ion,k,temp,alpha,rc)
   integer,intent(in) :: k
   real*8,intent(in) :: temp
   real*8,intent(out) :: alpha,rc
-  real*8 :: nu0,ykt,ya,yb,s0,s1,y,h,w,nu,sg,f0
+  real*8 :: nu0,ykt,ya,yb,s0,s1,y,h,w,nu,sg,f0,u,ex,rh,sl
   integer :: i0,i1,i,j,ns
   real*8,parameter :: ymax = 50d0, dymax = 0.05d0
 !
@@ -813,21 +813,35 @@ subroutine milne(ion,k,temp,alpha,rc)
 !-- next node in y: table nodes, then geometric steps beyond the table
      if(i < i1) then
         yb = (ion%pu(i+1) - 1d0)*ykt
+        sl = (ion%ps(i+1) - ion%ps(i))/(ion%pu(i+1) - ion%pu(i))
      else
         yb = max(ya*1.2d0, ya + 1d0)
+        sl = 0d0
      endif
      yb = min(yb,ymax)
      if(yb > ya) then
         ns = 2*max(1,ceiling((yb-ya)/dymax/2d0))
         h = (yb - ya)/ns
+        ex = exp(-ya)
+        rh = exp(-h)
         do j=0,ns
            y = ya + j*h
            w = merge(1d0, merge(4d0, 2d0, mod(j,2)==1), j==0 .or. j==ns)
-           nu = nu0*(1d0 + y/ykt)
-           sg = nxa_sigma(ion,k,nu)
-           f0 = w*sg*nu*nu*exp(-y)
+           u = 1d0 + y/ykt
+           nu = nu0*u
+!-- sigma as nxa_sigma: linear on the table segment i, its first value
+!-- below the table, (u_last/u)^3 beyond
+           if(i >= i1) then
+              sg = ion%ps(i1)*(ion%pu(i1)/u)**3
+           elseif(u <= ion%pu(i0)) then
+              sg = ion%ps(i0)
+           else
+              sg = ion%ps(i) + sl*(u - ion%pu(i))
+           endif
+           f0 = w*sg*nu*nu*ex
            s0 = s0 + f0*h/3d0
            s1 = s1 + f0*y*h/3d0
+           ex = ex*rh
         enddo
      endif
      ya = yb
@@ -877,7 +891,7 @@ subroutine nxa_groups(ng,wlg)
 !-----------------------------------------------------------------------
   integer,intent(in) :: ng
   real*8,intent(in) :: wlg(ng+1)       !group boundaries [cm], increasing
-  integer :: lv,i,k,ig,j,i0,i1,ntot,o,a,b,m
+  integer :: lv,i,k,ig,j,i0,i1,ntot,o,a,b,m,j0
   real*8 :: nulo,nuhi,ua,ub,u1,u2,s1,s2,sl,nu0,dnu,ul,sl3,gm,gh
 !
   nxa_ng = ng
@@ -926,6 +940,7 @@ subroutine nxa_groups(ng,wlg)
      i0 = nxa_ion(i)%pst(k)
      i1 = i0 + nxa_ion(i)%pn(k) - 1
      o = nxa_sgo(lv)
+     j0 = i0
      do ig=nxa_g1(lv),1,-1
         nulo = cc/wlg(ig+1)
         nuhi = cc/wlg(ig)
@@ -934,8 +949,14 @@ subroutine nxa_groups(ng,wlg)
         dnu = nuhi - nulo
         gm = 0d0
         gh = 0d0
-!-- table segments overlapping [ua,ub]
-        do j=i0,i1-1
+!-- table segments overlapping [ua,ub] (groups in increasing frequency:
+!-- the first segment only moves forward)
+        do while(j0 < i1-1)
+           if(nxa_ion(i)%pu(j0+1) > ua) exit
+           j0 = j0 + 1
+        enddo
+        do j=j0,i1-1
+           if(nxa_ion(i)%pu(j) >= ub) exit
            u1 = max(nxa_ion(i)%pu(j),ua)
            u2 = min(nxa_ion(i)%pu(j+1),ub)
            if(u2 <= u1) cycle
