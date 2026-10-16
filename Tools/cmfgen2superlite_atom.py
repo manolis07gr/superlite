@@ -24,6 +24,12 @@ Input (one ion):
           MIN_TRANS of VADAT): a line is dropped if g_l f < gfcut, its lower
           level is above gflev and it is not among the mintrans strongest
           (A) downward transitions of its upper level
+  --die   CMFGEN low-temperature dielectronic data (die_data, htdr_data) of
+          the ion, with --die-kinds (CMFGEN's [DIE_XzV] flags): 'wi' (the
+          default: the transitions from levels that cannot autoionize in LS
+          coupling, missing from Opacity-Project cross-sections, which hold
+          the others as resonances), 'auto', or 'auto,wi'; --vsm-die the
+          smoothing velocity of the resonances [km/s] (VSM_DIE, 1000)
 
 The photoionization cross-sections are evaluated with the formulae of
 CMFGEN's SUB_PHOT_GEN (types 1-9, 20, 21) and tabulated against
@@ -31,7 +37,12 @@ u = nu/nu_edge.  Further routes are added to route A (one cross-section to
 the ground state of the next ion): with the final term in Boltzmann
 equilibrium with the ground state of the next ion at T_e (metastable terms
 of dense gas), the Milne recombination of the sum is that of the separate
-routes.  Collision strengths are copied; SuperLite computes the
+routes.  Dielectronic transitions (--die) are added as CMFGEN does
+(RD_PHOT_DIE_V1, SUB_PHOT_GEN): each is a resonance of strength
+pi e^2 f/(m c) at the frequency of the stabilizing transition in the
+cross-section of its lower level, so the Milne recombination through it is
+that of an autoionizing level in LTE with the next ion, times the A of the
+stabilizing transition (the alpha columns of the file).  Collision strengths are copied; SuperLite computes the
 missing ones at run time with CMFGEN's rules (OMEGA_GEN_V3): van Regemorter
 with the Auer & Mihalas (neutrals) or max(0.2|0.7, 0.276 e^x E1(x)) (ions)
 Gaunt factor for f > 1e-5, OMEGA_SET otherwise; Seaton's formula for
@@ -53,6 +64,8 @@ CLIGHT = 2.99792458e10
 RINF = 109737.31          # cm^-1
 MBARN = 1e-18
 EV_TO_HZ15 = 0.241798840766
+OPLIN = 2.6540081e-2      # pi e^2/(m_e c) [cm^2 Hz]
+TRAPZ = getattr(np, 'trapezoid', None) or np.trapz
 
 
 def read_lines(path):
@@ -280,6 +293,83 @@ def read_phot(path):
             continue
         i += 1
     return hdr, terms
+
+
+def read_die(path):
+    """CMFGEN low-temperature dielectronic transitions (RD_PHOT_DIE_V1, file
+    format with '!Date'): the first '!Number of dielectronic transitions'
+    records after the 'Transition ... Lam(A)' header, each
+    'lower-upper f A lambda g_u nu_exc [#] alpha...' with nu_exc the energy
+    of the autoionizing level above the ionization limit [1e15 Hz] and '#'
+    marking a level that cannot autoionize in pure LS coupling (WI)."""
+    lines = read_lines(path)
+    if any('!Format date' in s for s in lines):
+        raise NotImplementedError('%s: dielectronic file format with levels' % path)
+    ntr = None
+    for s in lines:
+        if '!Number of dielectronic transitions' in s:
+            ntr = int(s.split('!')[0].split()[0])
+            break
+    i = next(k for k, s in enumerate(lines) if 'Transition' in s and 'Lam(A)' in s) + 1
+    out = []
+    while len(out) < ntr:
+        s = lines[i].strip()
+        i += 1
+        if not s or s.startswith('!'):
+            continue
+        k = s.find('-')
+        low = s[:k].strip()
+        rest = s[k + 1:].lstrip()
+        k2 = rest.find('  ')
+        v = rest[k2:].replace('#', ' ').split()
+        out.append({'low': low, 'up': rest[:k2], 'f': fnum(v[0]), 'nu_exc': fnum(v[4]),
+                    'wi': '#' in rest[k2:]})
+    return out
+
+
+def die_resonances(die, names, kinds):
+    """resonances {level index (0-based): [(nu_exc, f), ...]} of the model
+    levels (as CMFGEN: lower LS name against the level name without [J], or
+    the full name when the transition names J; split levels get the full f)."""
+    res = {}
+    for t in die:
+        if ('wi' if t['wi'] else 'auto') not in kinds:
+            continue
+        split = '[' in t['low'] and ']' in t['low']
+        for i, nm in enumerate(names):
+            if t['low'] == (nm if split else nm.split('[')[0]):
+                res.setdefault(i, []).append((t['nu_exc'], t['f']))
+    return res
+
+
+def add_resonances(ug, sig, edge0, res, vsm):
+    """add the dielectronic resonances res [(nu_exc [1e15 Hz], f)] of a level
+    with edge edge0 [1e15 Hz] to its table sigma(u), u = nu/edge0, as CMFGEN
+    (SUB_PHOT_GEN): pi e^2/(m c) f phi(nu) at nu = edge0 + nu_exc, phi a
+    Gaussian of Doppler width nu vsm/c (the smoothing velocity VSM_DIE; the
+    Lorentz widths, 1e12-1e13 /s, are below 0.1 Doppler widths), sampled
+    every half width to 5 widths and scaled so that the integral of the
+    linearly interpolated table (SuperLite's) is pi e^2/(m c) f."""
+    dl = vsm * 1e5 / CLIGHT
+    k = np.arange(-10, 11) * 0.5
+    ur = np.array([(edge0 + nx) / edge0 for nx, f in res])
+    nodes = [ug] + [u * (1 + dl * k) for u in ur]
+    hi = (ur * (1 + 5 * dl)).max()
+    if hi > ug[-1]:
+        # beyond the table: its nu^-3 tail at 40 points per decade
+        nodes.append(np.geomspace(ug[-1], hi, int(40 * math.log10(hi / ug[-1])) + 2))
+    un = np.unique(np.concatenate(nodes))
+    un = un[un >= ug[0]]
+    s = np.interp(un, ug, sig)
+    tl = un > ug[-1]
+    s[tl] = sig[-1] * (ug[-1] / un[tl]) ** 3
+    for u0, (nx, f) in zip(ur, res):
+        x = (un - u0) / (u0 * dl)
+        phi = np.where(np.abs(x) <= 5.0, np.exp(-x * x), 0.0)
+        area = TRAPZ(phi, un) * edge0 * 1e15                   # [Hz]
+        if area > 0:
+            s += OPLIN * f / area * phi
+    return un, s
 
 
 def norm_name(s):
@@ -589,6 +679,9 @@ def main():
     ap.add_argument('--gfcut', type=float, default=0.0, help='CMFGEN GF_CUT')
     ap.add_argument('--gflev', type=int, default=0, help='CMFGEN GF_LEV_CUT')
     ap.add_argument('--mintrans', type=int, default=0, help='CMFGEN MIN_TRANS')
+    ap.add_argument('--die', default=None, help='CMFGEN dielectronic file (die_data)')
+    ap.add_argument('--die-kinds', default='wi', help="'wi', 'auto' or 'auto,wi'")
+    ap.add_argument('--vsm-die', type=float, default=1000.0, help='VSM_DIE [km/s]')
     ap.add_argument('-o', '--out', required=True)
     args = ap.parse_args()
 
@@ -650,6 +743,12 @@ def main():
         trans = [t for t in trans if t['u'] <= k0 or not (
             levs[t['l'] - 1]['g'] * t['f'] < args.gfcut and t['l'] > args.gflev and t['a'] < thr[t['u']])]
     col = read_col(args.col, names, [lv['g'] for lv in levs])
+    die = {}
+    if args.die:
+        tr = read_die(args.die)
+        die = die_resonances(tr, names, [k.strip() for k in args.die_kinds.split(',')])
+        print('note: %d dielectronic resonances (%s) from %d transitions on %d levels' % (
+            sum(len(v) for v in die.values()), args.die_kinds, len(tr), len(die)), file=sys.stderr)
 
     ename = ELEM.get(args.z, 'Z%d' % args.z)
     with open(args.out, 'w') as f:
@@ -662,6 +761,8 @@ def main():
             for p in (args.osc, args.phot, args.col)))
         if args.ftos:
             w('#   f_to_s: %s\n' % os.path.basename(args.ftos))
+        if die:
+            w('#   die:  %s (%s, %.0f km/s)\n' % (os.path.basename(args.die), args.die_kinds, args.vsm_die))
         w('element %d %s\n' % (args.z, ename))
         w('ion %d\n' % args.ion)
         w('zion %.4f\n' % zion)
@@ -747,6 +848,8 @@ def main():
                     add[ugm < ub[0]] = 0.0
                     sigm = sigm + add
                 ug, sig = ugm, sigm
+            if i in die:
+                ug, sig = add_resonances(ug, sig, edge0, die[i], args.vsm_die)
             w('%5d %5d\n' % (i + 1, len(ug)))
             for u, s in zip(ug, sig):
                 w('%14.7e %12.5e\n' % (u, s))

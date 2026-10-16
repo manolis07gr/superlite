@@ -11,6 +11,11 @@
 #   GFMIN     keep only the lines with g_l f >= GFMIN
 #   GFCUT     CMFGEN's line cut (GF_CUT; with GFLEV = GF_LEV_CUT, default 9,
 #             MINTRANS = MIN_TRANS, default 10, for Z >= ATCUT, default 10)
+#   DIE       dielectronic transitions of the ions with CMFGEN die_data (C III,
+#             N IV, O V, Co II, ...) as resonances in the cross-sections:
+#             'wi' (default; those missing from Opacity-Project cross-sections),
+#             'auto,wi', 'auto' or 'none'; DIE_FILE another file name of the
+#             data set (htdr_data), VSM_DIE the smoothing velocity (1000 km/s)
 # select other atoms.
 set -e
 here=$(cd "$(dirname "$0")" && pwd)
@@ -85,6 +90,10 @@ echo "$table" | while read -r name z stage dir nlev osc phot col; do
   [ -n "$GFMIN" ] && sl+=(--gfmin "$GFMIN")
   if [ -n "$GFCUT" ] && [ "$z" -ge "${ATCUT:-10}" ]; then
     sl+=(--gfcut "$GFCUT" --gflev "${GFLEV:-9}" --mintrans "${MINTRANS:-10}")
+  fi
+  die="$d/${DIE_FILE:-die_data}"
+  if [ "${DIE:-wi}" != none ] && [ -f "$die" ]; then
+    sl+=(--die "$die" --die-kinds "${DIE:-wi}" --vsm-die "${VSM_DIE:-1000}")
   fi
 # further photoionization routes (to excited terms of the next ion) and the
 # levels of the next ion (same data date if present, else the latest)
