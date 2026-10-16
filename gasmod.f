@@ -35,6 +35,8 @@ c-- unless the electron temperature is solved from the thermal balance)
       real*8,allocatable :: gas_natom(:)      !cell number of atoms
       real*8,allocatable :: gas_nelec(:)      !cell number of electrons per atom
       real*8,allocatable :: gas_natomfr(:,:)  !(0:gas_nelem,ncell)  !natom fractions (>0:stable, 0:container for unused elements)
+c-- mean squared ion charge per element (free-free), from the EOS
+      real*8,allocatable :: gas_z2(:,:)  !(gas_nelem,ncell)
 
 c== DD copies
 c-- Line+Cont. extinction coeff
@@ -114,6 +116,8 @@ c
 c
 c-- ndim=2 alloc small
       allocate(gas_natomfr(0:gas_nelem,gas_ncell))
+      allocate(gas_z2(gas_nelem,gas_ncell))
+      gas_z2 = 0d0
       gas_natomfr = 0d0
       allocate(gas_massfr(gas_nelem,gas_ncell))
       gas_massfr = 0d0
@@ -150,6 +154,7 @@ c
       deallocate(gas_emit)
       deallocate(gas_jrad)
       deallocate(gas_natomfr)
+      deallocate(gas_z2)
       deallocate(gas_cap)
       deallocate(gas_capemit)
       deallocate(gas_emiss)

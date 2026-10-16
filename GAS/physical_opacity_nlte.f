@@ -55,7 +55,7 @@ c-- output for debugging
 c-- ffxs
       real*8,parameter :: c1 = 4d0*pc_e**6/(3d0*pc_h*pc_me*pc_c**4)*
      &  sqrt(pc_pi2/(3*pc_me*pc_h*pc_c))
-      real*8 :: gg,u,gff,help
+      real*8 :: gg,u,gff,help,z2
       real*8 :: rgg,ru,dgg,du
       integer :: iu,igg
 c-- bfxs
@@ -479,7 +479,7 @@ c$omp parallel do
 c$omp& schedule(static) default(none)
 c$omp& private(i,ii,iz,wl,en,ie,xs,B_nu)
 c$omp& shared(ngsub,gas_ncell,gas_mass,gas_temp,grndlev,wlsub,
-c$omp&  cap,capemit,emiss,ion_el)
+c$omp&  cap,capemit,emiss,ion_el,in_nlteh)
        do igs=1,ngsub
         wl = wlsub(igs)  !in cm
         en = pc_h*pc_c/(pc_ev*wl) !photon energy in eV
@@ -545,8 +545,10 @@ c-- simple variant: nearest data grid point
        lwarn = .true.
 c$omp parallel do default(none)
 c$omp& schedule(static)
-c$omp& private(i,iz,wl,wlinv,u,ru,du,iu,help,gg,rgg,dgg,igg,gff,B_nu)
+c$omp& private(i,iz,wl,wlinv,u,ru,du,iu,help,gg,rgg,dgg,igg,gff,B_nu,
+c$omp&   z2)
 c$omp& shared(ngsub,lwarn,hckt,hlparr,gas_ncell,gas_mass,gas_natomfr,
+c$omp&   gas_z2,in_fflegacy,in_nlteh,nht_xloc,
 c$omp&   gas_temp,wlsub,grp_wl,cap,capemit,emiss,ff_gff)
        do igs=1,ngsub
         wl = wlsub(igs)  !in cm
@@ -564,7 +566,17 @@ c
 c-- element loop
          help = c1*sqrt(hckt(i))*(1d0 - exp(-u))*wl**3*hlparr(i)
          do iz=1,gas_nelem
-          gg = iz**2*pc_rydberg*hckt(i)
+c-- ions of charge z weighted by z^2: ion fractions from the EOS, the NLTE
+c-- H II fraction for H (in_fflegacy: charge Z for all atoms)
+          if(in_fflegacy) then
+           z2 = dble(iz**2)
+          elseif(in_nlteh .and. iz==1) then
+           z2 = nht_xloc(0,i)
+          else
+           z2 = gas_z2(iz,i)
+          endif
+          if(z2<=0d0) cycle
+          gg = z2*pc_rydberg*hckt(i)
           rgg = 5d0*(log10(gg) + 4d0) + 1d0
           igg = floor(rgg)
           igg = max(igg,1)
@@ -579,15 +591,15 @@ c-- bilinear inter-extrapolation
           if(rgg>ff_ngg) gff = max(gff,1d0)
 c-- cross section
           cap(i,igs) = cap(i,igs) +
-     &      help*gff*iz**2*gas_natomfr(iz,i)
+     &      help*gff*z2*gas_natomfr(iz,i)
           capemit(i,igs) = capemit(i,igs) +
-     &      help*gff*iz**2*gas_natomfr(iz,i)
+     &      help*gff*z2*gas_natomfr(iz,i)
 c-- emissivity for output
           if(capemit(i,igs)/=capemit(i,igs))
      &       write(6,*) i,grp_wl(igs)/pc_ang,capemit(i,igs)
           B_nu = (wl**2/pc_c)*planck(wl,gas_temp(i))
           emiss(i,igs) = emiss(i,igs) +
-     &      help*gff*iz**2*gas_natomfr(iz,i)*B_nu
+     &      help*gff*z2*gas_natomfr(iz,i)*B_nu
          enddo !iz
         enddo !i
        enddo !igs

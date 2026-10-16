@@ -6,6 +6,10 @@
 !--  2. Pure H photoionized by a dilute 4e4 K blackbody at low density, no other
 !--     coolants: T_e is set by photoionization heating against recombination
 !--     and collisional cooling; printed with its terms (expected ~1-3e4 K).
+!--  3. Fast-electron energy shares (Shull & van Steenberg 1985): heat, H
+!--     ionization and excitation sum to 1, heat grows and ionization and
+!--     excitation fall with the ionized fraction, all heat when fully ionized,
+!--     and the published neutral-gas values at x = 1e-4.
 program test_tebal
   use nltehmod
   use tebalmod
@@ -17,6 +21,7 @@ program test_tebal
   logical :: ljb(1000)
   real*8, parameter :: t0s(2) = [7d3, 2d4], nhs(2) = [1d8, 1d13], tst(2) = [0.6d0, 1.7d0]
   integer :: i, k, j, m, ierr, nfail
+  real*8 :: f(3), fo(3)
   nfail = 0
   call nlteh_init(nlev)
   do i = 1, ng+1
@@ -64,6 +69,18 @@ program test_tebal
   write(6,'(a,6es11.3)') '  terms (LTE, PI heat, rec cool, coll, Compton, ext):', terms
   write(6,'(a,es10.3)') '  x(H II) =', x(0)
   if(tnew < 1d4 .or. tnew > 4d4 .or. ierr /= 0) nfail = nfail + 1
+!-- 3. fast-electron shares
+  fo = [0d0, 1d0, 1d0]
+  do k = -4, 0
+     call nlteh_svs(10d0**k, f(1), f(2), f(3))
+     write(6,'(a,es8.1,a,3f7.3)') 'SvS85 x =', 10d0**k, '  heat, ion, exc:', f
+     if(abs(sum(f) - 1d0) > 1d-12) nfail = nfail + 1
+     if(k > -4 .and. (f(1) < fo(1) .or. f(2) > fo(2) .or. f(3) > fo(3))) nfail = nfail + 1
+     fo = f
+  enddo
+  if(abs(f(1) - 1d0) > 1d-12) nfail = nfail + 1
+  call nlteh_svs(1d-4, f(1), f(2), f(3))
+  if(abs(f(2) - 0.375d0) > 0.01d0 .or. abs(f(3) - 0.419d0) > 0.01d0) nfail = nfail + 1
   if(nfail == 0) then
      write(6,*) 'test_tebal: PASS'
   else

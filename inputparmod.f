@@ -123,6 +123,9 @@ c-- photons above in_nt_emin [eV] absorbed by the gas make fast
 c-- photoelectrons that ionize and excite H (Shull & van Steenberg 1985;
 c-- requires in_nlteh); 0: all absorbed energy heats the gas
       real*8 :: in_nt_emin = 0d0
+c-- free-free opacity with each element as a fully ionized atom of
+c-- charge Z (released code) instead of its ions from the EOS
+      logical :: in_fflegacy = .false.
 c
 c-- analytic opacities
       character(4) :: in_opacanaltype = 'none'    !none|grey|mono|line: group opacity structure type
@@ -174,7 +177,7 @@ c-- runtime parameter namelist
      & in_nlteh_tau0,
      & in_srctype,in_shock_dvmin,in_shock_tmax,
      & in_bbsobolev,in_bbeps,in_tesolve,in_te_damp,in_tion,
-     & in_nt_emin,
+     & in_nt_emin,in_fflegacy,
 !phys opac
      & in_opacmixrossel,
      & in_nobbopac,in_nobfopac,in_noffopac,in_nothmson,
@@ -300,6 +303,7 @@ c
       call insertr(in_te_damp,in_r,ir)
       call insertc(in_tion,in_c,ic)
       call insertr(in_nt_emin,in_r,ir)
+      call insertl(in_fflegacy,in_l,il)
       call insertl(in_nobbopac,in_l,il)
       call insertl(in_nobfopac,in_l,il)
       call insertl(in_noffopac,in_l,il)

@@ -33,6 +33,13 @@ c-- loop over all gas_vals cells
          call ions_solve_eos(gas_natomfr(1,i),
      &     gas_tion(i),ndens,gas_nelec(i),niter)
        endif
+c-- mean squared ion charge of each element (free-free opacity)
+       do iz=1,gas_nelem
+        gas_z2(iz,i) = 0d0
+        do ii=2,ion_el(iz)%ni
+         gas_z2(iz,i) = gas_z2(iz,i) + (ii-1)**2*ion_el(iz)%i(ii)%n
+        enddo !ii
+       enddo !iz
 c-- electrons per atom from elements other than H (for NLTE H)
        if(in_nlteh) nht_neothloc(i) = max(0d0,
      &   gas_nelec(i) - gas_natomfr(1,i)*ion_el(1)%ne)

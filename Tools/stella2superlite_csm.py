@@ -91,7 +91,7 @@ def main():
                          "forward shock: cold CSM cannot radiate it, it is a time-delay effect of the hydro L(r))")
     ap.add_argument('--dv-shock', type=float, default=300.0, help='velocity drop that defines a shock [km/s]')
     ap.add_argument('--n2s', type=int, default=18)
-    ap.add_argument('--niter', type=int, default=6)
+    ap.add_argument('--niter', type=int, default=10)
     a = ap.parse_args()
 
     hdr, col = read_stella(a.profile)
@@ -220,6 +220,18 @@ in_comment = 'CSM physics branch, {os.path.basename(a.profile)}'
  in_nlteh = t
  in_nlteh_nlev = 30
  in_nlteh_damp = 0.5d0
+
+!-- lines of the other elements: Sobolev expansion opacity, thermalization
+!-- from collisional de-excitation against escape (van Regemorter)
+ in_bbsobolev = t
+ in_bbeps = -1d0
+
+!-- electron temperature from the thermal balance; fast photoelectrons from
+!-- X-rays ionize and excite H
+ in_tesolve = t
+ in_te_damp = 0.5d0
+ in_tion = 'hydr'
+ in_nt_emin = 100d0
 
 /
 """.replace('e+', 'd+').replace('e-', 'd-')

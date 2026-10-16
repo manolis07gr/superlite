@@ -5,7 +5,8 @@ any mass — that can be compared with observations, with physically correct NLT
 formation, non-monotonic velocity fields and radiation transport through shocks.
 
 This file records (1) what the released code gets wrong for that goal, (2) what
-stage 1 of this branch changes and how it is validated, and (3) the roadmap.
+stages 1 and 2 of this branch change and how they are validated, (3) the roadmap
+and (4) results.
 
 ## 1. Assessment of the released code (HEAD 176d0a9)
 
@@ -21,6 +22,8 @@ stage 1 of this branch changes and how it is validated, and (3) the roadmap.
 | 8 | build/inputs | LAPACK never linked (CMake variable typo); gfortran ≥ 10 needs `-fallow-argument-mismatch`; `read_fluxgrid` never sets the number of bins (file flux grids never worked); Testsuite A4 10/20/30 d: `in_ndim` ≠ cells in `input.str`, unknown `ni56` column, day-5 `in_L_bol`. | — |
 | 9 | atomic data | H lines at vacuum wavelengths (recomputed from level energies), metal lines at air wavelengths. | 83 km/s offset of the H lines relative to metals and to observed (air) spectra. |
 | 10 | design | Time-independent snapshot; no non-thermal (γ-ray, X-ray) excitation/ionization; NLTE only for H; no light-travel time. | SNe II lose Hα too early without time-dependent ionization and non-thermal excitation; He lines LTE. |
+| 11 | `GAS/physical_opacity*.f` | Free-free opacity counts every atom as a fully ionized ion of nuclear charge Z (`iz**2*gas_natomfr`, times n_atom n_e). | Neutral gas (e.g. CSM beyond the ionization front) gets free-free opacity and emission as if fully ionized; metals are weighted by Z² (Fe: 676). |
+| 12 | `nltemod.f` | `nlte_dealloc` loops over NLTE data that is never allocated when the bb opacity is off. | Segmentation fault at exit of continuum-only runs (after the output is written). |
 
 ## 2. Stage 1 (this branch)
 
@@ -51,23 +54,54 @@ Unit tests (`Tests/unit/`, build with gfortran + LAPACK):
 
 Integration tests and the comparison with observed SNe IIn: see §4.
 
+### Stage 2
+
+| Switch | Physics | Code |
+|---|---|---|
+| (with `in_nlteh`) | A line photon leaves its Sobolev resonance in direction μ with probability ∝ β(μ) = (1−e^{−τ(μ)})/τ(μ), after resonance absorption and after macro-atom emission. Isotropic in homologous flows; in a constant-velocity wind photons cannot escape radially (τ → ∞). | `transport11.f90` (`line_mu`) |
+| `in_bbsobolev = t` | Lines of the LTE elements: Sobolev expansion opacity with the local gradient, averaged over directions, (1/(λΔν))⟨\|Q\|(1−e^{−K/\|Q\|})⟩, instead of the line strength smeared over the group (which overestimates a thick line by its τ, up to 10⁶ in a slow CSM). | `bbsobmod.f90`, `GAS/physical_opacity*.f` |
+| `in_bbeps = -1` | A line interaction thermalizes the photon with probability ε = X/(X+β), X = C_ul/A_ul = 20.6 λ³ n_e P(ΔE/kT)/√T (van Regemorter 1962), β the Sobolev escape probability; otherwise coherent scattering in the comoving frame (new IMC event; part of the extinction in the DDMC thresholds and leakage). `in_bbeps` ∈ [0,1] sets a constant ε; 1 is the released code. | `bbsobmod.f90`, `transport11.f90`, `diffusion11.f90`, `leakage_opacity11.f90` |
+| `in_tesolve = t` | Electron temperature from the thermal balance with the radiation field of the previous iteration: LTE opacities 4π Σ κ(B(T)−J); H photoionization heating, recombination and collisional cooling with the H populations re-solved at every trial T; Compton heating/cooling with induced scattering; energy injected outside shocks. Damped (`in_te_damp`) between iterations. | `tebalmod.f90`, `GAS/te_update.f90` |
+| `in_tion` | Ionization/excitation temperature of the LTE elements: the hydro temperature (`'hydr'`, default) or T_e (`'elec'`). Saha at T_e over-ionizes metals in a dilute radiation field, which LTE cannot describe. | `GAS/eos_update.f`, `GAS/physical_opacity*.f` |
+| `in_nt_emin = 100` | Photons above 100 eV make fast photoelectrons whose energy heats the gas, ionizes and excites H in the shares of Shull & van Steenberg (1985): in the transport (absorbed X-ray packets go to the k-pool, the H continuum or H n = 2), in the H rate equations (non-thermal ionization and 1→2 rates from the absorbed X-ray power) and in the thermal balance (only the heat share heats). | `nltehtrmod.f90`, `nltehmod.f90`, `tebalmod.f90` |
+| (default) `in_fflegacy = f` | Free-free opacity from the ion charges of the EOS (NLTE H II fraction for H) instead of nuclear charges for all atoms (row 11). | `GAS/physical_opacity*.f`, `GAS/eos_update.f` |
+
+Fixes: the H bound-free opacity of stage 1 stopped at the Lyman edge (the level loop
+exited at n = 1 instead of skipping levels with thresholds above the frequency), so
+the Balmer, Paschen, ... continua were missing from the transport (the rate equations
+were right); rows 11 and 12.
+
+Validation:
+
+| Test | Checks | Result |
+|---|---|---|
+| `Tests/benchmarks/wind` | pure-scattering Sobolev line in constant-velocity, β-law and homologous winds against the formal solution with direction-dependent escape (`sobolev.py`) | χ²/dof = 1.17, 1.34 (v = const, τ₀ = 3, 30), 0.98, 0.99 (β law), 1.20 (homologous); isotropic re-emission (stage 1): 5.15 (8σ in the trough) |
+| `test_bbsob` | angle-averaged expansion opacity against a brute-force angle integral for random accelerating, decelerating and compressing gradients; thin and thick limits; homologous (1−e^{−Kt})/t; van Regemorter table | 0.26 % (worst case), exact limits |
+| `test_tebal` | Planck field J = B(T₀) with LTE opacities and NLTE H must return T₀; pure-H nebula around a 4×10⁴ K star | T₀ to 0.2 % at n_H = 10⁸ and 10¹³ cm⁻³ from both sides; 21 500 K |
+| all unit tests | `Tests/unit/run_tests.sh` | pass |
+| regression | stage-2 switches off and `in_fflegacy = t`: LTE runs bit-identical to stage 1 | identical |
+
 ## 3. Roadmap
 
-**Stage 2 — physics needed for reliable line strengths across regimes**
-1. He I / He II macro-atoms with the same machinery (He I 5876/6678/7065, He II 4686: SN IIn/Ibn/Icn, flash features; the C-series).
-2. Electron temperature from thermal balance (photoionization heating, collisional and recombination cooling, free–free, Compton) instead of the hydro temperature in photoionized gas.
+Done in stage 2: electron temperature from the thermal balance, non-thermal
+ionization/excitation of H by shock X-rays, Sobolev opacity with thermalization for the
+lines of the other elements, direction-dependent Sobolev escape (§2).
+
+**Next — physics needed for reliable line strengths across regimes**
+1. He I / He II macro-atoms with the same machinery (He I 5876/6678/7065, He II 4686: SN IIn/Ibn/Icn, flash features; the C-series). He II is hydrogenic: `nltehmod` with Z = 2 scaling is the quick route.
+2. Ionization of the other elements beyond LTE: photoionization equilibrium with the Monte Carlo J (or the nebular approximation with Monte Carlo W and T_R) instead of Saha at one temperature (`in_tion`).
 3. Time-dependent ionization (Utrobin & Chugai 2005; Dessart & Hillier 2008): needed for SN II Hα on the plateau (no-CSM models lose Hα too early).
-4. Non-thermal excitation/ionization by ⁵⁶Co γ-rays and shock X-rays (Kozma & Fransson 1992).
+4. Non-thermal deposition of ⁵⁶Co γ-rays (Kozma & Fransson 1992) with the same Shull & van Steenberg channels.
 5. Shock structure: adiabatic vs radiative from the cooling time; cooling-function spectra (line cooling at 10⁵–10⁷ K) instead of bremsstrahlung shapes; T_e ≠ T_i behind fast shocks.
-6. Metal lines: Sobolev (expansion) opacity with a thermalization parameter or macro-atoms (Fe II, Ca II, O I); removes the unresolved "narrow metal lines" artefacts.
-7. DDMC: macro-atom-aware absorption and H lines (expansion opacity) in optically thick cells.
+6. NLTE macro-atoms for Fe II, Ca II, O I, Mg II (the ε treatment of stage 2 is a two-level-atom approximation).
+7. DDMC: macro-atom-aware absorption, non-thermal deposition and H lines (expansion opacity) in optically thick cells (at present DDMC re-emits absorbed energy thermally).
 
 **Stage 3 — dynamics and geometry**
 8. Time-dependent radiation transport (SuperNu's IMC with census) with light-travel time, for interaction phases where t_diff ≈ t_dyn.
 9. 2D/3D CSM (disks, clumps, asymmetric shells) with the SuperNu 2D/3D transport.
 
 **Stage 4 — validation and production**
-10. The observed-line-metric harness (EW, decrement, absorption share, peak velocity on a common ±5000 km/s window; `balmer_validation`) as regression tests; grids for the A/B/C model series.
+10. The observed-line-metric harness (EW, decrement, absorption share, peak velocity on a common ±5000 km/s window; `balmer_validation`) as regression tests; grids for the A/B/C model series; comparison with CMFGEN/ARTIS spectra of the same hydro snapshots.
 
 ## 4. Results
 

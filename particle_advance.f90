@@ -91,7 +91,7 @@ subroutine particle_advance
 !$omp parallel default(none) &
 !$omp shared(rnd_states,prt_npartmax,prt_isvacant,prt_particles, &
 !$omp    grd_nx,grd_xarr,grd_ny,grd_yarr,grd_nz,grd_zarr,grd_icell, &
-!$omp    grp_ng,grp_wl,grd_igeom,grd_sig,grd_cap,grd_eamp, &
+!$omp    grp_ng,grp_wl,grd_igeom,grd_sig,grd_cap,grd_capsc,grd_eamp, &
 !$omp    trn_tauddmc,trn_noampfact,trn_errorfatal, &
 !$omp    grd_vxarr,grd_methodswap,t_pckt_stat,transport,diffusion, &
 !$omp    in_puretran,in_io_dogrdtally,in_nomp,nht_on) &
