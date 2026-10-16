@@ -123,8 +123,35 @@ def read_pop(path, nd):
     return total, ions
 
 
+def abundances_vadat(moddir):
+    """Mass fractions from VADAT ([XXX/X] keys: positive = number abundance,
+    negative = mass fraction; lines starting with '!' are inactive)."""
+    num, mass = {}, {}
+    for s in open(os.path.join(moddir, 'VADAT'), errors='replace'):
+        if s.lstrip().startswith('!'):
+            continue
+        m = re.match(r'\s*([-+]?[\d.]+(?:[EeDd][-+]?\d+)?)\s+\[(\w+)/X\]', s)
+        if not m or m.group(2) not in ELEMENTS:
+            continue
+        v = float(m.group(1).replace('D', 'E').replace('d', 'e'))
+        sym, z, amu = ELEMENTS[m.group(2)]
+        if v < 0:
+            mass[sym] = -v
+        elif v > 0:
+            num[sym] = v * amu
+    rest = 1.0 - sum(mass.values())
+    tot = sum(num.values())
+    x = dict(mass)
+    for k, v in num.items():
+        x[k] = rest * v / tot
+    return x
+
+
 def abundances(moddir):
-    """Mass fractions from MOD_SUM ('SPECIES Rel.# Fraction Mass Fraction ...')."""
+    """Mass fractions from MOD_SUM ('SPECIES Rel.# Fraction Mass Fraction ...'),
+    else from VADAT."""
+    if not os.path.exists(os.path.join(moddir, 'MOD_SUM')):
+        return abundances_vadat(moddir)
     x = {}
     started = False
     for s in open(os.path.join(moddir, 'MOD_SUM'), errors='replace'):
