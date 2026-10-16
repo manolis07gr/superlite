@@ -295,13 +295,35 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
 !
 !-- instantiate new particle at inner boundary
   if(x < grd_xarr(1)) then
+     if(trn_innerbc=='absb') then
+!-- absorbed by the boundary
+        ptcl2%stat = 'dead'
+        return
+     endif
      x = grd_xarr(1)
      vx = grd_vxarr(1)
      ix = 1
      ic = grd_icell(ix,iy,iz)
      call rnd_r(r1,rndstate)
+     if(trn_innerbc=='thrm') then
+!-- thermalized: Lambertian direction and the boundary blackbody spectrum,
+!-- comoving energy conserved
+        e = e*elabfact
+        e0 = e0*elabfact
+        mucmf = sqrt(r1)
+        mu = (mucmf+vx*cinv)/(1d0+vx*mucmf*cinv)
+        help = trn_tinner
+        if(help<=0d0) help = grd_radtemp(1)
+        call planck_wl(help,rndstate,wlcmf)
+        wlcmf = min(max(wlcmf,grp_wl(1)),grp_wl(grp_ng+1)*(1d0-1d-12))
+        ig = binsrch(wlcmf,grp_wl,grp_ng+1,.false.)
+        wl = wlcmf*(1d0-mu*vx*cinv)
+        e = e/(1d0-mu*vx*cinv)
+        e0 = e0/(1d0-mu*vx*cinv)
+     else
      !-- forward scattering 0 <= mu <=1
-     mu = 1d0 - r1
+        mu = 1d0 - r1
+     endif
      return
   endif
 !
@@ -545,7 +567,14 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
      call rnd_r(r1,rndstate)
      if(tau>0d0 .and. r1<1d0-exp(-tau)) then
 !-- absorbed: macro-atom in the upper level, re-emitted isotropically
-        call nlteh_activate(ic,nh_lu(kres),rndstate,kind,idx,wlcmf)
+        if(nht_tau0>0d0) then
+!-- benchmark: pure scattering in the same line
+           kind = em_line
+           idx = kres
+           wlcmf = nh_wl(kres)
+        else
+           call nlteh_activate(ic,nh_lu(kres),rndstate,kind,idx,wlcmf)
+        endif
         call rnd_r(r1,rndstate)
         mu = 1d0-2d0*r1
         mu = (mu+vx*cinv)/(1d0+vx*mu*cinv)
@@ -625,6 +654,26 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
   return
 
 contains
+
+  pure subroutine planck_wl(temp,rs,wlp)
+!-- wavelength drawn from a blackbody (Carter & Cashwell 1975: x = h nu/kT)
+    real*8,intent(in) :: temp
+    type(rnd_t),intent(inout) :: rs
+    real*8,intent(out) :: wlp
+    real*8 :: r0,s,u(4)
+    integer :: l2,j2
+    call rnd_r(r0,rs)
+    r0 = r0*pc_pi**4/90d0
+    s = 0d0
+    do l2=1,10000
+       s = s + 1d0/dble(l2)**4
+       if(s >= r0) exit
+    enddo
+    do j2=1,4
+       call rnd_r(u(j2),rs)
+    enddo
+    wlp = pc_h*pc_c/(pc_kb*temp*(-log(max(u(1)*u(2)*u(3)*u(4),1d-300))/dble(l2)))
+  end subroutine planck_wl
 
   pure subroutine nlteh_reemit(kind,idx,wlcmf,ig,wl,e,e0,mu,vx,x,ix,ic,ptcl2,totevelo,rndstate)
 !-----------------------------------------------------------------------

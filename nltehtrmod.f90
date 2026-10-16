@@ -42,6 +42,7 @@ module nltehtrmod
   real*8,public :: nht_damp = 0.5d0       !weight of the new solution between iterations
   integer,public :: nht_njbmin = 30       !crossings needed to use the resonance estimator
   logical,public :: nht_have_mc = .false. !Monte Carlo estimators available
+  real*8,public :: nht_tau0 = 0d0         !benchmark: pure-scattering H-alpha with this Sobolev depth
 !
   integer,public :: nht_ncell = 0, nht_ng = 0
   integer,public :: nht_nst = 0           !transient states: k-packet, levels 1..nlev, continuum
@@ -271,6 +272,11 @@ subroutine nlteh_tables(ncell,tempinv,radtemp,capemitgrey,xarr,vxarr)
         nht_kq(k,ic) = nlteh_kq(k,nh,x)
         nht_beta(k,ic) = nlteh_beta(nht_kq(k,ic),qb,qv)
      enddo
+     if(nht_tau0>0d0) then
+!-- benchmark: only H-alpha, tau = tau0 for a gradient v/r
+        nht_kq(:,ic) = 0d0
+        nht_kq(nh_lin(2,3),ic) = nht_tau0*qv
+     endif
 !
 !-- transition probabilities of the macro-atom/thermal-pool chain
 !-- state 1: k-packet, 1+n: level n, nl+2: continuum

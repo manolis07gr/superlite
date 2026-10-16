@@ -122,7 +122,8 @@ program superlite
   if(in_nlteh) then
      call nlteh_tr_init(in_nlteh_nlev,grd_ncell,gas_ncell,grp_ng,grp_wl)
      nht_damp = in_nlteh_damp
-     call nlteh_set_collfits(nlte_data(1)%i(1)%nlev,nlte_data(1)%i(1)%nplev, &
+     nht_tau0 = in_nlteh_tau0
+     if(allocated(nlte_data)) call nlteh_set_collfits(nlte_data(1)%i(1)%nlev,nlte_data(1)%i(1)%nplev, &
           nlte_data(1)%i(1)%glev,nlte_data(1)%i(1)%coll_nlin, &
           nlte_data(1)%i(1)%llw_coll,nlte_data(1)%i(1)%lup_coll, &
           nlte_data(1)%i(1)%C0,nlte_data(1)%i(1)%C1,nlte_data(1)%i(1)%C2, &

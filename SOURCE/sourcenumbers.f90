@@ -67,7 +67,7 @@ subroutine sourcenumbers
      edone = edone + en
      ndone = ndone + n
   enddo
-  if(ndone==0) stop 'sourcenumbers: no volume source particles distributed'
+  if(ndone==0 .and. src_nsurftot==0) stop 'sourcenumbers: no source particles distributed'
 
 !-- too many particles
   nextra = int(nstot - sum(grd_nvol) - src_nsurftot)
