@@ -34,6 +34,9 @@ c-- subgridded wavelength
       real*8 :: wlsub(grp_ng*grp_ngs+1)
 c-- helper arrays
       real*8 :: grndlev(gas_ncell,ion_iionmax-1,gas_nelem)
+c-- ground states in Saha equilibrium with the next ion at T_e (bf emission)
+      real*8 :: grndst(gas_ncell,ion_iionmax-1,gas_nelem)
+      real*8 :: nedens,argx
       real*8 :: hckt(gas_ncell),tempinv(gas_ncell)
 c-- h c/k T_ion: LTE excitation of the lines
       real*8 :: hckti(gas_ncell)
@@ -475,11 +478,37 @@ c
         enddo !i
        enddo !iz
 c
+c-- recombination emission: with the electron temperature from the thermal
+c-- balance the ions are not in LTE at T_e, and Kirchhoff's law with the
+c-- actual ground state overestimates (or underestimates) the emission.
+c-- The emitting ground state is the one in Saha equilibrium with the
+c-- ground state of the next ion at T_e (identical in LTE at T_e).
+       grndst = grndlev
+       if(in_tesolve) then
+        do iz=1,gas_nelem
+         if(in_nlteh .and. iz==1) cycle
+         do i=1,gas_ncell
+          if(gas_mass(i)<=0d0) cycle
+          nedens = gas_nelec(i)*gas_natom(i)/gas_vol(i)
+          do ii=1,min(iz,ion_el(iz)%ni - 1)
+           argx = min(ion_el(iz)%i(ii)%e/(pc_kb*gas_temp(i)),650d0)
+           grndst(i,ii,iz) = ion_grndlev(iz,i)%oc(ii+1)*nedens*
+     &       0.5d0*ion_grndlev(iz,i)%ginv(ii+1)/
+     &       ion_grndlev(iz,i)%ginv(ii)*
+     &       4.1412d-16*gas_temp(i)**(-1.5d0)*exp(argx)
+c-- not more than all atoms of the element in this ground state
+           grndst(i,ii,iz) = min(grndst(i,ii,iz),
+     &       gas_natom(i)*gas_natomfr(iz,i)/gas_vol(i))
+          enddo !ii
+         enddo !i
+        enddo !iz
+       endif
+c
 c$omp parallel do
 c$omp& schedule(static) default(none)
 c$omp& private(i,ii,iz,wl,en,ie,xs,B_nu)
 c$omp& shared(ngsub,gas_ncell,gas_mass,gas_temp,grndlev,wlsub,
-c$omp&  cap,capemit,emiss,ion_el,in_nlteh)
+c$omp&  cap,capemit,emiss,ion_el,in_nlteh,grndst)
        do igs=1,ngsub
         wl = wlsub(igs)  !in cm
         en = pc_h*pc_c/(pc_ev*wl) !photon energy in eV
@@ -494,11 +523,11 @@ c$omp&  cap,capemit,emiss,ion_el,in_nlteh)
             cap(i,igs) = cap(i,igs) + xs*pc_mbarn*grndlev(i,ii,iz)
 c-- emission opacity
             capemit(i,igs) = capemit(i,igs) +
-     &          xs*pc_mbarn*grndlev(i,ii,iz)
+     &          xs*pc_mbarn*grndst(i,ii,iz)
 c-- emissivity for output
             B_nu = (wl**2/pc_c)*planck(wl,gas_temp(i))
             emiss(i,igs) = emiss(i,igs) +
-     &          xs*pc_mbarn*grndlev(i,ii,iz)*B_nu
+     &          xs*pc_mbarn*grndst(i,ii,iz)*B_nu
           enddo !i
          enddo !ii
         enddo !iz

@@ -22,6 +22,7 @@ subroutine te_update(it)
   integer :: i,l,ierr,nfail
   real*8 :: nh,neoth,qb,qv,gext,tnew,dmax,dmin,edep,nonth,nonexc
   real*8 :: x(0:nh_nlev),ne,beta(nh_nlin),terms(6)
+  real*4 :: capabs(nht_ng)
   logical :: lout
   character(24) :: fname
 !
@@ -50,15 +51,19 @@ subroutine te_update(it)
 !-- fast photoelectrons: non-thermal ionization and excitation of H
      edep = nlteh_ntdep(nht_ng,nht_nug,nht_dnug,nht_jg(:,l),gas_cap(:,i))
      call nlteh_ntrates(nh,nht_xloc(:,i),edep,nonth,nonexc)
+!-- absorption by the LTE elements (H bound-free is in the H terms)
+     capabs = gas_cap(:,i) - gas_caphbf(:,i)
      call te_balance(gas_temp(i),gas_radtemp(i),nh,neoth,qb,qv,nht_ng,nht_nug,nht_dnug, &
-          nht_jg(:,l),nht_jb(:,l),nht_ljb(:,l),nonth,nonexc,gas_capemit(:,i),gext,nht_xloc(:,i), &
+          nht_jg(:,l),nht_jb(:,l),nht_ljb(:,l),nonth,nonexc,capabs,gas_capemit(:,i),gext, &
+          nht_xloc(:,i), &
           tnew,ierr)
      if(ierr/=0) nfail = nfail + 1
      if(lout) then
         x = nht_xloc(:,i)
         call nlteh_solve_cell(tnew,gas_radtemp(i),nh,neoth,qb,qv,nht_ng,nht_nug,nht_dnug, &
              nht_jg(:,l),nht_jb(:,l),nht_ljb(:,l),nonth,x,ne,beta,ierr,nonexc)
-        call te_terms(tnew,nht_ng,nht_nug,nht_dnug,nht_jg(:,l),gas_capemit(:,i),nh,x,ne,gext,terms)
+        call te_terms(tnew,nht_ng,nht_nug,nht_dnug,nht_jg(:,l),capabs,gas_capemit(:,i),nh,x,ne, &
+             gext,terms)
         write(41,'(i7,2f12.1,6es12.4)') l,tnew,gas_temp(i),terms
      endif
      dmax = max(dmax,tnew/gas_temp(i))

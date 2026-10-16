@@ -8,8 +8,10 @@ module tebalmod
 !
 ! per unit volume [erg/s/cm^3]:
 !  * opacities of the LTE elements (free-free, bound-free, thermalized
-!    share of the lines), kappa_g from the last opacity calculation:
-!      4 pi sum_g kappa_g (B_g(T) - J_g) dnu_g
+!    share of the lines) from the last opacity calculation, absorption
+!    and emission (bound-free emission from ground states in Saha
+!    equilibrium with the next ion at T_e):
+!      4 pi sum_g (kem_g B_g(T) - kabs_g J_g) dnu_g
 !  * NLTE hydrogen, populations re-solved at each trial T:
 !      photoionization heating
 !        4 pi n_H sum_n sum_g (x_n - x_n* e^{-h nu/kT}) sigma_n J_g (1 - nu_n/nu) dnu_g
@@ -85,7 +87,7 @@ pure function rc_coef(n,temp) result(rc)
 end function rc_coef
 
 
-subroutine te_terms(temp,ng,nug,dnug,jg,capth,nh,x,ne,gam_ext,terms)
+subroutine te_terms(temp,ng,nug,dnug,jg,capabs,capem,nh,x,ne,gam_ext,terms)
 !-----------------------------------------------------------------------
 ! Heating and cooling terms at temperature temp for fixed populations.
 ! terms(1) LTE opacities, net cooling      terms(2) H photoionization heating
@@ -94,7 +96,7 @@ subroutine te_terms(temp,ng,nug,dnug,jg,capth,nh,x,ne,gam_ext,terms)
 ! f = t1 - t2 + t3 + t4 + t5 - t6
 !-----------------------------------------------------------------------
   real*8,intent(in) :: temp,nug(ng),dnug(ng),jg(ng),nh,x(0:nh_nlev),ne,gam_ext
-  real*4,intent(in) :: capth(ng)
+  real*4,intent(in) :: capabs(ng),capem(ng)
   integer,intent(in) :: ng
   real*8,intent(out) :: terms(6)
   integer :: ig,n,l,u
@@ -115,7 +117,7 @@ subroutine te_terms(temp,ng,nug,dnug,jg,capth,nh,x,ne,gam_ext,terms)
      endif
      jh = jg(ig)
      if(te_ntemin > 0d0 .and. hh*nug(ig) > te_ntemin) jh = fh*jg(ig)
-     terms(1) = terms(1) + capth(ig)*(bg - jh)*dnug(ig)
+     terms(1) = terms(1) + (capem(ig)*bg - capabs(ig)*jh)*dnug(ig)
      terms(5) = terms(5) + jg(ig)*dnug(ig)*(4d0*kb*temp - &
           hh*nug(ig)*(1d0 + cc**2*jg(ig)/(2d0*hh*nug(ig)**3)))
   enddo
@@ -160,8 +162,8 @@ subroutine te_terms(temp,ng,nug,dnug,jg,capth,nh,x,ne,gam_ext,terms)
 end subroutine te_terms
 
 
-subroutine te_balance(told,trad,nh,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nonth,nonexc,capth, &
-     gam_ext,x,tnew,ierr)
+subroutine te_balance(told,trad,nh,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nonth,nonexc,capabs, &
+     capem,gam_ext,x,tnew,ierr)
 !-----------------------------------------------------------------------
 ! Solve f(T) = 0 with the H populations re-solved at each trial T; x is
 ! the initial guess for the populations (unchanged on return).  tnew is
@@ -172,7 +174,7 @@ subroutine te_balance(told,trad,nh,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nonth,nonex
   integer,intent(in) :: ng
   real*8,intent(in) :: nug(ng),dnug(ng),jg(ng),jb(nh_nlin)
   logical,intent(in) :: ljb(nh_nlin)
-  real*4,intent(in) :: capth(ng)
+  real*4,intent(in) :: capabs(ng),capem(ng)
   real*8,intent(in) :: x(0:nh_nlev)
   real*8,intent(out) :: tnew
   integer,intent(out) :: ierr
@@ -244,7 +246,7 @@ contains
           ne = neoth + xx(0)*nh
        endif
     endif
-    call te_terms(t,ng,nug,dnug,jg,capth,nh,xx,ne,gam_ext,terms)
+    call te_terms(t,ng,nug,dnug,jg,capabs,capem,nh,xx,ne,gam_ext,terms)
     fval = terms(1) - terms(2) + terms(3) + terms(4) + terms(5) - terms(6)
   end function fval
 end subroutine te_balance

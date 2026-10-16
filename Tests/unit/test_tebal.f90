@@ -47,7 +47,7 @@ program test_tebal
         nh = nhs(j)
         call nlteh_lte(t0, nh, x)
         do m = 1, 2
-           call te_balance(t0*tst(m), t0, nh, 0d0, 1d-7, 1d-7, ng, nug, dnug, jg, jb, ljb, 0d0, 0d0, capth, &
+           call te_balance(t0*tst(m), t0, nh, 0d0, 1d-7, 1d-7, ng, nug, dnug, jg, jb, ljb, 0d0, 0d0, capth, capth, &
                 0d0, x, tnew, ierr)
            write(6,'(a,f8.0,a,es8.1,a,f8.0,a,f8.1,a,i2)') 'Planck T0=', t0, ' nH=', nh, '  start ', t0*tst(m), &
                 ' -> T=', tnew, '  ierr', ierr
@@ -62,10 +62,10 @@ program test_tebal
   capth = 0.
   nh = 1d2
   x = 0d0; x(0) = 0.99d0; x(1) = 0.01d0
-  call te_balance(1d4, 4d4, nh, 0d0, 1d-15, 1d-15, ng, nug, dnug, jg, jb, ljb, 0d0, 0d0, capth, 0d0, x, tnew, ierr)
+  call te_balance(1d4, 4d4, nh, 0d0, 1d-15, 1d-15, ng, nug, dnug, jg, jb, ljb, 0d0, 0d0, capth, capth, 0d0, x, tnew, ierr)
   write(6,'(a,f9.0,a,i2)') 'pure H nebula, 4e4 K star: T_e =', tnew, '  ierr', ierr
   call nlteh_solve_cell(tnew, 4d4, nh, 0d0, 1d-15, 1d-15, ng, nug, dnug, jg, jb, ljb, 0d0, x, ne, beta, ierr)
-  call te_terms(tnew, ng, nug, dnug, jg, capth, nh, x, ne, 0d0, terms)
+  call te_terms(tnew, ng, nug, dnug, jg, capth, capth, nh, x, ne, 0d0, terms)
   write(6,'(a,6es11.3)') '  terms (LTE, PI heat, rec cool, coll, Compton, ext):', terms
   write(6,'(a,es10.3)') '  x(H II) =', x(0)
   if(tnew < 1d4 .or. tnew > 4d4 .or. ierr /= 0) nfail = nfail + 1
