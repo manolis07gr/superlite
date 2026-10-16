@@ -89,6 +89,11 @@ module nltextrmod
   integer,public :: nxt_nact = 0
   integer,allocatable,public :: nxt_act(:)    !(nlin) active lines sorted by wavelength
   real*8,allocatable,public :: nxt_wlact(:)   !(nlin) their wavelengths
+!-- lookup of the active lines by ln(wavelength) for nxt_neighbors:
+!-- nxt_wcnt(k) lines at or below exp(nxt_lw0 + k nxt_dlw)
+  integer,parameter :: nxt_nwt = 65536
+  integer,allocatable :: nxt_wcnt(:)          !(0:nwt)
+  real*8 :: nxt_lw0 = 0d0, nxt_dlw = 1d0
   real*8,allocatable,public :: nxt_nug(:),nxt_dnug(:) !(ng) group centre frequency and width
   integer,public :: nxt_kha = 0               !H-alpha (benchmark)
 !-- macro-atom tables
@@ -243,6 +248,7 @@ subroutine nxt_init(ncell,gncell,ng,wlg,nfile,files,hnlev)
      nxt_wlact(j) = nxa_lwl(nxa_lsrt(j))
      nxt_isrt(nxa_lsrt(j)) = j
   enddo
+  call act_lookup
 !
 !-- exit tables
   allocate(nxt_ecoff(nxa_nel))
@@ -421,6 +427,7 @@ subroutine nxt_dealloc
   if(allocated(nxt_xprev)) deallocate(nxt_xprev)
   if(allocated(nxt_fcl)) deallocate(nxt_fcl)
   if(allocated(nxt_bfl)) deallocate(nxt_bfl,nxt_bfn,nxt_bfm,nxt_bfr,nxt_bfs,nxt_smaxb)
+  if(allocated(nxt_wcnt)) deallocate(nxt_wcnt)
   if(allocated(nxt_erel)) deallocate(nxt_erel,nxt_prel,nxt_rcum)
   nxt_dtinv = 0d0
   nxt_elh = 0; nxt_elhe = 0; nxt_kha = 0
@@ -878,7 +885,29 @@ subroutine nxt_tables(ncell,tempinv,radtemp,capemitgrey,xarr,vxarr)
         nxt_isrt(k) = nxt_nact
      endif
   enddo
+  call act_lookup
 end subroutine nxt_tables
+!
+!
+subroutine act_lookup
+!-- lookup of the active-line list by ln(wavelength) (nxt_neighbors)
+  integer :: k,j
+  real*8 :: e
+  if(.not.allocated(nxt_wcnt)) allocate(nxt_wcnt(0:nxt_nwt))
+  nxt_wcnt = 0
+  if(nxt_nact<1) return
+  nxt_lw0 = log(nxt_wlact(1))
+  nxt_dlw = max(log(nxt_wlact(nxt_nact)) - nxt_lw0,1d-6)/nxt_nwt
+  j = 0
+  do k=0,nxt_nwt
+     e = exp(nxt_lw0 + k*nxt_dlw)
+     do while(j < nxt_nact)
+        if(nxt_wlact(j+1) > e) exit
+        j = j + 1
+     enddo
+     nxt_wcnt(k) = j
+  enddo
+end subroutine act_lookup
 !
 !
 subroutine el_chain(iel,ne,nel,x,r,jl,beta,q,tot,emt,kex,kin,chw,ch0)
@@ -1028,7 +1057,8 @@ pure subroutine nxt_neighbors(wlc,iline,ilside,jlo,jhi)
   real*8,intent(in) :: wlc
   integer,intent(in) :: iline,ilside
   integer,intent(out) :: jlo,jhi
-  integer :: a,b,m
+  integer :: a,b,m,k
+  real*8 :: u
   if(iline>0) then
      if(ilside>0) then
         jlo = iline
@@ -1038,8 +1068,16 @@ pure subroutine nxt_neighbors(wlc,iline,ilside,jlo,jhi)
         jhi = iline
      endif
   else
+!-- bracket from the lookup, one bin wider on each side (rounding):
+!-- nxt_wlact(a) <= wlc < nxt_wlact(b)
      a = 0
      b = nxt_nact + 1
+     if(allocated(nxt_wcnt) .and. nxt_nact>0) then
+        u = min(max((log(wlc) - nxt_lw0)/nxt_dlw,-1d0),dble(nxt_nwt+2))
+        k = int(u)
+        if(u >= 1d0) a = nxt_wcnt(min(k-1,nxt_nwt))
+        if(k+2 <= nxt_nwt) b = nxt_wcnt(max(k+2,0)) + 1
+     endif
      do while(b-a>1)
         m = (a+b)/2
         if(nxt_wlact(m) <= wlc) then
