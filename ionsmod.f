@@ -673,7 +673,8 @@ c     -------------------------------------------------------
 * The electron density is found by bisection in log n_e.
 ************************************************************************
       integer :: iz,ii,il,nion,it,k,ntemp
-      real*8 :: ktr,kte,sahac,chi,chi0,zeta,delta,help,wt,s
+      real*8 :: ktr,kte,sahac,chi,chi0,zeta,help,wt,s
+      real*8 :: ldel,lsum,a1,a2
       real*8 :: lphi(ion_iionmax,nelem) !ln[n(ii) n_e/n(ii-1)]
       real*8 :: lnelo,lnehi,lne,flo,f
 c
@@ -714,14 +715,25 @@ c-- nebular Saha ratios
         chi = ion_el(iz)%i(ii-1)%e
         zeta = (1d0-s)*ion_el(iz)%i(ii-1)%zval(k) +
      &    s*ion_el(iz)%i(ii-1)%zval(k+1)
+c-- ln(delta): for edges above the Lyman edge delta is huge when T_e > T_R
+c-- (Saha at T_e), compensated by exp(-chi/kT_R) of Phi*: logarithms
         if(chi>=chi0) then
-         delta = te/tr*exp(chi*(ktr-kte))
+         ldel = log(te/tr) + chi*(ktr-kte)
         else
-         delta = 1d0 + te/tr*exp(chi*ktr-chi0*kte) -
-     &     exp((chi-chi0)*ktr)
+         ldel = log(1d0 + te/tr*exp(chi*ktr-chi0*kte) -
+     &     exp((chi-chi0)*ktr))
         endif
-        help = wt*(delta*zeta + wt*(1d0-zeta))*sqrt(te/tr)
-        lphi(ii,iz) = log(max(help,1d-300)) + log(sahac) +
+c-- ln[delta zeta + w (1-zeta)]
+        if(zeta<=0d0) then
+         lsum = log(wt)
+        elseif(zeta>=1d0) then
+         lsum = ldel
+        else
+         a1 = ldel + log(zeta)
+         a2 = log(wt*(1d0-zeta))
+         lsum = max(a1,a2) + log(1d0 + exp(-abs(a1-a2)))
+        endif
+        lphi(ii,iz) = log(wt) + lsum + 0.5d0*log(te/tr) + log(sahac) +
      &    log(ion_el(iz)%i(ii)%q/ion_el(iz)%i(ii-1)%q) - chi*ktr
        enddo !ii
       enddo !iz

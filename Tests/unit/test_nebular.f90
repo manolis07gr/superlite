@@ -5,6 +5,8 @@
 !--     (ions_solve_eos) for all elements, at several T and densities.
 !--  2. Diluting the radiation field (W < 1) must lower the ionization of H
 !--     and of the electron density monotonically.
+!--  3. T_e >> T_R (delta factors of ~e^1000 for highly charged ions) must
+!--     give finite fractions and electron density.
 program test_nebular
   use ionsmod
   implicit none
@@ -58,6 +60,17 @@ program test_nebular
      if(xh > xhold .or. nelec > neold) nfail = nfail + 1
      xhold = xh; neold = nelec
   enddo
+!-- 3. T_e >> T_R
+  nelec = 0.5d0
+  call ions_nebular_mc(natomfr, 3d4, 5d3, 1d-2, 1d12, nelec)
+  dmax = 0d0
+  do iz = 1, nel
+     do ii = 1, ion_el(iz)%ni
+        if(ion_el(iz)%i(ii)%n /= ion_el(iz)%i(ii)%n .or. ion_el(iz)%i(ii)%n > 1d0+1d-12) dmax = 1d0
+     enddo
+  enddo
+  write(6,'(a,es10.3,a,es10.3)') 'T_e=3e4, T_R=5e3, W=0.01: n_e/n =', nelec, '  x(H II) =', ion_el(1)%i(2)%n
+  if(dmax > 0d0 .or. nelec /= nelec .or. nelec <= 0d0) nfail = nfail + 1
   if(nfail == 0) then
      write(6,*) 'test_nebular: PASS'
   else

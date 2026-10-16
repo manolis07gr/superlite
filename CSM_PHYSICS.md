@@ -147,6 +147,52 @@ What the runs show:
 
 These define stage 2 below.
 
+### 4.3 Stage-2 runs (A7 and A4 at day 20)
+
+Same metrics; each step adds to the previous one (10–12 iterations for the runs with
+the electron-temperature solve):
+
+| Run | EW5(Hα) Å | EW5(Hβ) Å | Hα absorption share | Hα peak (km/s) |
+|---|---|---|---|---|
+| A7 stage 1 | +17 | −55 | 0.31 | 3950 |
+| A7 + Sobolev lines of the other elements, H bound-free fix | −57 | −48 | 1.00 | 5000 |
+| A7 + T_e from the thermal balance, other elements at the hydro temperature | +970 | +295 | 0.00 | −100 |
+| A7 + T_e, other elements in the nebular approximation (final) | @A7NEBHA@ | @A7NEBHB@ | @A7NEBABS@ | @A7NEBPK@ |
+| A4 stage 1 | −79 | −49 | 1.00 | 300 |
+| A4 all stage-2 physics, nebular approximation (final) | @A4NEBHA@ | @A4NEBHB@ | @A4NEBABS@ | @A4NEBPK@ |
+| observed SNe IIn, 10–30 d (median) | ≈ +100 | ≈ +25 | 0 | 0 |
+
+What the runs show:
+* Sobolev lines of the other elements remove the narrow LTE metal emission (Ca II,
+  Si II 6355, Fe II, the IR triplet) that the smeared opacity produced in the slow
+  CSM; part of the stage-1 "Hα emission" of A7 was this contamination.  The
+  transport is 4× faster.
+* With the Balmer and higher continua in the opacity (stage-1 bug) and the dilute
+  radiation field above the photosphere, n = 2 is overpopulated in the CSM
+  (b₂ ≈ 6–10 ≈ 1/W, set by photoionization from n = 2), the Balmer continuum is
+  optically thick (τ ≈ 1.5) with a source function ≈ B/b₂, and the UV below
+  3646 Å is absorbed.  With the hydro temperatures Hα is in absorption.
+* The electron temperature is decisive and is set by the other elements.  With
+  their LTE populations at the hydro temperature, their photoabsorption of the shock
+  EUV/X-rays dominates the energy exchange of the CSM and the shocked gas, T_e
+  reaches 2–4×10⁴ K, and the Balmer lines are 5–10× stronger than observed with a
+  flat decrement (≈ 1.7) but the observed shape: narrow core on electron-scattering
+  wings.  In the nebular approximation, with their recombination emission computed
+  from Saha equilibrium with the next ion at T_e (Kirchhoff's law with the actual
+  populations misstates it), the outer CSM settles at 6000–12 000 K, close to the
+  hydro temperatures, photoionization heating balancing recombination cooling.
+* The temperature of the shocked gas behind the cold dense shell is not converged in
+  10–12 iterations (it keeps rising toward ~4×10⁴ K): its cooling depends on metal
+  ions that the nebular approximation describes only roughly.  The cold dense shell
+  itself oscillated between iterations before the adaptive damping.
+
+The line strengths of these models therefore hinge on the ionization and cooling of
+the elements heavier than He in the photoionized CSM, which LTE-based treatments
+bracket but cannot settle (EW(Hα) from ≈ 20 to ≈ 1000 Å for A7).  NLTE ionization
+with consistent recombination and line cooling for the abundant metals (§3, items 2
+and 6) is the next step; He I/He II (item 1) adds the main missing EUV opacity and
+coolant of the CSM.
+
 ## 5. Running
 
 ```

@@ -347,6 +347,7 @@ c-- sanity check
       if(iand(j,1)/=0) write(0,*) 'opacity_calc: some cap==0'
       if(iand(j,2)/=0) write(0,*) 'opacity_calc: some cap<0'
       if(iand(j,4)/=0) write(0,*) 'opacity_calc: some cap==NaN'
+      if(iand(j,4)/=0) stop 'opacity_calc: NaN in cap'
       if(iand(j,8)/=0) write(0,*) 'opacity_calc: some cap==inf'
 c-- refine sanity check
       if(j>0) then
