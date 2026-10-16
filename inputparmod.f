@@ -129,6 +129,9 @@ c-- ('none': steady state), matched by the exterior mass coordinate, and
 c-- the time since that model [s]
       character(256) :: in_nltex_prev = 'none'
       real*8 :: in_nltex_dtprev = 0d0
+c-- accelerated lambda iteration of the NLTE bound-free transitions (local
+c-- operator of each cell and group; nltexmod)
+      logical :: in_nltex_ali = .false.
 c-- X-ray emission of wind shocks as CMFGEN's INC_XRAYS (xraysrcmod):
 c-- plasma table in CMFGEN's RS_XRAY_FLUXES format ('none': off); two
 c-- components: filling factor, shock temperature [K], onset velocity
@@ -217,7 +220,7 @@ c-- runtime parameter namelist
      & in_nlte,in_nlte_nelem,in_nlteh,in_nlteh_nlev,in_nlteh_damp,
      & in_nlteh_tau0,in_nltex_atoms,in_nltex_dir,in_nltex_chgexch,
      & in_srctype,in_shock_dvmin,in_shock_tmax,in_shock_cie,
-     & in_nltex_prev,in_nltex_dtprev,
+     & in_nltex_prev,in_nltex_dtprev,in_nltex_ali,
      & in_xray_table,in_xray_ff1,in_xray_ff2,in_xray_t1,in_xray_t2,
      & in_xray_v1,in_xray_v2,in_xray_smooth,
      & in_bbsobolev,in_bbeps,in_tesolve,in_te_damp,in_te_zsolve,
@@ -352,6 +355,7 @@ c
       call insertr(in_xray_v1,in_r,ir)
       call insertr(in_xray_v2,in_r,ir)
       call insertl(in_xray_smooth,in_l,il)
+      call insertl(in_nltex_ali,in_l,il)
       call insertl(in_bbsobolev,in_l,il)
       call insertr(in_bbeps,in_r,ir)
       call insertl(in_tesolve,in_l,il)

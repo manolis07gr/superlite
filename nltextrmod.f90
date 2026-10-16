@@ -175,6 +175,7 @@ module nltextrmod
   public :: nxt_bfabs,nxt_bfpick,nxt_nonthermal,nxt_ntdep,nxt_ntrates,nxt_write,nxt_bffreq
   public :: nxt_shares,nxt_dealloc,nxt_emcode
   public :: nxt_write_state,nxt_read_prev,nxt_release,nxt_activate_rel
+  public :: nxt_ali_cell,nxt_ali_off
 !
 contains
 !
@@ -513,17 +514,22 @@ pure subroutine nxt_ntrates(nel,x,edep,nti,ntx)
 end subroutine nxt_ntrates
 !
 !
-subroutine nxt_gas_solve(it,gncell,temp,trad,nelv,neoth,qb,qv,icell1,edep)
+subroutine nxt_gas_solve(it,gncell,temp,trad,nelv,neoth,qb,qv,icell1,edep,kap,fcl,dr)
 !-----------------------------------------------------------------------
 ! Statistical equilibrium of the NLTE elements in this rank's gas cells.
 ! The first iteration uses J = B(trad); later ones the Monte Carlo
 ! estimators of the previous iteration, and the new populations are mixed
 ! geometrically with the old ones (weight nxt_damp).  edep: power absorbed
 ! from photons above nxt_ntemin [erg/s/cm^3], deposited by fast electrons.
+! kap, fcl, dr (optional): absorption opacity of the groups with which J
+! was made, volume filling factor and width of the cells, for the
+! accelerated lambda iteration of the bound-free transitions (nxt_ali_cell).
 !-----------------------------------------------------------------------
   integer,intent(in) :: it,gncell,icell1
   real*8,intent(in) :: temp(gncell),trad(gncell),nelv(nxa_nel,gncell),neoth(gncell)
   real*8,intent(in) :: edep(gncell),qb(gncell),qv(gncell)
+  real*4,intent(in),optional :: kap(:,:)
+  real*8,intent(in),optional :: fcl(gncell),dr(gncell)
   integer :: i,l,ig,ierr,nfail,k,nc
   real*8 :: x(nxa_nst),xold(nxa_nst),ne,beta(nxa_nlin),jg(nxt_ng),jb(nxa_nlin)
   real*8 :: nti(nxa_nst),ntx(nxa_nst),ntot,dxc(gncell),w
@@ -555,6 +561,8 @@ subroutine nxt_gas_solve(it,gncell,temp,trad,nelv,neoth,qb,qv,icell1,edep)
      endif
      xold = x
      call nxt_ntrates(nelv(:,i),x,edep(i),nti,ntx)
+     if(present(kap) .and. present(fcl) .and. present(dr) .and. it>1 .and. nxt_have_mc) &
+          call nxt_ali_cell(nxt_ng,kap(:,i),fcl(i),dr(i))
      if(nxt_dtinv>0d0) then
         call nx_solve_cell(temp(i),trad(i),nelv(:,i),neoth(i),qb(i),qv(i),nxt_ng, &
              nxt_nug,nxt_dnug,jg,jb,ljb,nti,ntx,x,ne,beta,ierr,xprev=nxt_xprev(:,l),dtinv=nxt_dtinv)
@@ -562,6 +570,7 @@ subroutine nxt_gas_solve(it,gncell,temp,trad,nelv,neoth,qb,qv,icell1,edep)
         call nx_solve_cell(temp(i),trad(i),nelv(:,i),neoth(i),qb(i),qv(i),nxt_ng, &
              nxt_nug,nxt_dnug,jg,jb,ljb,nti,ntx,x,ne,beta,ierr)
      endif
+     call nxt_ali_off
      if(ierr==1) then
         nfail = nfail + 1
         x = xold
@@ -1655,6 +1664,42 @@ contains
     endif
   end subroutine bands
 end subroutine nxt_write
+!
+!
+subroutine nxt_ali_cell(ng,kap,fcl,dr)
+!-----------------------------------------------------------------------
+! Accelerated lambda iteration in the next statistical-equilibrium solves
+! (nltexmod): the absorption opacity kap of the cell's groups with which
+! the Monte Carlo J was made (per clump volume), and the local operator
+! Lambda* = 1 - (1 - e^-tau)/tau of the cell with tau = fcl kap dr (the
+! volume-mean opacity across the cell width dr), at most 0.99.
+!-----------------------------------------------------------------------
+  integer,intent(in) :: ng
+  real*4,intent(in) :: kap(ng)
+  real*8,intent(in) :: fcl,dr
+  integer :: ig
+  real*8 :: tau
+  if(allocated(nx_ali_lst)) then
+     if(size(nx_ali_lst)/=ng) deallocate(nx_ali_lst,nx_ali_kap)
+  endif
+  if(.not.allocated(nx_ali_lst)) allocate(nx_ali_lst(ng),nx_ali_kap(ng))
+  do ig=1,ng
+     nx_ali_kap(ig) = kap(ig)
+     tau = fcl*kap(ig)*dr
+     if(tau < 1d-4) then
+        nx_ali_lst(ig) = 0.5d0*tau
+     else
+        nx_ali_lst(ig) = 1d0 - (1d0 - exp(-tau))/tau
+     endif
+     nx_ali_lst(ig) = min(nx_ali_lst(ig),0.99d0)
+  enddo
+  nx_ali_on = .true.
+end subroutine nxt_ali_cell
+!
+!
+subroutine nxt_ali_off
+  nx_ali_on = .false.
+end subroutine nxt_ali_off
 !
 !
 subroutine nxt_write_state(ncell,mass,vol,tempinv)

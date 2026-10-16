@@ -113,6 +113,7 @@ program test_nltex
      endif
   enddo
   call td_tests
+  call ali_tests
   deallocate(x, xl, beta, jb, ljb, nti, ntx, nel)
 !
 !-- 2. He model atoms
@@ -173,6 +174,116 @@ contains
          ' (backward Euler', xa, ')'
     if(d1 > 1d-6 .or. d2 > 1d-5 .or. d3 > 1d-2) nfail = nfail + 1
   end subroutine td_tests
+!
+  subroutine ali_tests
+!-- accelerated lambda iteration of the bound-free transitions (built-in H,
+!-- 1e4 K, nH = 1e10, diluted 5e4 K field above the Lyman edge): at the
+!-- populations with which J was made the corrections cancel, so the
+!-- solution must not move; with J made of the cell's own Lyman-continuum
+!-- emission (J = Lambda* S + the rest) the iteration with the corrections
+!-- must reach the fixed point of the plain iteration in fewer steps
+    real*8 :: x0(nxa_nst), kap(ng), lst(ng), x1(nxa_nst), wv(nxa_nlv), d1
+    real*8 :: jext(ng), xa(nxa_nst), xb(nxa_nst), da, db, sl
+    integer :: lv, ig, itn, na, nb
+    t = 1d4; nh = 1d10; w = 1d-14; t2 = 5d4; q = 1d-9
+    jext = 0d0
+    do k = 1, ng
+       if(nug(k) > nh_nu0(1)) jext(k) = w*bplanck(nug(k), t2)
+    enddo
+    jb = 0d0; ljb = .true.; nti = 0d0; ntx = 0d0; nel = nh
+    jg = jext
+    x0 = 0d0; x0(1) = 0.5d0; x0(nxa_nst) = 0.5d0
+    call nx_solve_cell(t, t2, nel, 0d0, q, q, ng, nug, dnug, jg, jb, ljb, nti, ntx, x0, ne, beta, ierr)
+!-- Lyman-continuum opacity of x0 and a local operator of 0.9
+    call nxa_weights(t, wv)
+    kap = 0d0
+    do lv = 1, nlev
+       do ig = 1, nxa_g1(lv)
+          kap(ig) = kap(ig) + nh*x0(nxa_lvs(lv))*wv(lv)*nxa_sgm(nxa_sgo(lv)+ig)
+       enddo
+    enddo
+    lst = 0.9d0
+    if(allocated(nx_ali_lst)) deallocate(nx_ali_lst, nx_ali_kap)
+    allocate(nx_ali_lst(ng), nx_ali_kap(ng))
+    nx_ali_lst = lst; nx_ali_kap = kap
+    nx_ali_on = .true.
+    x1 = x0
+    call nx_solve_cell(t, t2, nel, 0d0, q, q, ng, nug, dnug, jg, jb, ljb, nti, ntx, x1, ne, beta, ierr)
+    nx_ali_on = .false.
+    d1 = maxval(abs(x1/x0 - 1d0), mask=x0>1d-20)
+!-- lambda iteration: J = jext + Lambda* S_Lyc(x) in the Lyman continuum,
+!-- S = eta/kappa of the ground state (Milne), plain and accelerated
+    na = 0; nb = 0
+    xa = 0d0; xa(1) = 0.999d0; xa(nxa_nst) = 1d-3
+    xb = xa
+    da = 1d0; db = 1d0
+    do itn = 1, 200
+       x1 = xa
+       call lyc_j(xa, jg)
+       call nx_solve_cell(t, t2, nel, 0d0, q, q, ng, nug, dnug, jg, jb, ljb, nti, ntx, xa, ne, beta, ierr)
+       da = abs(xa(nxa_nst)/x1(nxa_nst) - 1d0)
+       if(da < 1d-6) then
+          na = itn
+          exit
+       endif
+    enddo
+    do itn = 1, 200
+       x1 = xb
+       call lyc_j(xb, jg)
+       call set_ali(xb)
+       call nx_solve_cell(t, t2, nel, 0d0, q, q, ng, nug, dnug, jg, jb, ljb, nti, ntx, xb, ne, beta, ierr)
+       nx_ali_on = .false.
+       db = abs(xb(nxa_nst)/x1(nxa_nst) - 1d0)
+       if(db < 1d-6) then
+          nb = itn
+          exit
+       endif
+    enddo
+    sl = abs(xb(nxa_nst)/xa(nxa_nst) - 1d0)
+    write(*,'(a,es9.2,a,i4,a,i4,a,f8.5,a,f8.5,a,es9.2)') '  ALI: fixed point kept to', d1, &
+         '; lambda iteration converged in', na, ' (plain) and', nb, ' (ALI) steps, x(H II) =', &
+         xa(nxa_nst), ' and', xb(nxa_nst), ', difference', sl
+    if(d1 > 1d-6 .or. na == 0 .or. nb == 0 .or. nb >= na .or. sl > 1d-4) nfail = nfail + 1
+  end subroutine ali_tests
+!
+  subroutine lyc_j(xx, jj)
+!-- J = jext + Lambda* S of the ground state's Lyman continuum (Lambda* =
+!-- 0.999), S from the Milne relation with the populations xx at t
+    real*8, intent(in) :: xx(nxa_nst)
+    real*8, intent(out) :: jj(ng)
+    real*8 :: wv(nxa_nlv), nstar, kp, et, nu, phit
+    integer :: ig
+    call nxa_weights(t, wv)
+    jj = 0d0
+    do k = 1, ng
+       if(nug(k) > nh_nu0(1)) jj(k) = w*bplanck(nug(k), t2)
+    enddo
+!-- n1*: Saha with the actual protons and electrons (ne from x)
+    phit = nxa_lvphi(1)*nxa_sahac*t**(-1.5d0)
+    nstar = nh*xx(nxa_nst)*nh*xx(nxa_nst)*phit
+    do ig = 1, nxa_g1(1)
+       nu = max(nug(ig), nxa_lvnu0(1))
+       kp = nh*xx(nxa_lvs(1))*wv(1)*nxa_sgm(nxa_sgo(1)+ig)
+       et = 2d0*hh*nu**3/cc**2*nstar*exp(-hh*(nu-nxa_lvnu0(1))/(kb*t))*nxa_sgm(nxa_sgo(1)+ig)
+       if(kp > 0d0) jj(ig) = jj(ig) + 0.999d0*et/kp
+    enddo
+  end subroutine lyc_j
+!
+  subroutine set_ali(xx)
+!-- ALI data of the toy cell: Lambda* = 0.999, kappa of the ground state
+    real*8, intent(in) :: xx(nxa_nst)
+    real*8 :: wv(nxa_nlv)
+    integer :: ig
+    call nxa_weights(t, wv)
+    if(allocated(nx_ali_lst)) deallocate(nx_ali_lst, nx_ali_kap)
+    allocate(nx_ali_lst(ng), nx_ali_kap(ng))
+    nx_ali_lst = 0.999d0
+    nx_ali_kap = 0d0
+    do ig = 1, nxa_g1(1)
+       nx_ali_kap(ig) = nh*xx(nxa_lvs(1))*wv(1)*nxa_sgm(nxa_sgo(1)+ig)
+    enddo
+    nx_ali_on = .true.
+  end subroutine set_ali
 !
   subroutine he_tests(dir)
     character(*), intent(in) :: dir

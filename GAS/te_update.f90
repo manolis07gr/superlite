@@ -75,6 +75,9 @@ subroutine te_update(it)
      call nxt_ntrates(nel,nxt_xloc(:,i),edep,nti,ntx)
 !-- absorption by the LTE elements (NLTE bound-free is in the NLTE terms)
      capabs = gas_cap(:,i) - gas_capnbf(:,i)
+!-- (accelerated lambda iteration of the bound-free transitions)
+     if(in_nltex_ali) call nxt_ali_cell(nxt_ng,gas_cap(:,i),gas_fcl(i), &
+          grd_xarr(l+1)-grd_xarr(l))
      if(nxt_dtinv>0d0) then
         call te_balance(gas_temp(i),gas_radtemp(i),nel,neoth,qb,qv,nxt_ng,nxt_nug,nxt_dnug, &
              nxt_jg(:,l),nxt_jb(:,l),nxt_ljb(:,l),nti,ntx,capabs,gas_capemit(:,i),gext, &
@@ -103,6 +106,7 @@ subroutine te_update(it)
              gext,terms,beta=beta,jl=jl)
         write(41,'(i7,2f12.1,6es12.4)') l,tnew,gas_temp(i),terms
      endif
+     call nxt_ali_off
      dmax = max(dmax,tnew/gas_temp(i))
      dmin = min(dmin,tnew/gas_temp(i))
      gas_temp(i) = tnew

@@ -53,6 +53,12 @@ module nltexmod
 !-- escape probability table of one cell: beta against ln(K/qs) on
 !-- [nx_blt0, nx_blt0 + (nx_nbt-1) nx_bdlt], qs = max(|dv/dr|,|v/r|)
   integer,parameter,public :: nx_nbt = 401
+!-- accelerated lambda iteration of the bound-free transitions (set by the
+!-- caller per cell): the local operator of each group, the share of the
+!-- group's intensity that the cell's own emission makes, and the
+!-- absorption opacity of the group with which the Monte Carlo J was made
+  logical,public :: nx_ali_on = .false.
+  real*8,allocatable,public :: nx_ali_lst(:),nx_ali_kap(:) !(ng)
   real*8,parameter :: nx_blt0 = -16.1180957d0          !ln 1e-7
   real*8,parameter :: nx_bdlt = (20.7232658d0 - nx_blt0)/(nx_nbt-1)   !to ln 1e9
 !
@@ -185,7 +191,7 @@ subroutine nx_lte(temp,ne,x)
 end subroutine nx_lte
 !
 !
-subroutine nx_el_rates(iel,temp,trad,ng,nug,dnug,jg,r)
+subroutine nx_el_rates(iel,temp,trad,ng,nug,dnug,jg,r,xo,nelo,neo)
 !-----------------------------------------------------------------------
 ! Rate coefficients of element iel that do not depend on the populations
 ! (type nxrt): the shares of the levels in their states, the state
@@ -193,13 +199,27 @@ subroutine nx_el_rates(iel,temp,trad,ng,nug,dnug,jg,r)
 ! photoionization and stimulated recombination by the Monte Carlo J of the
 ! groups (below the group grid: J with the shape of B(trad)) and
 ! spontaneous radiative recombination; then their sums per state.
+! With nx_ali_on and the populations xo of the element (density nelo) and
+! electron density neo with which J was made: accelerated lambda iteration of the bound-free pairs
+! (Rybicki & Hummer 1991 with a local operator).  The part of J that the
+! cell's own recombination into level l makes, Lambda* eta_l/kappa, is
+! taken out of the photoionization of l, and the same number of
+! recombinations (those that the level itself re-absorbs, the share
+! n_l sigma_l/kappa) out of its recombination: in a thick continuum the
+! on-the-spot cycle then drops out of the equations, so that the
+! populations follow the radiation from elsewhere at once instead of
+! over many iterations.  The solution does not change (both corrections
+! are equal at xo).
 !-----------------------------------------------------------------------
   integer,intent(in) :: iel,ng
   real*8,intent(in) :: temp,trad,nug(ng),dnug(ng),jg(ng)
   type(nxrt),intent(inout) :: r
+  real*8,intent(in),optional :: xo(:),nelo,neo
   integer :: j,i,k,lv,ig,igred,isub,ns,nl,lv0,kl,s
   integer,parameter :: nsub = 200
   real*8 :: sm,sst,nu,phit,numin,jred,dlt,xr,sig,hkt
+  real*8 :: dal,gsf,nlo,arg
+  logical :: lali
 !
   ns = nxa_el(iel)%ns
   nl = nxa_el(iel)%nlv
@@ -263,6 +283,41 @@ subroutine nx_el_rates(iel,temp,trad,ng,nug,dnug,jg,r)
         r%gstl(kl) = 4d0*pi*phit*sst
      enddo
   enddo
+!-- accelerated lambda iteration (per level): dal = recombinations into l per
+!-- n_c n_e that l re-absorbs in the cell, 4 pi sum_g Lambda*_g (n_l sigma_g/
+!-- kappa_g) eta_g/(n_c n_e h nu) dnu; the photoionization of l by them,
+!-- dal n_c n_e/n_l, at the populations xo
+  lali = .false.
+  if(nx_ali_on .and. present(xo) .and. present(nelo) .and. present(neo)) lali = allocated(nx_ali_lst)
+  if(lali) then
+     do kl=1,nl
+        lv = lv0 + kl
+        s = nxa_lvs(lv)
+        nlo = nelo*xo(s)*r%w(kl)
+        if(nlo <= 0d0) cycle
+        phit = nxa_lvphi(lv)*nxa_sahac*temp**(-1.5d0)
+        dal = 0d0
+        do ig=min(nxa_g1(lv),ng),1,-1
+           nu = max(nug(ig),nxa_lvnu0(lv))
+           arg = hkt*(nu-nxa_lvnu0(lv))
+           if(arg > 40d0) exit
+           if(nx_ali_kap(ig) <= 0d0 .or. nx_ali_lst(ig) <= 0d0) cycle
+           dal = dal + nx_ali_lst(ig)*min(1d0,nlo*nxa_sgm(nxa_sgo(lv)+ig)/nx_ali_kap(ig))* &
+                2d0*hh*nu**3/cc**2*nxa_sgh(nxa_sgo(lv)+ig)*phit*exp(-arg)
+        enddo
+        dal = 4d0*pi*dal
+!-- photoionization of l by the re-absorbed recombinations: dal n_c n_e/n_l
+        gsf = dal*nelo*xo(nxa_lvc(lv))*r%wc(kl)*neo/nlo
+        if(gsf <= 0d0) cycle
+!-- (Monte Carlo noise: never more than the photoionization itself)
+        if(gsf > r%gaml(kl)) then
+           dal = dal*r%gaml(kl)/gsf
+           gsf = r%gaml(kl)
+        endif
+        r%gaml(kl) = r%gaml(kl) - gsf
+        r%arl(kl) = max(0d0,r%arl(kl) - dal)
+     enddo
+  endif
 !-- sums per state
   r%ci = 0d0; r%c3 = 0d0; r%gam = 0d0; r%gst = 0d0; r%ar = 0d0
   do kl=1,nl
@@ -492,14 +547,20 @@ subroutine nx_solve_cell(temp,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx
   if(present(maxit)) mit = maxit
   call nx_beta_table(qb,qv,btab)
   call nxa_weights(temp,wg)
+  ne = neoth + chg(x)
   do iel=1,nxa_nel
      if(.not.lsol(iel)) cycle
-     call nx_el_rates(iel,temp,trad,ng,nug,dnug,jg,r(iel))
+     if(nx_ali_on) then
+        o = nxa_el(iel)%xoff
+        ns = nxa_el(iel)%ns
+        call nx_el_rates(iel,temp,trad,ng,nug,dnug,jg,r(iel),xo=x(o+1:o+ns),nelo=nel(iel),neo=ne)
+     else
+        call nx_el_rates(iel,temp,trad,ng,nug,dnug,jg,r(iel))
+     endif
   enddo
   do k=1,nxa_nlin
      jl(k) = nx_jline(k,ng,nug,jg,jb(k),ljb(k))
   enddo
-  ne = neoth + chg(x)
   dold = 0d0
   do it=1,mit
      dmax = 0d0

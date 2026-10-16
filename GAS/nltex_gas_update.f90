@@ -10,11 +10,12 @@ subroutine nltex_gas_update(it)
   use nlteatommod, only:nxa_nel,nxa_el
   use nltextrmod
   use mpimod, only:lmpi0
+  use inputparmod, only:in_nltex_ali
   implicit none
   integer,intent(in) :: it
   integer :: i,l,iel
   real*8 :: nelv(nxa_nel,gas_ncell),neoth(gas_ncell),qb(gas_ncell),qv(gas_ncell)
-  real*8 :: edep(gas_ncell)
+  real*8 :: edep(gas_ncell),dr(gas_ncell)
 !
   do i=1,gas_ncell
      l = gas_icell1 + i - 1
@@ -27,6 +28,7 @@ subroutine nltex_gas_update(it)
         enddo
         neoth(i) = nxt_neothloc(i)*gas_natom(i)/gas_volcl(i)
      endif
+     dr(i) = grd_xarr(l+1)-grd_xarr(l)
      qb(i) = (grd_vxarr(l+1)-grd_vxarr(l))/(grd_xarr(l+1)-grd_xarr(l))
      qv(i) = (grd_vxarr(l+1)+grd_vxarr(l))/(grd_xarr(l+1)+grd_xarr(l))
 !-- microclumping: the Sobolev depths of the clump populations with the
@@ -39,7 +41,12 @@ subroutine nltex_gas_update(it)
      if(it>1 .and. nxt_have_mc .and. gas_mass(i)>0d0) &
           edep(i) = nxt_ntdep(nxt_ng,nxt_nug,nxt_dnug,nxt_jg(:,l),gas_cap(:,i))
   enddo
-  call nxt_gas_solve(it,gas_ncell,gas_temp,gas_radtemp,nelv,neoth,qb,qv,gas_icell1,edep)
+  if(in_nltex_ali) then
+     call nxt_gas_solve(it,gas_ncell,gas_temp,gas_radtemp,nelv,neoth,qb,qv,gas_icell1,edep, &
+          kap=gas_cap,fcl=gas_fcl,dr=dr)
+  else
+     call nxt_gas_solve(it,gas_ncell,gas_temp,gas_radtemp,nelv,neoth,qb,qv,gas_icell1,edep)
+  endif
   if(lmpi0 .and. it>1 .and. nxt_have_mc) write(6,'(1x,a,i3,a,es9.2,a,es9.2,a)') 'NLTE (it',it, &
        '): largest change of a state above 1e-4 per cell, median',nxt_dxstat(1),', max',nxt_dxstat(2),' (rank 0)'
 !-- electrons per atom
