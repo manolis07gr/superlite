@@ -116,8 +116,13 @@ c-- shocks (velocity dropping outward by at least in_shock_dvmin): the
 c-- injected energy of shock cells is emitted as a radiatively cooling
 c-- flow, T uniform between the gas temperature and the post-shock
 c-- temperature (capped at in_shock_tmax), bremsstrahlung shape at each T
+c-- (or the CIE spectrum, in_shock_cie)
       real*8 :: in_shock_dvmin = 3d7 ![cm/s]
       real*8 :: in_shock_tmax = 1d7 ![K]
+c-- CIE emissivity table (Tools/chianti_cie_spectra.py): the spectrum at
+c-- each T of the cooling flow is the CIE spectrum of the cell's
+c-- composition instead of bremsstrahlung ('none': bremsstrahlung)
+      character(256) :: in_shock_cie = 'none'
 c-- bound-bound opacity of the LTE elements: in_bbsobolev = t uses the
 c-- Sobolev expansion opacity with the local velocity gradient (saturating
 c-- thick lines) instead of line strengths smeared over the group;
@@ -196,7 +201,7 @@ c-- runtime parameter namelist
      & in_nebular,in_R_phot,
      & in_nlte,in_nlte_nelem,in_nlteh,in_nlteh_nlev,in_nlteh_damp,
      & in_nlteh_tau0,in_nltex_atoms,in_nltex_dir,in_nltex_chgexch,
-     & in_srctype,in_shock_dvmin,in_shock_tmax,
+     & in_srctype,in_shock_dvmin,in_shock_tmax,in_shock_cie,
      & in_bbsobolev,in_bbeps,in_tesolve,in_te_damp,in_te_zsolve,
      & in_tion,
      & in_nt_emin,in_fflegacy,

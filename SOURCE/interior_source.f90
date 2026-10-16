@@ -13,6 +13,7 @@ subroutine interior_source!(it)
   use inputparmod
   use countersmod
   use nltextrmod
+  use shockciemod, only:shc_on,shc_sample,shc_tmin,shc_tmax
 
   implicit none
   ! integer, intent(in) :: it !experimental iterative approach
@@ -101,12 +102,19 @@ subroutine interior_source!(it)
      if(in_srctype=='lumg') then
         if(src_tsh(l)>0d0) then
 !-- shock cell: radiatively cooling post-shock gas, T uniform between the gas
-!-- temperature and the post-shock temperature, bremsstrahlung shape
+!-- temperature and the post-shock temperature; the CIE spectrum at T
+!-- (shockciemod) within its table, bremsstrahlung shape otherwise
            call rnd_r(r1,rnd_state)
            thelp = 1d0/grd_tempinv(l)
            thelp = thelp + r1*max(0d0,min(src_tsh(l),in_shock_tmax) - thelp)
            call rnd_r(r1,rnd_state)
-           wlc = pc_h*pc_c/(-log(max(r1,1d-300))*pc_kb*thelp)
+           if(shc_on .and. thelp>=shc_tmin() .and. thelp<=shc_tmax()) then
+              call rnd_r(r2,rnd_state)
+              call rnd_r(r3,rnd_state)
+              call shc_sample(l,thelp,r1,r2,r3,wlc)
+           else
+              wlc = pc_h*pc_c/(-log(max(r1,1d-300))*pc_kb*thelp)
+           endif
            kind = em_line  !not thermal: wavelength set
         elseif(nxt_on) then
            call nxt_kpacket(l,rnd_state,kind,idx,wlc)

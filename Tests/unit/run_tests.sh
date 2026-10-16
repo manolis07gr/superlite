@@ -28,7 +28,8 @@ build test_nltex     $NLTEX
 build test_bbsob     "$src/physconstmod.f" "$src/bbsobmod.f90"
 build test_tebal     $NLTEX "$src/tebalmod.f90"
 build test_superlevel $NLTEX
-tests="test_doppler test_compton test_nlteh test_nltex test_bbsob test_tebal test_superlevel"
+build test_shockcie  "$src/shockciemod.f90"
+tests="test_doppler test_compton test_nlteh test_nltex test_bbsob test_tebal test_superlevel test_shockcie"
 if [ -n "$SL_BUILD" ]; then
   objs=$(find "$SL_BUILD/CMakeFiles/superlite.dir" -name "*.o" ! -name "superlite.f90.o")
   LD=gfortran; command -v mpif90 >/dev/null && grep -q "USE_MPI:BOOL=ON" "$SL_BUILD/CMakeCache.txt" && LD=mpif90

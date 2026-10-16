@@ -155,6 +155,12 @@ c
       end subroutine allreduce_jrad
 c
 c
+      subroutine allreduce_sum(n,x)
+      integer,intent(in) :: n
+      real*8,intent(inout) :: x(n)
+      end subroutine allreduce_sum
+c
+c
       subroutine allreduce_nlteh
       end subroutine allreduce_nlteh
 c

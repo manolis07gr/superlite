@@ -94,6 +94,8 @@ c-- NLTE model-atom files (long string)
      &  impi0,MPI_COMM_WORLD,ierr)
       call mpi_bcast(in_nltex_chgexch,len(in_nltex_chgexch),
      &  MPI_CHARACTER,impi0,MPI_COMM_WORLD,ierr)
+      call mpi_bcast(in_shock_cie,len(in_shock_cie),
+     &  MPI_CHARACTER,impi0,MPI_COMM_WORLD,ierr)
       in_nltex = in_nlteh .or. len_trim(in_nltex_atoms)>0
       deallocate(csndvec)
 c
@@ -894,6 +896,18 @@ c
 c
       end subroutine allreduce_jrad
 c
+c
+c
+      subroutine allreduce_sum(n,x)
+c-- sum of x over all ranks (in place)
+      integer,intent(in) :: n
+      real*8,intent(inout) :: x(n)
+      real*8,allocatable :: snd(:)
+      allocate(snd(n))
+      snd = x
+      call mpi_allreduce(snd,x,n,MPI_REAL8,MPI_SUM,MPI_COMM_WORLD,ierr)
+      deallocate(snd)
+      end subroutine allreduce_sum
 c
 c
       subroutine allreduce_nlteh

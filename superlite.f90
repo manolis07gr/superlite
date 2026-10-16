@@ -29,6 +29,7 @@ program superlite
   use nltextrmod
   use bbsobmod
   use tebalmod, only:te_damp,te_ntemin,te_zsolve
+  use shockciemod, only:shc_read,shc_setup,shc_nel,shc_elz
 
   implicit none
 !***********************************************************************
@@ -39,7 +40,8 @@ program superlite
   real*8 :: t0, t1 !timing
   character(25) :: msg
 !-- NLTE model-atom files
-  integer :: i, nfatom
+  integer :: i, nfatom, j, l
+  real*8,allocatable :: shcx(:,:)
   character(256) :: fatom(60)
 !
 !-- mpi initialization
@@ -120,6 +122,23 @@ program superlite
   call shock_temperatures
   if(lmpi0 .and. in_srctype=='lumg') write(6,'(1x,a,i4,a,es9.2,a)') 'shock cells:', &
        count(src_tsh>0d0),', max post-shock T',maxval(src_tsh),' K'
+!-- CIE spectra of the shocks: table and the composition of the shock cells
+  if(in_srctype=='lumg' .and. trim(in_shock_cie)/='none' .and. any(src_tsh>0d0)) then
+     call shc_read(in_shock_cie)
+     allocate(shcx(shc_nel,grd_ncell))
+     shcx = 0d0
+     do i=1,gas_ncell
+        l = icell1 + i - 1
+        if(src_tsh(l) <= 0d0) cycle
+        do j=1,shc_nel
+           if(shc_elz(j) <= gas_nelem) shcx(j,l) = gas_natomfr(shc_elz(j),i)
+        enddo
+     enddo
+     call allreduce_sum(size(shcx),shcx)
+     call shc_setup(grd_ncell,src_tsh,shcx)
+     deallocate(shcx)
+     if(lmpi0) write(6,'(1x,2a,i3,a)') 'shocks: CIE spectra from ',trim(in_shock_cie),shc_nel,' elements'
+  endif
 
 !-- allocate arrays of sizes retreived in bcast_permanent
   call ions_alloc_grndlev(gas_nelem,gas_ncell)  !ground state occupation numbers
