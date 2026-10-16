@@ -49,12 +49,18 @@ fe1 26 1 FE/I/19apr23    60
 fe2 26 2 FE/II/19apr23   100
 fe3 26 3 FE/III/19apr23  80
 fe4 26 4 FE/IV/19apr23   50
+fe5 26 5 FE/V/19apr23    120
+fe6 26 6 FE/VI/19apr23   80
 co2 27 2 COB/II/19apr23  80
 co3 27 3 COB/III/19apr23 80
 co4 27 4 COB/IV/19apr23  60
+co5 27 5 COB/V/19apr23   140
+co6 27 6 COB/VI/19apr23  120
 ni2 28 2 NICK/II/19apr23 60
 ni3 28 3 NICK/III/19apr23 60
 ni4 28 4 NICK/IV/19apr23 60
+ni5 28 5 NICK/V/19apr23  120
+ni6 28 6 NICK/VI/19apr23 140
 "
 want=" $* "
 roman="I II III IV V VI VII VIII IX X"
