@@ -24,6 +24,8 @@ and (4) results.
 | 10 | design | Time-independent snapshot; no non-thermal (γ-ray, X-ray) excitation/ionization; NLTE only for H; no light-travel time. | SNe II lose Hα too early without time-dependent ionization and non-thermal excitation; He lines LTE. |
 | 11 | `GAS/physical_opacity*.f` | Free-free opacity counts every atom as a fully ionized ion of nuclear charge Z (`iz**2*gas_natomfr`, times n_atom n_e). | Neutral gas (e.g. CSM beyond the ionization front) gets free-free opacity and emission as if fully ionized; metals are weighted by Z² (Fe: 676). |
 | 12 | `nltemod.f` | `nlte_dealloc` loops over NLTE data that is never allocated when the bb opacity is off. | Segmentation fault at exit of continuum-only runs (after the output is written). |
+| 13 | `ionsmod.f` `ions_solve_eos` | Partition functions are computed only while they are all zero, i.e. once, at the temperature of the first cell of each rank, and reused for every cell and iteration. | LTE ionization balance and level populations of all elements use partition functions at the wrong temperature, different on each MPI rank. |
+| 14 | `ionsmod.f` `ions_nebular` (`in_nebular`, experimental) | ζ and the ionization energy in δ are taken from the next ion up (data.zeta is indexed by the charge of the recombining ion: ζ = 0 for H); the Saha factor is evaluated at the gas temperature instead of T_R; W is geometric from one photospheric radius. | Not used by this branch; `in_tion = 'nebu'` is a corrected implementation with Monte Carlo W and T_R. |
 
 ## 2. Stage 1 (this branch)
 
@@ -62,14 +64,14 @@ Integration tests and the comparison with observed SNe IIn: see §4.
 | `in_bbsobolev = t` | Lines of the LTE elements: Sobolev expansion opacity with the local gradient, averaged over directions, (1/(λΔν))⟨\|Q\|(1−e^{−K/\|Q\|})⟩, instead of the line strength smeared over the group (which overestimates a thick line by its τ, up to 10⁶ in a slow CSM). | `bbsobmod.f90`, `GAS/physical_opacity*.f` |
 | `in_bbeps = -1` | A line interaction thermalizes the photon with probability ε = X/(X+β), X = C_ul/A_ul = 20.6 λ³ n_e P(ΔE/kT)/√T (van Regemorter 1962), β the Sobolev escape probability; otherwise coherent scattering in the comoving frame (new IMC event; part of the extinction in the DDMC thresholds and leakage). `in_bbeps` ∈ [0,1] sets a constant ε; 1 is the released code. | `bbsobmod.f90`, `transport11.f90`, `diffusion11.f90`, `leakage_opacity11.f90` |
 | `in_tesolve = t` | Electron temperature from the thermal balance with the radiation field of the previous iteration: LTE opacities 4π Σ κ(B(T)−J); H photoionization heating, recombination and collisional cooling with the H populations re-solved at every trial T; Compton heating/cooling with induced scattering; energy injected outside shocks. Damped (`in_te_damp`) between iterations. | `tebalmod.f90`, `GAS/te_update.f90` |
-| `in_tion` | Ionization/excitation temperature of the LTE elements: the hydro temperature (`'hydr'`, default) or T_e (`'elec'`). Saha at T_e over-ionizes metals in a dilute radiation field, which LTE cannot describe. | `GAS/eos_update.f`, `GAS/physical_opacity*.f` |
+| `in_tion` | Ionization/excitation of the LTE elements: Saha–Boltzmann at the hydro temperature (`'hydr'`, default) or at T_e (`'elec'`), or the modified nebular approximation (Mazzali & Lucy 1993) with the radiation temperature (mean frequency) and dilution W of the Monte Carlo field of each cell and T_e (`'nebu'`; reduces to Saha for W = 1, T_e = T_R). Saha at T_e over-ionizes metals in a dilute field; at the hydro temperature they stay too neutral where the gas is photoionized and hot. | `GAS/eos_update.f`, `GAS/te_update.f90` (`nebular_wtr`), `ionsmod.f` (`ions_nebular_mc`) |
 | `in_nt_emin = 100` | Photons above 100 eV make fast photoelectrons whose energy heats the gas, ionizes and excites H in the shares of Shull & van Steenberg (1985): in the transport (absorbed X-ray packets go to the k-pool, the H continuum or H n = 2), in the H rate equations (non-thermal ionization and 1→2 rates from the absorbed X-ray power) and in the thermal balance (only the heat share heats). | `nltehtrmod.f90`, `nltehmod.f90`, `tebalmod.f90` |
 | (default) `in_fflegacy = f` | Free-free opacity from the ion charges of the EOS (NLTE H II fraction for H) instead of nuclear charges for all atoms (row 11). | `GAS/physical_opacity*.f`, `GAS/eos_update.f` |
 
 Fixes: the H bound-free opacity of stage 1 stopped at the Lyman edge (the level loop
 exited at n = 1 instead of skipping levels with thresholds above the frequency), so
 the Balmer, Paschen, ... continua were missing from the transport (the rate equations
-were right); rows 11 and 12.
+were right); OpenMP clauses; rows 11, 12 and 13.
 
 Validation:
 
@@ -78,8 +80,9 @@ Validation:
 | `Tests/benchmarks/wind` | pure-scattering Sobolev line in constant-velocity, β-law and homologous winds against the formal solution with direction-dependent escape (`sobolev.py`) | χ²/dof = 1.17, 1.34 (v = const, τ₀ = 3, 30), 0.98, 0.99 (β law), 1.20 (homologous); isotropic re-emission (stage 1): 5.15 (8σ in the trough) |
 | `test_bbsob` | angle-averaged expansion opacity against a brute-force angle integral for random accelerating, decelerating and compressing gradients; thin and thick limits; homologous (1−e^{−Kt})/t; van Regemorter table | 0.26 % (worst case), exact limits |
 | `test_tebal` | Planck field J = B(T₀) with LTE opacities and NLTE H must return T₀; pure-H nebula around a 4×10⁴ K star | T₀ to 0.2 % at n_H = 10⁸ and 10¹³ cm⁻³ from both sides; 21 500 K |
-| all unit tests | `Tests/unit/run_tests.sh` | pass |
-| regression | stage-2 switches off and `in_fflegacy = t`: LTE runs bit-identical to stage 1 | identical |
+| `test_nebular` | modified nebular approximation: W = 1, T_e = T_R reproduces the LTE Saha solution (all elements, 6000–20 000 K, 10⁹ and 10¹³ cm⁻³); ionization falls with dilution | fractions to 10⁻⁸; monotonic |
+| all unit tests | `SL_BUILD=<build> Tests/unit/run_tests.sh` | pass |
+| regression | stage-2 switches off and `in_fflegacy = t`: LTE runs bit-identical to stage 1 before the partition-function fix (row 13), which changes every LTE run | identical |
 
 ## 3. Roadmap
 

@@ -114,8 +114,9 @@ c-- coherent scattering in the comoving frame
 c-- electron temperature from the thermal balance of the gas with the
 c-- Monte Carlo radiation field (requires in_nlteh), mixed with the old one
 c-- with weight in_te_damp per iteration; the LTE elements are ionized and
-c-- excited at the input temperature (in_tion = 'hydr') or at the
-c-- electron temperature ('elec')
+c-- excited at the input temperature (in_tion = 'hydr'), at the electron
+c-- temperature ('elec'), or in the modified nebular approximation with
+c-- the temperature and dilution of the Monte Carlo radiation field ('nebu')
       logical :: in_tesolve = .false.
       real*8 :: in_te_damp = 0.5d0
       character(4) :: in_tion = 'hydr'
@@ -487,7 +488,9 @@ c
      &  stop 'in_srctype must be surf or lumg'
       if(in_bbeps>1d0) stop 'in_bbeps > 1'
       if(in_tesolve.and..not.in_nlteh) stop 'in_tesolve: needs in_nlteh'
-      if(in_tion/='hydr'.and.in_tion/='elec') stop 'in_tion: hydr|elec'
+      if(in_tion/='hydr'.and.in_tion/='elec'.and.in_tion/='nebu')
+     &  stop 'in_tion: hydr|elec|nebu'
+      if(in_tion=='nebu'.and..not.in_nlteh) stop 'in_tion: in_nlteh'
       if(in_te_damp<=0d0.or.in_te_damp>1d0) stop 'in_te_damp: (0,1]'
       if(in_nt_emin>0d0.and..not.in_nlteh) stop 'in_nt_emin: in_nlteh'
 c

@@ -157,7 +157,7 @@ c
 c
 c
 c
-      subroutine ions_solve_eos(natomfr,temp,ndens,nelec,iconv)
+      subroutine ions_solve_eos(natomfr,temp,ndens,nelec,iconv,keepq)
 c     --------------------------------------------------------
       use physconstmod
       use miscmod, only:warn
@@ -166,6 +166,8 @@ c     --------------------------------------------------------
       real*8,intent(in) :: temp,ndens
       real*8,intent(inout) :: nelec
       integer,intent(out) :: iconv
+c-- keep the partition functions set by the caller (nebular approximation)
+      logical,intent(in),optional :: keepq
 ************************************************************************
 * solve LTE equation of state. Solve the Saha equation for all elements
 * repeatedly to converge the electron density to a prescribed accuracy.
@@ -205,8 +207,10 @@ c
 c
 c-- evaluate partition functions: Q = Sum_i(g_i exp(e_i/kt)
 c--
+c-- (at this temperature: the released code evaluated them once, at the
+c-- temperature of the first cell, and reused them everywhere)
         do iz=1,nelem
-         if(all(ion_el(iz)%i(:)%q==0)) then ! otherwise partition function evaluated in nebular eos subroutine
+         if(.not.present(keepq) .or. all(ion_el(iz)%i(:)%q==0)) then ! otherwise partition function evaluated in nebular eos subroutine
           do ii=1,ion_el(iz)%ni-1
             ion_el(iz)%i(ii)%q = sum(ion_el(iz)%i(ii)%glev(:)*
      &      exp(-kti*ion_el(iz)%i(ii)%elev(:))) !elev is h*c*chi, with [chi]=1/cm
@@ -431,7 +435,7 @@ c-- Q = Sum_i(g_i*exp(e_i/kt) [metastable] + W*Sum_i(g_i*exp(e_i/kt) [non-metast
       enddo !iz
 
 c-- call LTE eos first to get LTE ion populations
-      call ions_solve_eos(natomfr,temp,ndens,nelec,niter)
+      call ions_solve_eos(natomfr,temp,ndens,nelec,niter,keepq=.true.)
 
 c-- determine zeta, delta, and then phi_nlte from phi_lte
       allocate(phi_lte(nelem)) ! lte ion population ratios
@@ -646,6 +650,128 @@ c
       end function interp1d
 
       end subroutine ions_nebular
+c
+c
+c
+      subroutine ions_nebular_mc(natomfr,te,tr,w,ndens,nelec)
+c     -------------------------------------------------------
+      use physconstmod
+      implicit none
+      real*8,intent(in) :: natomfr(nelem)
+      real*8,intent(in) :: te,tr,w,ndens
+      real*8,intent(inout) :: nelec
+************************************************************************
+* Ionization balance in the modified nebular approximation (Mazzali &
+* Lucy 1993) for a radiation field of temperature tr and dilution w
+* (from the Monte Carlo estimators) and electron temperature te:
+*   n(j+1) n_e/n(j) = w [delta zeta + w(1-zeta)] (te/tr)^1/2 Phi*(tr)
+* Phi*(tr): Saha ratio at tr with partition functions at tr in which the
+* excited non-metastable levels are weighted by w.  zeta: fraction of the
+* recombinations of ion j+1 that go to the ground state of j (data.zeta is
+* indexed by the charge of the recombining ion: stage j+1 -> i(j)%zval).
+* delta: Mazzali & Lucy eq. 15 with b_1 = 1/w.  w = 1, te = tr is Saha.
+* The electron density is found by bisection in log n_e.
+************************************************************************
+      integer :: iz,ii,il,nion,it,k,ntemp
+      real*8 :: ktr,kte,sahac,chi,chi0,zeta,delta,help,wt,s
+      real*8 :: lphi(ion_iionmax,nelem) !ln[n(ii) n_e/n(ii-1)]
+      real*8 :: lnelo,lnehi,lne,flo,f
+c
+      wt = min(max(w,1d-30),1d0)
+      ktr = 1d0/(pc_kb*tr)
+      kte = 1d0/(pc_kb*te)
+      sahac = 2d0*(pc_pi2*pc_me*pc_kb*tr/pc_h**2)**1.5d0
+      chi0 = ion_el(1)%i(1)%e
+c-- zeta interpolation weights at tr
+      ntemp = size(zeta_temp)
+      do k=1,ntemp-1
+       if(tr<zeta_temp(k+1)) exit
+      enddo
+      k = min(k,ntemp-1)
+      s = (tr - zeta_temp(k))/(zeta_temp(k+1) - zeta_temp(k))
+      s = min(max(s,0d0),1d0)
+c
+      do iz=1,nelem
+       nion = ion_el(iz)%ni
+c-- partition functions at tr, excited non-metastable levels times w
+       do ii=1,nion-1
+        help = 0d0
+        do il=1,ion_el(iz)%i(ii)%nlev
+         if(il==1 .or. ion_el(iz)%i(ii)%meta(il)) then
+          help = help + ion_el(iz)%i(ii)%glev(il)*
+     &      exp(-ktr*ion_el(iz)%i(ii)%elev(il))
+         else
+          help = help + wt*ion_el(iz)%i(ii)%glev(il)*
+     &      exp(-ktr*ion_el(iz)%i(ii)%elev(il))
+         endif
+        enddo !il
+        ion_el(iz)%i(ii)%q = max(help,1d-300)
+       enddo !ii
+       ion_el(iz)%i(nion)%q = 1d0
+c-- nebular Saha ratios
+       lphi(:,iz) = 0d0
+       do ii=2,nion
+        chi = ion_el(iz)%i(ii-1)%e
+        zeta = (1d0-s)*ion_el(iz)%i(ii-1)%zval(k) +
+     &    s*ion_el(iz)%i(ii-1)%zval(k+1)
+        if(chi>=chi0) then
+         delta = te/tr*exp(chi*(ktr-kte))
+        else
+         delta = 1d0 + te/tr*exp(chi*ktr-chi0*kte) -
+     &     exp((chi-chi0)*ktr)
+        endif
+        help = wt*(delta*zeta + wt*(1d0-zeta))*sqrt(te/tr)
+        lphi(ii,iz) = log(max(help,1d-300)) + log(sahac) +
+     &    log(ion_el(iz)%i(ii)%q/ion_el(iz)%i(ii-1)%q) - chi*ktr
+       enddo !ii
+      enddo !iz
+c
+c-- electron density: f(n_e) = n_e from the ions - n_e, decreasing in n_e
+      lnelo = log(1d-12*ndens)
+      lnehi = log(dble(nelem+1)*ndens)
+      flo = fne(lnelo)
+      do it=1,200
+       lne = .5d0*(lnelo + lnehi)
+       f = fne(lne)
+       if(f*flo > 0d0) then
+        lnelo = lne
+        flo = f
+       else
+        lnehi = lne
+       endif
+       if(lnehi-lnelo < 1d-10) exit
+      enddo
+      lne = .5d0*(lnelo + lnehi)
+      f = fne(lne)
+      nelec = exp(lne)/ndens
+c
+      contains
+c
+      real*8 function fne(lnex)
+c-- ion fractions for n_e = exp(lnex) (stored in ion_el), minus n_e
+      real*8,intent(in) :: lnex
+      integer :: iz2,ii2,nion2
+      real*8 :: lr(ion_iionmax),lmax,tot,ne2
+      ne2 = 0d0
+      do iz2=1,nelem
+       nion2 = ion_el(iz2)%ni
+       lr(1) = 0d0
+       do ii2=2,nion2
+        lr(ii2) = lr(ii2-1) + lphi(ii2,iz2) - lnex
+       enddo
+       lmax = maxval(lr(:nion2))
+       tot = sum(exp(lr(:nion2)-lmax))
+       ion_el(iz2)%ne = 0d0
+       do ii2=1,nion2
+        ion_el(iz2)%i(ii2)%n = exp(lr(ii2)-lmax)/tot
+        ion_el(iz2)%ne = ion_el(iz2)%ne + (ii2-1)*ion_el(iz2)%i(ii2)%n
+       enddo
+       ne2 = ne2 + natomfr(iz2)*ion_el(iz2)%ne
+      enddo
+      fne = ne2*ndens - exp(lnex)
+      end function fne
+c
+      end subroutine ions_nebular_mc
 c
 c
 c

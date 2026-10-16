@@ -70,3 +70,32 @@ subroutine te_update(it)
        dmin,' ..',dmax,' (rank 0), cells without root:',nfail
 end subroutine te_update
 ! vim: fdm=marker
+!
+!
+subroutine nebular_wtr
+!-----------------------------------------------------------------------
+! Radiation temperature and dilution factor of the Monte Carlo radiation
+! field of the previous iteration in this rank's cells (Mazzali & Lucy
+! 1993): T_R from the mean frequency, nu_mean = 3.832 kT_R/h, and
+! W = pi J/(sigma T_R^4).  The LTE elements are excited at T_R
+! (gas_tion) and ionized in the nebular approximation.  Without estimators
+! (first iteration) T_R is the input temperature and W = 1.
+!-----------------------------------------------------------------------
+  use gasmod
+  use nltehtrmod
+  implicit none
+  real*8,parameter :: hh = 6.6260693d-27, kb = 1.3806505d-16, sb = 5.670400d-5, pi = 3.141592653589793d0
+  integer :: i,l
+  real*8 :: j0,j1
+  if(.not.nht_have_mc) return
+  do i=1,gas_ncell
+     if(gas_mass(i)<=0d0) cycle
+     l = gas_icell1 + i - 1
+     j0 = sum(nht_jg(:,l)*nht_dnug)
+     j1 = sum(nht_nug*nht_jg(:,l)*nht_dnug)
+     if(j0<=0d0) cycle
+     gas_tion(i) = hh*(j1/j0)/(3.832d0*kb)
+     gas_wdil(i) = min(1d0, pi*j0/(sb*gas_tion(i)**4))
+  enddo
+end subroutine nebular_wtr
+! vim: fdm=marker

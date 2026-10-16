@@ -80,7 +80,12 @@ c-- field of the previous iteration; the LTE elements are ionized at the
 c-- input temperature or at the electron temperature
 c===============================
       if(in_tesolve .and. it>1) call te_update(it)
-      if(.not.in_tesolve .or. in_tion=='elec') gas_tion = gas_temp
+      if(in_tion=='nebu') then
+c-- radiation temperature and dilution of the Monte Carlo field
+       call nebular_wtr
+      elseif(.not.in_tesolve .or. in_tion=='elec') then
+       gas_tion = gas_temp
+      endif
 c
 c-- solve LTE/nebular EOS
 c===============================

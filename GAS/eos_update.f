@@ -7,7 +7,7 @@ c     --------------------------------
       use timingmod
       use inputparmod
       use nltemod
-      use nltehtrmod, only:nht_neothloc
+      use nltehtrmod, only:nht_neothloc,nht_have_mc
       implicit none
       logical,intent(in) :: do_output
 ************************************************************************
@@ -24,7 +24,11 @@ c-- loop over all gas_vals cells
       do i=1,gas_ncell
        if(gas_mass(i)<=0d0) cycle
        ndens = gas_natom(i)/gas_vol(i) !atom number density
-       if(in_nebular.and.gas_rcell(i).gt.in_R_phot) then
+       if(in_tion=='nebu'.and.nht_have_mc) then
+c-- modified nebular approximation with the Monte Carlo radiation field
+         call ions_nebular_mc(gas_natomfr(1,i),gas_temp(i),
+     &     gas_tion(i),gas_wdil(i),ndens,gas_nelec(i))
+       elseif(in_nebular.and.gas_rcell(i).gt.in_R_phot) then
          !-- experimental nebular EOS
          call ions_nebular(gas_natomfr(1,i),gas_tion(i),
      &     gas_radtemp(i),gas_rcell(i),ndens,gas_nelec(i))
