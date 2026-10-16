@@ -154,6 +154,10 @@ module nltextrmod
 !-- (groups with bound-free absorption, sum over them of the share of
 !-- absorptions that walk the other levels, groups where it exceeds 0.1)
   real*8,public :: nxt_bfstat(3) = 0d0
+!-- convergence of the populations: median and largest over this rank's
+!-- cells of the cell's largest relative change of a state above 1e-4
+!-- (after the damping; nxt_gas_solve)
+  real*8,public :: nxt_dxstat(2) = 0d0
 !-- emission kinds returned by the macro-atom
   integer,parameter,public :: em_line = 1, em_bf = 2, em_thermal = 3, em_2ph = 4
 !
@@ -508,12 +512,13 @@ subroutine nxt_gas_solve(it,gncell,temp,trad,nelv,neoth,qb,qv,icell1,edep)
   integer,intent(in) :: it,gncell,icell1
   real*8,intent(in) :: temp(gncell),trad(gncell),nelv(nxa_nel,gncell),neoth(gncell)
   real*8,intent(in) :: edep(gncell),qb(gncell),qv(gncell)
-  integer :: i,l,ig,ierr,nfail
+  integer :: i,l,ig,ierr,nfail,k,nc
   real*8 :: x(nxa_nst),xold(nxa_nst),ne,beta(nxa_nlin),jg(nxt_ng),jb(nxa_nlin)
-  real*8 :: nti(nxa_nst),ntx(nxa_nst),ntot
+  real*8 :: nti(nxa_nst),ntx(nxa_nst),ntot,dxc(gncell),w
   logical :: ljb(nxa_nlin)
 !
   nfail = 0
+  nc = 0
   do i=1,gncell
      l = icell1 + i - 1
      ntot = sum(nelv(:,i))
@@ -554,8 +559,29 @@ subroutine nxt_gas_solve(it,gncell,temp,trad,nelv,neoth,qb,qv,icell1,edep)
      endif
      nxt_xloc(:,i) = x
      nxt_neloc(i) = neoth(i) + free_el(nelv(:,i),x)
+!-- (convergence: largest relative change of a state above 1e-4)
+     nc = nc + 1
+     dxc(nc) = 0d0
+     do k=1,nxa_nst
+        if(x(k) > 1d-4 .and. xold(k) > 0d0) dxc(nc) = max(dxc(nc),abs(x(k)/xold(k) - 1d0))
+     enddo
   enddo
   if(nfail>0) write(0,*) 'nxt_gas_solve: no solution in cells:',nfail
+!-- median and largest change over the cells (insertion sort)
+  nxt_dxstat = 0d0
+  if(nc>0) then
+     do i=2,nc
+        w = dxc(i)
+        k = i - 1
+        do while(k>=1)
+           if(dxc(k) <= w) exit
+           dxc(k+1) = dxc(k)
+           k = k - 1
+        enddo
+        dxc(k+1) = w
+     enddo
+     nxt_dxstat = [dxc((nc+1)/2),dxc(nc)]
+  endif
 contains
   subroutine renorm(xx)
     real*8,intent(inout) :: xx(nxa_nst)

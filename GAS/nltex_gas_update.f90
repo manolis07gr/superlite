@@ -9,6 +9,7 @@ subroutine nltex_gas_update(it)
   use gridmod
   use nlteatommod, only:nxa_nel,nxa_el
   use nltextrmod
+  use mpimod, only:lmpi0
   implicit none
   integer,intent(in) :: it
   integer :: i,l,iel
@@ -39,6 +40,8 @@ subroutine nltex_gas_update(it)
           edep(i) = nxt_ntdep(nxt_ng,nxt_nug,nxt_dnug,nxt_jg(:,l),gas_cap(:,i))
   enddo
   call nxt_gas_solve(it,gas_ncell,gas_temp,gas_radtemp,nelv,neoth,qb,qv,gas_icell1,edep)
+  if(lmpi0 .and. it>1 .and. nxt_have_mc) write(6,'(1x,a,i3,a,es9.2,a,es9.2,a)') 'NLTE (it',it, &
+       '): largest change of a state above 1e-4 per cell, median',nxt_dxstat(1),', max',nxt_dxstat(2),' (rank 0)'
 !-- electrons per atom
   do i=1,gas_ncell
      if(gas_mass(i)<=0d0) cycle
