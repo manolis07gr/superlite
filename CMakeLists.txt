@@ -34,6 +34,8 @@ set (CMAKE_Fortran_MODULE_DIRECTORY ${PROJECT_BINARY_DIR})
 
 #-- create lists of top-level source files
 file (GLOB_RECURSE SuperLite_FILES "*.f" "*.f90")
+#-- unit tests are separate programs
+list (FILTER SuperLite_FILES EXCLUDE REGEX "/Tests/")
 
 #-- remove versions of mpimod from .f list
 file (GLOB MPIMOD "mpimod_mpi.f" "mpimod_ser.f")
@@ -47,7 +49,7 @@ add_executable (superlite ${SuperLite_FILES})
 find_package (BLAS)
 find_package (LAPACK )
 if(LAPACK_FOUND AND BLAS_FOUND)
-  set(lapckblas_libraries ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES})
+  set(lapackblas_libraries ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES})
 #  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -mkl")
   target_link_libraries(superlite PRIVATE ${lapackblas_libraries})
 endif ()
@@ -72,8 +74,11 @@ if (MPI_Fortran_FOUND AND USE_MPI)
   target_include_directories (superlite PRIVATE ${MPI_Fortran_INCLUDE_PATH})
 endif ()
 
-#-- temporary fix for MPI mismatch on latest MacOS
-#set(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} -fallow-argument-mismatch")
+#-- gfortran >= 10 rejects the type-generic MPI calls without this flag
+if (CMAKE_Fortran_COMPILER_ID STREQUAL "GNU" AND
+    CMAKE_Fortran_COMPILER_VERSION VERSION_GREATER_EQUAL 10)
+  set(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} -fallow-argument-mismatch")
+endif ()
 
 #-- indicate successful configuration
 message ("")
