@@ -18,7 +18,8 @@ c$    use omp_lib
       use nlteatommod, only:nxa_nlv,nxa_lvel,nxa_el,nxa_lvc,nxa_lvs,
      &  nxa_lvphi,nxa_lvnu0,nxa_g1,nxa_sgm
       use nltextrmod, only:nxt_xloc,nxt_nelloc,nxt_neloc,gas_capnbf,
-     &  nxt_isel,nxt_elz
+     &  nxt_isel,nxt_elz,nxt_ionzs,nxt_etop
+      use nlteatommod, only:nxa_ion
       use gridmod, only:grd_xarr,grd_vxarr
       use bbsobmod
       implicit none
@@ -92,8 +93,14 @@ c-- warn once
 c-- NLTE hydrogen bound-free
       integer :: n
       real*8 :: nu,xstar,nl
-      integer :: lv,iel,o
+      integer :: lv,iel,o,jion
       real*8,allocatable :: capn(:)
+c-- NLTE ions, lines to levels above the model atom: reference state
+c-- (model level at or below the lower level, or the top state), its weight,
+c-- and the excitation energy of the lower level above it [cm^-1]
+      integer :: jst,k
+      real*8 :: eup,boltz,gref,dchi,elv,ethr
+      real*8 :: expfe(gas_ncell)
       ! character(40) :: fname
 c-- temporary population arrays
       type level_populations
@@ -391,11 +398,13 @@ c
 c-- LTE opacity calculations
 c$omp parallel default(none)
 c$omp& private(wl0,wl,wlinv,dwl,phi,ocggrnd,expfac,i,igs,iigs,
-c$omp&   caphelp,emithelp,dirty,B_nu,iz,ii,kk,fq,eps)
+c$omp&   caphelp,emithelp,dirty,B_nu,iz,ii,kk,fq,eps,jion,eup,boltz,
+c$omp&   expfe,iel,jst,k,gref,dchi,elv,ethr)
 c$omp& shared(ngsub,gas_mass,gas_temp,grndlev,hckt,hckti,wlsub,bb_xs,
 c$omp&   bb_nline,gas_ncell,nlte_nelem,nlte_ndens,nlte_data,
 c$omp&   cap,capemit,emiss,capsc,qarr,warr,qavg,qmin,qmax,nearr,
-c$omp&   bbs_on,bbs_sobolev,bbs_eps,nxt_isel)
+c$omp&   bbs_on,bbs_sobolev,bbs_eps,nxt_isel,nxt_ionzs,nxt_etop,
+c$omp&   nxa_ion,nxa_el,nxt_xloc,nxt_nelloc)
        iigs = 0
        dirty = .true.
        phi = 0d0
@@ -404,9 +413,41 @@ c$omp do schedule (static)
         wl0 = bb_xs(il)%wl0*pc_ang  !in cm
         iz = bb_xs(il)%iz
         if(iz.le.nlte_nelem) cycle ! precaution
-c-- lines of the NLTE elements are resonances in the transport
-        if(nxt_isel(iz)) cycle
         ii = bb_xs(il)%ii
+c-- NLTE elements: lines within the model atoms are resonances in the
+c-- transport.  Lines to levels above them, and lines of the top ion, stay
+c-- here: the lower level is populated from the NLTE population of the
+c-- highest model level at or below it (the level itself when it is in the
+c-- model atom; the top state for the top ion), with Boltzmann excitation
+c-- at T_e above that level.  Other stages are not populated.
+c-- Line-list and model-atom energies of a level agree to ~1e-4.
+        jion = 0
+        if(nxt_isel(iz)) then
+         jion = nxt_ionzs(iz,ii)
+         if(jion==0) cycle
+         iel = nxt_elz(iz)
+         if(jion>0) then
+          eup = bb_xs(il)%chilw + 1d8/bb_xs(il)%wl0
+          if(eup <= nxt_etop(jion)*(1d0+1d-4)+1d0) cycle
+          ethr = bb_xs(il)%chilw*(1d0+1d-4) + 1d0
+          jst = 1
+          gref = 0d0
+          do k=2,nxa_ion(jion)%nlev
+           elv = nxa_ion(jion)%e(k)/(pc_h*pc_c)
+           if(elv<=ethr .and. elv>gref) then
+            jst = k
+            gref = elv
+           endif
+          enddo
+          dchi = max(0d0,bb_xs(il)%chilw - gref)
+          gref = nxa_ion(jion)%g(jst)
+          jst = nxa_el(iel)%xoff + nxa_ion(jion)%soff + jst
+         else
+          dchi = bb_xs(il)%chilw
+          gref = nxa_el(iel)%gtop
+          jst = nxa_el(iel)%xoff + nxa_el(iel)%ns
+         endif
+        endif
 c-- igs pointer
         do igs=iigs,ngsub
          if(wlsub(igs+1)>wl0) exit
@@ -425,6 +466,7 @@ c-- update
          dwl = wlsub(igs+1) - wlsub(igs)  !in cm
 c-- approximate expfac
          expfac = 1d0 - exp(-hckti*wlinv)
+         expfe = 1d0 - exp(-hckt*wlinv)
 c-- approximate profile function
          phi = wl**2/(dwl*pc_c)
         endif
@@ -435,11 +477,16 @@ c
 c-- evaluate cap
         do i=1,gas_ncell
          if(gas_mass(i)<=0d0) cycle
-         ocggrnd = grndlev(i,ii,iz)
+         if(jion/=0) then
+          ocggrnd = nxt_nelloc(iel,i)*nxt_xloc(jst,i)/gref
+          boltz = exp(-dchi*hckt(i))*expfe(i)
+         else
+          ocggrnd = grndlev(i,ii,iz)
+          boltz = exp(-bb_xs(il)%chilw*hckti(i))*expfac(i)
+         endif
          if(ocggrnd<=0d0) cycle
 *        expfac = 1d0 - exp(-hckt(i)/wl0)  !exact expfac
-         caphelp = phi*bb_xs(il)%gxs*ocggrnd*
-     &    exp(-bb_xs(il)%chilw*hckti(i))*expfac(i)
+         caphelp = phi*bb_xs(il)%gxs*ocggrnd*boltz
          if(bbs_on) then
 c-- Sobolev strength K of the line, expansion opacity, thermalized share
           kk = caphelp/phi*wl0
@@ -561,10 +608,15 @@ c-- exp(-h nu0/kT) (applied with the frequency below)
          xstar = nxt_xloc(o+nxa_lvc(lv),i)*nxt_neloc(i)*nxa_lvphi(lv)*
      &     4.1412d-16*gas_temp(i)**(-1.5d0)
          do igs=1,min(nxa_g1(lv),ngsub)
+          capn(igs) = capn(igs) + nl*nxt_xloc(o+nxa_lvs(lv),i)*
+     &      nxa_sgm(igs,lv)
+         enddo !igs
+c-- stimulated recombination: from the edge up to h(nu-nu0) = 40 kT
+         do igs=min(nxa_g1(lv),ngsub),1,-1
           nu = max(2d0*pc_c/(wlsub(igs)+wlsub(igs+1)),nxa_lvnu0(lv))
-          capn(igs) = capn(igs) + nl*(nxt_xloc(o+nxa_lvs(lv),i) -
-     &      xstar*exp(-min(pc_h*(nu-nxa_lvnu0(lv))/
-     &      (pc_kb*gas_temp(i)),700d0)))*nxa_sgm(igs,lv)
+          argx = pc_h*(nu-nxa_lvnu0(lv))/(pc_kb*gas_temp(i))
+          if(argx>40d0) exit
+          capn(igs) = capn(igs) - nl*xstar*exp(-argx)*nxa_sgm(igs,lv)
          enddo !igs
         enddo !lv
         do igs=1,ngsub

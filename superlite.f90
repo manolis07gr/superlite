@@ -40,7 +40,7 @@ program superlite
   character(25) :: msg
 !-- NLTE model-atom files
   integer :: i, nfatom
-  character(256) :: fatom(40)
+  character(256) :: fatom(60)
 !
 !-- mpi initialization
   call mpi_init(ierr) !MPI
@@ -137,6 +137,11 @@ program superlite
              nlte_data(1)%i(1)%C3,nlte_data(1)%i(1)%delE)
      endif
      call atomfiles(in_nltex_atoms,nfatom,fatom)
+     if(len_trim(in_nltex_dir)>0) then
+        do i=1,nfatom
+           if(fatom(i)(1:1)/='/') fatom(i) = trim(in_nltex_dir)//'/'//trim(fatom(i))
+        enddo
+     endif
      call nxt_init(grd_ncell,gas_ncell,grp_ng,grp_wl,nfatom,fatom(:nfatom),merge(in_nlteh_nlev,0,in_nlteh))
      nxt_damp = in_nlteh_damp
      nxt_tau0 = in_nlteh_tau0

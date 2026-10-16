@@ -94,7 +94,9 @@ c-- line with tau = in_nlteh_tau0 (for v/r = dv/dr) and no other H lines
 c-- NLTE ions from model-atom files (Tools/cmfgen2superlite_atom.py),
 c-- names separated by blanks; with in_nlteh hydrogen is built in.
 c-- All NLTE elements share the macro-atom and statistical equilibrium.
-      character(512) :: in_nltex_atoms = ' '
+      character(1024) :: in_nltex_atoms = ' '
+c-- directory of the model-atom files (prefixed to relative names)
+      character(256) :: in_nltex_dir = ' '
 c-- NLTE treatment active (in_nlteh or model atoms; set, not read)
       logical :: in_nltex = .false.
 c-- interior source: 'surf' blackbody surfaces at T_rad (legacy),
@@ -181,7 +183,7 @@ c-- runtime parameter namelist
      & in_noeos,
      & in_nebular,in_R_phot,
      & in_nlte,in_nlte_nelem,in_nlteh,in_nlteh_nlev,in_nlteh_damp,
-     & in_nlteh_tau0,in_nltex_atoms,
+     & in_nlteh_tau0,in_nltex_atoms,in_nltex_dir,
      & in_srctype,in_shock_dvmin,in_shock_tmax,
      & in_bbsobolev,in_bbeps,in_tesolve,in_te_damp,in_tion,
      & in_nt_emin,in_fflegacy,

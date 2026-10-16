@@ -70,7 +70,31 @@ pure function te_heatshare(nel,x) result(fh)
 end function te_heatshare
 !
 !
-subroutine te_terms(temp,ng,nug,dnug,jg,capabs,capem,nel,x,ne,gam_ext,terms)
+subroutine te_pisums(ng,nug,dnug,jg,pa,pb)
+!-- photoionization heating integrals of each level that do not depend on
+!-- T: Sum_g J_g Int_g sigma (1 - nu_l/nu) dnu for groups below (pa) and
+!-- above (pb) the fast-electron threshold te_ntemin
+  integer,intent(in) :: ng
+  real*8,intent(in) :: nug(ng),dnug(ng),jg(ng)
+  real*8,intent(out) :: pa(nxa_nlv),pb(nxa_nlv)
+  integer :: lv,ig
+  real*8 :: w
+  pa = 0d0
+  pb = 0d0
+  do lv=1,nxa_nlv
+     do ig=1,nxa_g1(lv)
+        w = jg(ig)*(nxa_sgm(ig,lv)*dnug(ig) - hh*nxa_lvnu0(lv)*nxa_sgh(ig,lv))
+        if(te_ntemin > 0d0 .and. hh*nug(ig) > te_ntemin) then
+           pb(lv) = pb(lv) + w
+        else
+           pa(lv) = pa(lv) + w
+        endif
+     enddo
+  enddo
+end subroutine te_pisums
+!
+!
+subroutine te_terms(temp,ng,nug,dnug,jg,capabs,capem,nel,x,ne,gam_ext,terms,pa,pb)
 !-----------------------------------------------------------------------
 ! Heating and cooling terms at temperature temp for fixed populations.
 ! terms(1) LTE opacities, net cooling         terms(2) NLTE photoionization heating
@@ -82,8 +106,10 @@ subroutine te_terms(temp,ng,nug,dnug,jg,capabs,capem,nel,x,ne,gam_ext,terms)
   real*8,intent(in) :: temp,nug(ng),dnug(ng),jg(ng),nel(nxa_nel),x(nxa_nst),ne,gam_ext
   real*4,intent(in) :: capabs(ng),capem(ng)
   real*8,intent(out) :: terms(te_nterm)
+  real*8,intent(in),optional :: pa(nxa_nlv),pb(nxa_nlv)  !te_pisums (computed if absent)
   integer :: ig,lv,iel,o,i,j,k,n,l,u
-  real*8 :: hkt,bg,s,xs,fh,jh,nu,sh,eu
+  real*8 :: hkt,bg,s,xs,fh,jh,nu,sh,eu,sst
+  real*8 :: qa(nxa_nlv),qb(nxa_nlv)
   real*8,allocatable :: qup(:,:),qdn(:,:),cion(:),c3b(:)
 !
   hkt = hh/(kb*temp)
@@ -106,6 +132,12 @@ subroutine te_terms(temp,ng,nug,dnug,jg,capabs,capem,nel,x,ne,gam_ext,terms)
   terms(5) = 4d0*pi*sigt*ne/mec2*terms(5)
 !-- NLTE photoionization heating (net of stimulated recombination) and
 !-- recombination cooling
+  if(present(pa) .and. present(pb)) then
+     qa = pa
+     qb = pb
+  else
+     call te_pisums(ng,nug,dnug,jg,qa,qb)
+  endif
   s = 0d0
   sh = 0d0
   do lv=1,nxa_nlv
@@ -113,14 +145,18 @@ subroutine te_terms(temp,ng,nug,dnug,jg,capabs,capem,nel,x,ne,gam_ext,terms)
      if(nel(iel) <= 0d0) cycle
      o = nxa_el(iel)%xoff
      xs = x(o+nxa_lvc(lv))*ne*nxa_lvphi(lv)*nxa_sahac*temp**(-1.5d0)
-     do ig=1,nxa_g1(lv)
+!-- Int_g sigma (1 - nu_l/nu) dnu = sgm dnu - h nu_l sgh; stimulated
+!-- recombination from the edge up to h(nu-nu0) = 40 kT
+     sst = 0d0
+     do ig=nxa_g1(lv),1,-1
         nu = max(nug(ig),nxa_lvnu0(lv))
+        if(hkt*(nu-nxa_lvnu0(lv)) > 40d0) exit
         jh = jg(ig)
         if(te_ntemin > 0d0 .and. hh*nug(ig) > te_ntemin) jh = fh*jg(ig)
-!-- Int_g sigma (1 - nu_l/nu) dnu = sgm dnu - h nu_l sgh
-        s = s + nel(iel)*(x(o+nxa_lvs(lv)) - xs*exp(-min(hkt*(nu-nxa_lvnu0(lv)),700d0)))* &
-             jh*(nxa_sgm(ig,lv)*dnug(ig) - hh*nxa_lvnu0(lv)*nxa_sgh(ig,lv))
+        sst = sst + jh*exp(-hkt*(nu-nxa_lvnu0(lv)))* &
+             (nxa_sgm(ig,lv)*dnug(ig) - hh*nxa_lvnu0(lv)*nxa_sgh(ig,lv))
      enddo
+     s = s + nel(iel)*(x(o+nxa_lvs(lv))*(qa(lv) + fh*qb(lv)) - xs*sst)
      sh = sh + nel(iel)*x(o+nxa_lvc(lv))*nxa_rcool(lv,temp)
   enddo
   terms(2) = 4d0*pi*s
@@ -174,8 +210,10 @@ subroutine te_balance(told,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx,ca
   real*8,intent(out),optional :: tsolout
   integer :: it,side
   real*8 :: a,b,c,fa,fb,fc,tsol,lo,hi
+  real*8 :: pa(nxa_nlv),pb(nxa_nlv)
 !
   ierr = 0
+  call te_pisums(ng,nug,dnug,jg,pa,pb)
 !-- bracket in log T around the old temperature
   a = log(told)
   fa = fval(a)
@@ -240,7 +278,7 @@ contains
        xx = x
        ne = neoth + free_el(xx)
     endif
-    call te_terms(t,ng,nug,dnug,jg,capabs,capem,nel,xx,ne,gam_ext,terms)
+    call te_terms(t,ng,nug,dnug,jg,capabs,capem,nel,xx,ne,gam_ext,terms,pa,pb)
     fval = terms(1) - terms(2) + terms(3) + terms(4) + terms(5) - terms(6)
   end function fval
   real*8 function free_el(xx)

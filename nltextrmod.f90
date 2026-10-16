@@ -103,6 +103,9 @@ module nltextrmod
   integer,public :: nxt_elh = 0, nxt_elhe = 0
   logical,public :: nxt_isel(0:99) = .false. !element (Z) in NLTE
   integer,public :: nxt_elz(0:99) = 0         !NLTE element index of Z, 0 if none
+!-- NLTE ion of (Z, stage); -1: the top ion of an NLTE element; 0: none
+  integer,public :: nxt_ionzs(0:99,30) = 0
+  real*8,allocatable,public :: nxt_etop(:)    !(nion) highest level of the model atom [cm^-1]
 !-- emission kinds returned by the macro-atom
   integer,parameter,public :: em_line = 1, em_bf = 2, em_thermal = 3, em_2ph = 4
 !
@@ -271,9 +274,18 @@ subroutine nxt_init(ncell,gncell,ng,wlg,nfile,files,hnlev)
 !-- H and He for the non-thermal electrons and the benchmark
   nxt_isel = .false.
   nxt_elz = 0
+  nxt_ionzs = 0
+  allocate(nxt_etop(nxa_nion))
   do iel=1,nxa_nel
      nxt_isel(nxa_el(iel)%z) = .true.
      nxt_elz(nxa_el(iel)%z) = iel
+     do j=1,nxa_el(iel)%nion
+        i = nxa_el(iel)%ion(j)
+        nxt_ionzs(nxa_el(iel)%z,nxa_ion(i)%stage) = i
+        nxt_etop(i) = maxval(nxa_ion(i)%e)/(hh*cc)
+     enddo
+     i = nxa_el(iel)%ion(nxa_el(iel)%nion)
+     if(nxa_ion(i)%stage < 30) nxt_ionzs(nxa_el(iel)%z,nxa_ion(i)%stage+1) = -1
   enddo
   do iel=1,nxa_nel
      i = nxa_el(iel)%ion(1)
@@ -323,6 +335,7 @@ subroutine nxt_dealloc
   if(allocated(nxt_chst)) deallocate(nxt_chst,nxt_chk,nxt_chi,nxt_chcum)
   if(allocated(nxt_kcum)) deallocate(nxt_kcum)
   if(allocated(nxt_cmax)) deallocate(nxt_cmax,nxt_cmoff)
+  if(allocated(nxt_etop)) deallocate(nxt_etop)
   nxt_elh = 0; nxt_elhe = 0; nxt_kha = 0
   nxt_sh1 = 0; nxt_sh2 = 0; nxt_shc = 0; nxt_she1 = 0; nxt_she2 = 0; nxt_shec = 0
 end subroutine nxt_dealloc

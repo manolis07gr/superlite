@@ -193,11 +193,15 @@ subroutine nx_el_rates(iel,temp,trad,ng,nug,dnug,jg,cq,ci,c3,gam,gst,ar)
         ar(o+k) = nxa_alpha(lv,temp)
 !-- photoionization and stimulated recombination (group integrals)
         s = 0d0
-        sst = 0d0
         do ig=1,nxa_g1(lv)
            s = s + jg(ig)*nxa_sgh(ig,lv)
+        enddo
+!-- stimulated recombination: from the edge up to h(nu-nu0) = 40 kT
+        sst = 0d0
+        do ig=nxa_g1(lv),1,-1
            nu = max(nug(ig),nxa_lvnu0(lv))
-           sst = sst + jg(ig)*nxa_sgh(ig,lv)*exp(-min(hkt*(nu-nxa_lvnu0(lv)),700d0))
+           if(hkt*(nu-nxa_lvnu0(lv)) > 40d0) exit
+           sst = sst + jg(ig)*nxa_sgh(ig,lv)*exp(-hkt*(nu-nxa_lvnu0(lv)))
         enddo
 !-- threshold below the group grid: J extrapolated with the shape of B(trad)
         if(nxa_lvnu0(lv) < numin .and. jred > 0d0) then
