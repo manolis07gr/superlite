@@ -180,6 +180,12 @@ c-- from the Monte Carlo J, as CMFGEN's cmf_flux: line photons trapped in
 c-- their resonance zones and their scattering through the flow, no Monte
 c-- Carlo noise in the scattering emissivity; 0: the Monte Carlo J)
       integer :: in_fi_nes = 0
+c-- (spacing [km/s] of the comoving J and the rays of the passes but the
+c-- last two, which are on the grid of the spectrum: the scattering
+c-- emissivity is smooth over the electron kernel; the wings of strong
+c-- lines then within ~5 %, for exploration; 0: the spacing of the
+c-- spectrum)
+      real*8 :: in_fi_nesdv = 0d0
 c-- X-ray emission of wind shocks as CMFGEN's INC_XRAYS (xraysrcmod):
 c-- plasma table in CMFGEN's RS_XRAY_FLUXES format ('none': off); two
 c-- components: filling factor, shock temperature [K], onset velocity
@@ -272,7 +278,7 @@ c-- runtime parameter namelist
      & in_nltex_ldb,in_nltex_vturb,in_nltex_vturbmax,in_nltex_esrates,
      & in_nltex_esdamp,
      & in_fi,in_fi_wl1,in_fi_wl2,in_fi_dv,in_fi_npc,in_fi_navg,
-     & in_fi_doppler,in_fi_only,in_fi_nes,
+     & in_fi_doppler,in_fi_only,in_fi_nes,in_fi_nesdv,
      & in_xray_table,in_xray_ff1,in_xray_ff2,in_xray_t1,in_xray_t2,
      & in_xray_v1,in_xray_v2,in_xray_smooth,
      & in_bbsobolev,in_bbeps,in_tesolve,in_te_damp,in_te_zsolve,
@@ -422,6 +428,7 @@ c
       call insertl(in_fi_doppler,in_l,il)
       call insertl(in_fi_only,in_l,il)
       call inserti(in_fi_nes,in_i,ii)
+      call insertr(in_fi_nesdv,in_r,ir)
       call insertl(in_bbsobolev,in_l,il)
       call insertr(in_bbeps,in_r,ir)
       call insertl(in_tesolve,in_l,il)

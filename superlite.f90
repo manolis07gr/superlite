@@ -354,7 +354,7 @@ program superlite
 !-- only the formal integral: the saved state and its Monte Carlo J
      if(in_fi_only) then
         call fi_spectrum(grd_ncell,grd_xarr,grd_vxarr, &
-             grd_tempinv,in_fi_wl1,in_fi_wl2,in_fi_dv,in_fi_npc,impi,nmpi,lmpi0,dop=in_fi_doppler,nes=in_fi_nes)
+             grd_tempinv,in_fi_wl1,in_fi_wl2,in_fi_dv,in_fi_npc,impi,nmpi,lmpi0,dop=in_fi_doppler,nes=in_fi_nes,nesdv=in_fi_nesdv)
         exit
      endif
 
@@ -423,7 +423,7 @@ program superlite
         if(in_fi .and. it==in_niter) then
            jgfi = jgfi/nfi
            call fi_spectrum(grd_ncell,grd_xarr,grd_vxarr, &
-                grd_tempinv,in_fi_wl1,in_fi_wl2,in_fi_dv,in_fi_npc,impi,nmpi,lmpi0,jgfi,in_fi_doppler,in_fi_nes)
+                grd_tempinv,in_fi_wl1,in_fi_wl2,in_fi_dv,in_fi_npc,impi,nmpi,lmpi0,jgfi,in_fi_doppler,in_fi_nes,in_fi_nesdv)
            if(lmpi0 .and. nfi>1) write(6,'(1x,a,i3,a)') 'formal integral with the J of the last',nfi,' iterations'
            deallocate(jgfi)
         endif

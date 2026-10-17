@@ -52,7 +52,7 @@ module formalmod
 contains
 !
 !
-subroutine fi_spectrum(ncell,xarr,vxarr,tempinv,wl1,wl2,dvkms,npc,impi,nmpi,lmpi0,jgavg,dop,nes)
+subroutine fi_spectrum(ncell,xarr,vxarr,tempinv,wl1,wl2,dvkms,npc,impi,nmpi,lmpi0,jgavg,dop,nes,nesdv)
   use gridmod, only:grd_cap,grd_sig,grd_capemit
   use bbsobmod, only:grd_capsc
   use groupmod, only:grp_ng,grp_wl
@@ -67,12 +67,13 @@ subroutine fi_spectrum(ncell,xarr,vxarr,tempinv,wl1,wl2,dvkms,npc,impi,nmpi,lmpi
   real*8,intent(in),optional :: jgavg(:,:) !(ng,ncell) J of several iterations (else nxt_jg)
   logical,intent(in),optional :: dop       !Doppler line profiles (else Sobolev resonances)
   integer,intent(in),optional :: nes       !passes of the electron-scattering J (else the Monte Carlo J)
+  real*8,intent(in),optional :: nesdv      !spacing [km/s] of the J of the passes but the last two (else dvkms)
   integer :: nnu,i,j,ic,ig,ng,np,k,jg,nt,nesp,nj,mx,ipass,jj
-  real*8 :: dln,t,x,bnu,se,sig2,wsum,lnu0,dl,lt0,dlt,lext,lj0,wdep,dmax,lprev,nga
+  real*8 :: dln,t,x,bnu,se,sig2,wsum,lnu0,dl,lt0,dlt,lext,lj0,wdep,dmax,lprev,nga,dlj
   real*8,allocatable :: wl(:),lnu(:),chi(:,:),eta(:,:),p(:),wp(:),lng(:),etes(:,:),jgx(:,:)
-  real*8,allocatable :: vdc(:,:),vdmax(:),jfi(:,:),jnw(:,:),etj(:,:),vol(:),jold(:,:),jmc0(:,:)
+  real*8,allocatable :: vdc(:,:),vdmax(:),jfi(:,:),jnw(:,:),etj(:,:),vol(:),jold(:,:),jmc0(:,:),lnj(:)
   real*4,allocatable :: etr(:,:)
-  logical :: ldop,lj,ldep
+  logical :: ldop,lj,ldep,lfine,lswitch
 !
   ng = grp_ng
 !-- Doppler widths of the lines per element and cell: thermal and the
@@ -205,11 +206,22 @@ subroutine fi_spectrum(ncell,xarr,vxarr,tempinv,wl1,wl2,dvkms,npc,impi,nmpi,lmpi
 !-- the kernel and the flow, from the Monte Carlo J; each pass integrates
 !-- the rays of all its frequencies with the emissivity of the previous J
 !-- and tallies the new J along them (parallel rays sample every direction
-!-- of a spherical shell: J = 1/V sum_p 2 pi p dp Int I dz)
-     mx = int(lext/dln) + 1
-     nj = nnu + 2*mx
-     lj0 = log(cc/wl(nnu)) - mx*dln
-     allocate(jfi(nj,ncell),jnw(nj,ncell),etj(nj,ncell),vol(ncell),jold(nj,ncell))
+!-- of a spherical shell: J = 1/V sum_p 2 pi p dp Int I dz).  With nesdv
+!-- the J and the rays of all passes but the last two are on a coarser
+!-- grid (the scattering emissivity is smooth over the electron kernel,
+!-- several hundred km/s); then its J goes onto the grid of the spectrum,
+!-- whose rays resolve the line cores also where the flow is slow (a ray
+!-- samples one comoving frequency there), for the last two passes
+     dlj = dln
+     if(present(nesdv) .and. nesp > 2) dlj = max(dln,nesdv*1d5/cc)
+     lfine = dlj <= dln*(1d0 + 1d-9)
+     if(lfine) dlj = dln
+     mx = int(lext/dlj) + 1
+     nj = int(log(wl(nnu)/wl(1))/dlj + 1d-6) + 1 + 2*mx
+     if(.not.lfine) nj = nj + 1
+!-- (on the grid of the spectrum: nj = nnu + 2 mx)
+     lj0 = log(cc/wl(nnu)) - mx*dlj
+     allocate(jfi(nj,ncell),jnw(nj,ncell),etj(nj,ncell),vol(ncell),jold(nj,ncell),lnj(nj))
 !-- the volume of a cell as the rays sample it (sum_p 2 pi p dp of their
 !-- chords on both sides), so that a uniform I gives J = I: the shell volume
 !-- differs by 0.2-7 % (70 % in a thin innermost cell), an excess that a
@@ -225,41 +237,56 @@ subroutine fi_spectrum(ncell,xarr,vxarr,tempinv,wl1,wl2,dvkms,npc,impi,nmpi,lmpi
      allocate(jmc0(nj,ncell))
      jmc0 = jfi
      lprev = 0d0
+     lswitch = .false.
      do ipass=1,nesp
+        if(.not.lfine .and. ipass == nesp-1) then
+           call jfine
+           lswitch = .true.
+        endif
         call jemis
-        jnw = 0d0
         lnu = 0d0
+        jnw = 0d0
+        lnj = 0d0
         ldep = .true.
         do jj=impi+1,nj,nmpi
            lnu0 = 0d0
            do j=1,np
               wdep = 2d0*pi*wp(j)
-              lnu0 = lnu0 + wp(j)*ray(p(j),exp(lj0 + (jj-1)*dln))
+              lnu0 = lnu0 + wp(j)*ray(p(j),exp(lj0 + (jj-1)*dlj))
            enddo
-           i = nnu + mx + 1 - jj
-           if(i >= 1 .and. i <= nnu) lnu(i) = 8d0*pi*pi*lnu0
+           lnj(jj) = 8d0*pi*pi*lnu0
         enddo
         ldep = .false.
         call allreduce_sum(nj*ncell,jnw)
-        call allreduce_sum(nnu,lnu)
+        call allreduce_sum(nj,lnj)
         dmax = 0d0
         do ic=1,ncell
            jnw(:,ic) = jnw(:,ic)/vol(ic)
-           x = sum(jfi(mx+1:mx+nnu,ic))
-           if(x > 0d0) dmax = max(dmax,abs(sum(jnw(mx+1:mx+nnu,ic))/x - 1d0))
+           x = sum(jfi(mx+1:nj-mx,ic))
+           if(x > 0d0) dmax = max(dmax,abs(sum(jnw(mx+1:nj-mx,ic))/x - 1d0))
         enddo
 !-- every third pass Ng's acceleration from the last three J (the passes
 !-- are a linear iteration; in a thick scattering wind it converges slowly)
         nga = 0d0
-        if(mod(ipass,3) == 0 .and. ipass < nesp) call ngacc(nga)
+        if(mod(ipass,3) == 0 .and. ipass < nesp .and. .not.lswitch) call ngacc(nga)
         jold = jfi
         jfi = jnw
-        x = sum(lnu(2:)*(cc/wl(1:nnu-1)-cc/wl(2:nnu)))
+        if(lfine) then
+           do i=1,nnu
+              lnu(i) = lnj(nnu+mx+1-i)
+           enddo
+           x = sum(lnu(2:)*(cc/wl(1:nnu-1)-cc/wl(2:nnu)))
+        else
+!-- (L of the coarse grid within the range of the spectrum)
+           x = 0d0
+           do jj=mx+1,nj-mx-1
+              x = x + 0.5d0*(lnj(jj)+lnj(jj+1))*(exp(lj0 + jj*dlj) - exp(lj0 + (jj-1)*dlj))
+           enddo
+        endif
         if(lmpi0) write(6,'(1x,a,i3,a,es11.4,a,f8.4,a,es9.2,a,f8.3)') 'formal integral: e.s. pass',ipass, &
              ', L =',x,' erg/s, change',x/max(lprev,1d-300)-1d0,', largest change of a cell J',dmax, &
              ', Ng',nga
         lprev = x
-        if(ipass < nesp) lnu = 0d0
      enddo
 !-- J of the last pass against the Monte Carlo J per cell, Int J dnu over
 !-- the comoving frequencies of the spectrum and its thirds
@@ -268,12 +295,13 @@ subroutine fi_spectrum(ncell,xarr,vxarr,tempinv,wl1,wl2,dvkms,npc,impi,nmpi,lmpi
         write(4,'(a)') '# formal integral (in_fi_nes): Int J dnu of the last pass / Monte Carlo, per cell'
         write(4,'(a)') '# cell  r_centre[cm]  all  blue third  middle third  red third'
         do ic=1,ncell
-           write(4,'(i5,es13.5,4f9.4)') ic,0.5d0*(xarr(ic)+xarr(ic+1)),jratio(ic,mx+1,mx+nnu), &
-                jratio(ic,mx+2*nnu/3+1,mx+nnu),jratio(ic,mx+nnu/3+1,mx+2*nnu/3),jratio(ic,mx+1,mx+nnu/3)
+           k = nj - 2*mx
+           write(4,'(i5,es13.5,4f9.4)') ic,0.5d0*(xarr(ic)+xarr(ic+1)),jratio(ic,mx+1,mx+k), &
+                jratio(ic,mx+2*k/3+1,mx+k),jratio(ic,mx+k/3+1,mx+2*k/3),jratio(ic,mx+1,mx+k/3)
         enddo
         close(4)
      endif
-     deallocate(jfi,jnw,etj,vol,jold,jmc0)
+     deallocate(jfi,jnw,etj,vol,jold,jmc0,lnj)
   endif
   if(.not.lj) call allreduce_sum(nnu,lnu)
 !-- L_lambda [erg/s/A]
@@ -293,6 +321,37 @@ subroutine fi_spectrum(ncell,xarr,vxarr,tempinv,wl1,wl2,dvkms,npc,impi,nmpi,lmpi
 !
 contains
 !
+  subroutine jfine
+!-- the J of the coarse passes onto the grid of the spectrum (linear in
+!-- ln nu; the Monte Carlo J beyond the coarse grid)
+    real*8,allocatable :: jc(:,:)
+    real*8 :: w,lj0c,dljc
+    integer :: jl,njc,kc
+    allocate(jc(nj,ncell))
+    jc = jfi
+    njc = nj
+    lj0c = lj0
+    dljc = dlj
+    dlj = dln
+    mx = int(lext/dlj) + 1
+    nj = nnu + 2*mx
+    lj0 = log(cc/wl(nnu)) - mx*dlj
+    deallocate(jfi,jnw,etj,jold,lnj,jmc0)
+    allocate(jfi(nj,ncell),jnw(nj,ncell),etj(nj,ncell),jold(nj,ncell),lnj(nj),jmc0(nj,ncell))
+    call jinit
+    jmc0 = jfi
+    do jl=1,nj
+       w = (lj0 + (jl-1)*dlj - lj0c)/dljc + 1d0
+       kc = int(w)
+       if(kc < 1 .or. kc >= njc) cycle
+       w = w - kc
+       jfi(jl,:) = (1d0-w)*jc(kc,:) + w*jc(kc+1,:)
+    enddo
+    jold = jfi
+    lfine = .true.
+    deallocate(jc)
+  end subroutine jfine
+!
   real*8 function jratio(c,ja,jb)
 !-- Int J dnu of the passes over Int of the Monte Carlo J, J grid points ja..jb
     integer,intent(in) :: c,ja,jb
@@ -301,7 +360,7 @@ contains
     s1 = 0d0
     s2 = 0d0
     do jl=ja,jb
-       w = exp(lj0 + (jl-1)*dln)
+       w = exp(lj0 + (jl-1)*dlj)
        s1 = s1 + w*jfi(jl,c)
        s2 = s2 + w*jmc0(jl,c)
     enddo
@@ -795,7 +854,7 @@ contains
        else
           um = ui + 0.5d0*(sc - ui)*dtau
        endif
-       w = (log(nuc) - lj0)/dln + 1d0
+       w = (log(nuc) - lj0)/dlj + 1d0
        jl = int(w)
        if(jl >= 1 .and. jl < nj) then
           w = w - jl
@@ -843,7 +902,7 @@ contains
     integer :: c,jl,g,g2
     real*8 :: l,w
     do jl=1,nj
-       l = lj0 + (jl-1)*dln
+       l = lj0 + (jl-1)*dlj
        g = groupof(exp(l))
        if(g <= 0) then
           jfi(jl,:) = 0d0
@@ -871,10 +930,10 @@ contains
     real*8,allocatable :: kw(:)
     do c=1,ncell
        sel = sqrt(2d0*kb/(me*tempinv(c)))/cc
-       m = int(ukmax*sel/dln) + 1
+       m = int(ukmax*sel/dlj) + 1
        allocate(kw(0:m))
        do j2=0,m
-          kw(j2) = esk(j2*dln/sel)
+          kw(j2) = esk(j2*dlj/sel)
        enddo
        do jl=1,nj
           s1 = 0d0
@@ -899,7 +958,7 @@ contains
     real*8 :: w
     integer :: jl
     if(lj) then
-       w = (log(nuc) - lj0)/dln + 1d0
+       w = (log(nuc) - lj0)/dlj + 1d0
        jl = int(w)
        if(jl >= 1 .and. jl < nj) then
           w = w - jl
