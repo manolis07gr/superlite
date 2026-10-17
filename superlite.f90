@@ -191,8 +191,22 @@ program superlite
         call nxt_read_prev(in_nltex_prev,grd_ncell,mcell,in_nltex_dtprev,lmpi0)
         deallocate(mcell)
      endif
+!-- warm start: the populations (and T_e with in_tesolve) of a saved state
+     if(trim(in_nltex_init)/='none') then
+        allocate(mcell(grd_ncell))
+        mcell = 0d0
+        mcell(icell1:icell1+ncell-1) = gas_mass
+        call allreduce_sum(grd_ncell,mcell)
+        call nxt_read_init(in_nltex_init,grd_ncell,mcell,lmpi0)
+        deallocate(mcell)
+        do i=1,ncell
+           nxt_xloc(:,i) = nxt_xinit(:,icell1+i-1)
+           if(in_tesolve) gas_temp(i) = nxt_tinit(icell1+i-1)
+        enddo
+     endif
      nxt_damp = in_nlteh_damp
      nxt_ldbtau = in_nltex_ldb
+     nxt_ldbone = .not.in_puretran .and. in_trn_tauddmc<=in_nltex_ldb
      nxt_alion = in_nltex_ali
      if(lclump) then
         allocate(nxt_fcl(grd_ncell))

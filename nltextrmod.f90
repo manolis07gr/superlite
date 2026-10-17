@@ -83,6 +83,10 @@ module nltextrmod
 !-- nxt_ldbtau (0: none) are in local detailed balance
   real*8,public :: nxt_ldbtau = 0d0
   logical,public :: nxt_alion = .true.        !accelerated lambda iteration in the other groups
+!-- (with DDMC, groups that thick are DDMC groups: their radiation is the
+!-- diffusion limit, J = S to second order in 1/tau, with no Monte Carlo
+!-- tally of the radiation from elsewhere: Lambda* = 1)
+  logical,public :: nxt_ldbone = .false.
   real*8,allocatable,public :: nxt_jxsum(:,:) !(ng,ncell)
   real*8,allocatable,public :: nxt_jlsum(:)   !(ncell)
   real*4,allocatable,public :: grd_capnbf(:,:) !(ng,ncell) NLTE bound-free part of grd_cap
@@ -151,6 +155,12 @@ module nltextrmod
   real*8,allocatable,public :: nxt_erel(:)    !(ncell)
   real*8,allocatable,public :: nxt_prel(:)    !(ncell)
   real*8,allocatable :: nxt_rcum(:,:)         !(nst,ncell) cumulative weight of the activation states
+!-- warm start (in_nltex_init): populations, T_e and n_e of a saved state
+!-- (output.nltex_state) at this model's cells; the first iteration keeps
+!-- them instead of solving with J = B(T_R)
+  logical,public :: nxt_warm = .false.
+  real*8,allocatable,public :: nxt_xinit(:,:) !(nst,ncell)
+  real*8,allocatable,public :: nxt_tinit(:),nxt_neinit(:) !(ncell)
 !-- microclumping: volume filling factor per cell (not allocated: smooth).
 !-- The populations are those of the clumps; the Sobolev strengths K of
 !-- the transport and of the escape probabilities are volume means, f K
@@ -183,7 +193,7 @@ module nltextrmod
   public :: nxt_tables,nxt_neighbors,nxt_activate,nxt_activate_line,nxt_kpacket
   public :: nxt_bfabs,nxt_bfpick,nxt_nonthermal,nxt_ntdep,nxt_ntrates,nxt_write,nxt_bffreq
   public :: nxt_shares,nxt_dealloc,nxt_emcode,nxt_emloc
-  public :: nxt_write_state,nxt_read_prev,nxt_release,nxt_activate_rel
+  public :: nxt_write_state,nxt_read_prev,nxt_read_init,nxt_release,nxt_activate_rel
   public :: nxt_ali_cell,nxt_ali_off,nxt_ldb,nxt_lsldb
 !
 contains
@@ -446,6 +456,8 @@ subroutine nxt_dealloc
   if(allocated(nxt_bfl)) deallocate(nxt_bfl,nxt_bfn,nxt_bfm,nxt_bfr,nxt_bfs,nxt_smaxb)
   if(allocated(nxt_wcnt)) deallocate(nxt_wcnt)
   if(allocated(nxt_erel)) deallocate(nxt_erel,nxt_prel,nxt_rcum)
+  if(allocated(nxt_xinit)) deallocate(nxt_xinit,nxt_tinit,nxt_neinit)
+  nxt_warm = .false.
   nxt_dtinv = 0d0
   nxt_elh = 0; nxt_elhe = 0; nxt_kha = 0
   nxt_sh1 = 0; nxt_sh2 = 0; nxt_shc = 0; nxt_she1 = 0; nxt_she2 = 0; nxt_shec = 0
@@ -541,12 +553,13 @@ subroutine nxt_gas_solve(it,gncell,temp,trad,nelv,neoth,qb,qv,icell1,edep,kap,fc
   real*8,intent(in) :: edep(gncell),qb(gncell),qv(gncell)
   real*4,intent(in),optional :: kap(:,:)
   real*8,intent(in),optional :: fcl(gncell),dr(gncell)
-  integer :: i,l,ig,ierr,nfail,k,nc
+  integer :: i,l,ig,ierr,nfail,k,nc,nnan
   real*8 :: x(nxa_nst),xold(nxa_nst),ne,beta(nxa_nlin),jg(nxt_ng),jb(nxa_nlin)
   real*8 :: nti(nxa_nst),ntx(nxa_nst),ntot,dxc(gncell),w
   logical :: ljb(nxa_nlin)
 !
   nfail = 0
+  nnan = 0
   nc = 0
   do i=1,gncell
      l = icell1 + i - 1
@@ -555,6 +568,11 @@ subroutine nxt_gas_solve(it,gncell,temp,trad,nelv,neoth,qb,qv,icell1,edep,kap,fc
      if(ntot <= 0d0) then
         nxt_xloc(:,i) = 0d0
         nxt_neloc(i) = neoth(i)
+        cycle
+     endif
+!-- (warm start: the saved state, kept in the first iteration)
+     if(nxt_warm .and. (it==1 .or. .not.nxt_have_mc)) then
+        nxt_neloc(i) = neoth(i) + free_el(nelv(:,i),nxt_xloc(:,i))
         cycle
      endif
      if(it==1 .or. .not.nxt_have_mc) then
@@ -582,6 +600,13 @@ subroutine nxt_gas_solve(it,gncell,temp,trad,nelv,neoth,qb,qv,icell1,edep,kap,fc
              nxt_nug,nxt_dnug,jg,jb,ljb,nti,ntx,x,ne,beta,ierr)
      endif
      call nxt_ali_off
+!-- (a solution that is not finite counts as failed; the guess is kept)
+     if(any(x/=x) .or. any(abs(x)>huge(x))) then
+        if(nnan<5) write(0,'(a,i6,a,es11.3,a,es11.3,a,i2,a,l2)') 'nxt_gas_solve: populations not finite in cell', &
+             l,', T =',temp(i),' K, n_atom =',ntot,' cm^-3, ierr',ierr,'; guess finite:',all(xold==xold)
+        nnan = nnan + 1
+        ierr = 1
+     endif
      if(ierr==1) then
         nfail = nfail + 1
         x = xold
@@ -667,7 +692,9 @@ subroutine nxt_ldb(ncell,ng,vol,dr,tempinv,cap,capemit,planck,spk,nlump,glump)
 !   with which the packets ran, Lambda* (nxt_lsldb) the share of its own
 !   emission that a slab of depth tau keeps, and J_ext the radiation from
 !   elsewhere (nxt_jxsum: packets on IMC steps outside the cell of their
-!   last thermal or bound-free emission; the DDMC lump is local).  The
+!   last thermal or bound-free emission; the DDMC lump is local).  With
+!   DDMC (nxt_ldbone) these groups are DDMC groups, in the diffusion limit:
+!   Lambda* = 1, J = S.  The
 !   Monte Carlo estimate of such a group is the cell's own emission as
 !   sampled by the few packets emitted in it: zero where the group's share
 !   of the emission is small (the Lyman continuum of a cool wind), which
@@ -709,7 +736,11 @@ subroutine nxt_ldb(ncell,ng,vol,dr,tempinv,cap,capemit,planck,spk,nlump,glump)
         tau = cap(ig,i)*dr(i)
         if(tau<nxt_ldbtau) cycle
         s = (planck(ig,i)*capemit(ig,i) + grd_emnbf(ig,i))/cap(ig,i)*u/nxt_dnug(ig)
-        nxt_jg(ig,i) = nxt_lsldb(tau)*s + nxt_jxsum(ig,i)/(4d0*pi*vol(i)*nxt_dnug(ig))
+        if(nxt_ldbone) then
+           nxt_jg(ig,i) = s + nxt_jxsum(ig,i)/(4d0*pi*vol(i)*nxt_dnug(ig))
+        else
+           nxt_jg(ig,i) = nxt_lsldb(tau)*s + nxt_jxsum(ig,i)/(4d0*pi*vol(i)*nxt_dnug(ig))
+        endif
      enddo
   enddo
 end subroutine nxt_ldb
@@ -1816,6 +1847,7 @@ subroutine nxt_ali_cell(ng,kap,fcl,dr,lali)
      tau = fcl*kap(ig)*dr
      if(nxt_ldbtau>0d0 .and. tau>=nxt_ldbtau) then
         nx_ali_lst(ig) = nxt_lsldb(tau)
+        if(nxt_ldbone) nx_ali_lst(ig) = 1d0
      elseif(.not.la) then
         nx_ali_lst(ig) = 0d0
      elseif(tau < 1d-4) then
@@ -1864,8 +1896,7 @@ end subroutine nxt_write_state
 subroutine nxt_read_prev(fname,ncell,mass,dt,lprint)
 !-----------------------------------------------------------------------
 ! Populations of the previous model (its output.nltex_state) at the
-! exterior mass coordinate of each cell centre, linear in that coordinate
-! between the previous cell centres (the end values beyond), for the
+! exterior mass coordinate of each cell centre (nxt_read_state), for the
 ! time-dependent statistical equilibrium with dt [s] since that model.
 ! The exterior mass is Lagrangian when both models end at the same mass
 ! shell (the outer edge of the CSM); the model atoms must be the same.
@@ -1874,32 +1905,76 @@ subroutine nxt_read_prev(fname,ncell,mass,dt,lprint)
   integer,intent(in) :: ncell
   real*8,intent(in) :: mass(ncell),dt
   logical,intent(in) :: lprint
+  real*8 :: t(ncell),ne(ncell)
+!
+  if(dt<=0d0) stop 'nxt_read_prev: in_nltex_dtprev must be > 0'
+  if(allocated(nxt_xprev)) deallocate(nxt_xprev)
+  allocate(nxt_xprev(nxa_nst,ncell))
+  call nxt_read_state(fname,ncell,mass,nxt_xprev,t,ne,lprint,'time-dependent: previous model')
+  nxt_dtinv = 1d0/dt
+  if(lprint) write(6,'(1x,a,es10.3,a)') 'NLTE time-dependent: dt =',dt,' s'
+end subroutine nxt_read_prev
+!
+!
+subroutine nxt_read_init(fname,ncell,mass,lprint)
+!-----------------------------------------------------------------------
+! Warm start: the populations, T_e and n_e of a saved state (output.
+! nltex_state of a run on the same structure and model atoms) at the
+! exterior mass coordinate of each cell centre (nxt_read_state).  The
+! first iteration keeps them (nxt_gas_solve) and the transport starts
+! from that state, so a rerun converges in a few iterations.
+!-----------------------------------------------------------------------
+  character(*),intent(in) :: fname
+  integer,intent(in) :: ncell
+  real*8,intent(in) :: mass(ncell)
+  logical,intent(in) :: lprint
+  if(allocated(nxt_xinit)) deallocate(nxt_xinit,nxt_tinit,nxt_neinit)
+  allocate(nxt_xinit(nxa_nst,ncell),nxt_tinit(ncell),nxt_neinit(ncell))
+  call nxt_read_state(fname,ncell,mass,nxt_xinit,nxt_tinit,nxt_neinit,lprint,'warm start from')
+  nxt_warm = .true.
+end subroutine nxt_read_init
+!
+!
+subroutine nxt_read_state(fname,ncell,mass,x,t,ne,lprint,what)
+!-----------------------------------------------------------------------
+! A model's output.nltex_state at the exterior mass coordinate of each
+! cell centre of this model: the state fractions, T_e and n_e, linear in
+! that coordinate between that model's cell centres (the end values
+! beyond); each element's fractions renormalized.  The model atoms must
+! be the same.
+!-----------------------------------------------------------------------
+  character(*),intent(in) :: fname,what
+  integer,intent(in) :: ncell
+  real*8,intent(in) :: mass(ncell)
+  real*8,intent(out) :: x(nxa_nst,ncell),t(ncell),ne(ncell)
+  logical,intent(in) :: lprint
   integer :: iu,ios,nel,nst,npc,ic,iel,a,b,m,k,o
   integer :: zs(200)
   character(4096) :: line
-  real*8,allocatable :: mp(:),xp(:,:)
+  real*8,allocatable :: mp(:),xp(:,:),tp(:),np(:)
   real*8 :: mext(ncell),rd(5),w
 !
-  if(dt<=0d0) stop 'nxt_read_prev: in_nltex_dtprev must be > 0'
   open(newunit=iu,file=fname,status='old',action='read',iostat=ios)
-  if(ios/=0) stop 'nxt_read_prev: cannot open in_nltex_prev'
+  if(ios/=0) stop 'nxt_read_state: cannot open the state file'
   call nextrec
-  if(index(line,'nel nst ncell')/=1) stop 'nxt_read_prev: not an output.nltex_state file'
+  if(index(line,'nel nst ncell')/=1) stop 'nxt_read_state: not an output.nltex_state file'
   read(line(14:),*) nel,nst,npc
-  if(nel/=nxa_nel .or. nst/=nxa_nst) stop 'nxt_read_prev: other model atoms than this model'
+  if(nel/=nxa_nel .or. nst/=nxa_nst) stop 'nxt_read_state: other model atoms than this model'
   call nextrec
-  if(nel>100) stop "nxt_read_prev: too many elements"
+  if(nel>100) stop "nxt_read_state: too many elements"
   read(line(14:),*) zs(:2*nel)
   do iel=1,nel
      if(zs(2*iel-1)/=nxa_el(iel)%z .or. zs(2*iel)/=nxa_el(iel)%ns) &
-          stop 'nxt_read_prev: other model atoms than this model'
+          stop 'nxt_read_state: other model atoms than this model'
   enddo
-  allocate(mp(npc),xp(nst,npc))
+  allocate(mp(npc),xp(nst,npc),tp(npc),np(npc))
   do ic=1,npc
      call nextrec
      read(line,*) rd
      read(iu,*) xp(:,ic)
      mp(ic) = rd(1)
+     tp(ic) = rd(4)
+     np(ic) = rd(5)
   enddo
   close(iu)
 !-- exterior mass of the cell centres of this model
@@ -1907,14 +1982,12 @@ subroutine nxt_read_prev(fname,ncell,mass,dt,lprint)
   do ic=ncell-1,1,-1
      mext(ic) = mext(ic+1) + 0.5d0*(mass(ic+1) + mass(ic))
   enddo
-  if(allocated(nxt_xprev)) deallocate(nxt_xprev)
-  allocate(nxt_xprev(nst,ncell))
 !-- mp decreases outward (index npc: the outermost cell)
   do ic=1,ncell
      if(mext(ic) >= mp(1)) then
-        nxt_xprev(:,ic) = xp(:,1)
+        x(:,ic) = xp(:,1); t(ic) = tp(1); ne(ic) = np(1)
      elseif(mext(ic) <= mp(npc)) then
-        nxt_xprev(:,ic) = xp(:,npc)
+        x(:,ic) = xp(:,npc); t(ic) = tp(npc); ne(ic) = np(npc)
      else
         a = 1
         b = npc
@@ -1927,29 +2000,30 @@ subroutine nxt_read_prev(fname,ncell,mass,dt,lprint)
            endif
         enddo
         w = (mp(a) - mext(ic))/(mp(a) - mp(b))
-        nxt_xprev(:,ic) = (1d0-w)*xp(:,a) + w*xp(:,b)
+        x(:,ic) = (1d0-w)*xp(:,a) + w*xp(:,b)
+        t(ic) = (1d0-w)*tp(a) + w*tp(b)
+        ne(ic) = (1d0-w)*np(a) + w*np(b)
      endif
      do iel=1,nxa_nel
         o = nxa_el(iel)%xoff
         k = nxa_el(iel)%ns
-        w = sum(nxt_xprev(o+1:o+k,ic))
-        if(w>0d0) nxt_xprev(o+1:o+k,ic) = nxt_xprev(o+1:o+k,ic)/w
+        w = sum(x(o+1:o+k,ic))
+        if(w>0d0) x(o+1:o+k,ic) = x(o+1:o+k,ic)/w
      enddo
   enddo
-  nxt_dtinv = 1d0/dt
-  if(lprint) write(6,'(1x,a,a,a,es10.3,a,i5,a,es10.3,a,es10.3,a)') 'NLTE time-dependent: previous model ', &
-       trim(fname),', dt =',dt,' s;',npc,' cells, exterior mass',mp(1),' g (this model',mext(1),' g)'
-  deallocate(mp,xp)
+  if(lprint) write(6,'(1x,a,1x,a,1x,a,a,i5,a,es10.3,a,es10.3,a)') 'NLTE',what,trim(fname),':',npc, &
+       ' cells, exterior mass',mp(1),' g (this model',mext(1),' g)'
+  deallocate(mp,xp,tp,np)
 contains
   subroutine nextrec
 !-- next record that is not a comment
     do
        read(iu,'(a)',iostat=ios) line
-       if(ios/=0) stop 'nxt_read_prev: file truncated'
+       if(ios/=0) stop 'nxt_read_state: file truncated'
        if(line(1:1)/='#' .and. len_trim(line)>0) exit
     enddo
   end subroutine nextrec
-end subroutine nxt_read_prev
+end subroutine nxt_read_state
 !
 !
 subroutine nxt_release(ncell,vol)

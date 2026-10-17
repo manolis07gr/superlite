@@ -251,8 +251,9 @@ contains
 !-- local detailed balance in thick groups (nxt_ldb, nxt_ali_cell):
 !--  a) the share Lambda* of its own emission that a slab keeps, against
 !--     1 - (1 - 2 E_3(tau))/(2 tau) with E_3 by quadrature;
-!--  b) J of a one-cell grid: Lambda* S + J_ext in the thick groups, the
-!--     DDMC lump tally shared as the source spectrum, the others kept;
+!--  b) J of a one-cell grid: Lambda* S + J_ext in the thick groups (S +
+!--     J_ext with DDMC), the DDMC lump tally shared as the source
+!--     spectrum, the others kept;
 !--  c) the toy cell of ali_tests with a cell width that makes its Lyman
 !--     continuum thick: J = jext + Lambda* S (Lambda* of the slab), with a
 !--     Monte Carlo estimate that misses the cell's own emission in the
@@ -318,6 +319,16 @@ contains
        endif
        dev2 = max(dev2, abs(nxt_jg(ig,1)/jw - 1d0))
     enddo
+!-- (with DDMC the thick groups are in the diffusion limit: Lambda* = 1)
+    nxt_ldbone = .true.
+    nxt_jg = 1d0
+    call nxt_ldb(1, ng, vol1, dr1, ti1, cap1, cape1, plk, spk1, nl1, gl1)
+    do ig = 1, 10
+       sg = (plk(ig,1)*cape1(ig,1) + grd_emnbf(ig,1))/cap1(ig,1)*u/dnug(ig)
+       jw = sg + nxt_jxsum(ig,1)/(4d0*pi_*vol1(1)*dnug(ig))
+       dev2 = max(dev2, abs(nxt_jg(ig,1)/jw - 1d0))
+    enddo
+    nxt_ldbone = .false.
     nxt_ldbtau = 0d0
     deallocate(plk, spk1, cap1, cape1, gl1)
     deallocate(nxt_jg, nxt_jxsum, nxt_jlsum, nxt_dnug, grd_emnbf)

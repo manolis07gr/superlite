@@ -223,6 +223,8 @@ c-- rate and population calculations
           nrate = 0d0
           nrate(1) = 1d0
           npop(i,ii,iz)%n = 0d0
+c-- (none of the element in the cell: no populations, no opacity)
+          if(gas_natomfr(iz,i)<=0d0) cycle
 c-- radiative terms
 c
           do il=1,nlte_nlin
@@ -394,6 +396,7 @@ c-- approximate profile function
            if(gas_mass(i)<=0d0) cycle
            npop_llw = npop(i,ii,iz)%n(llw)*nlte_ndens(i,ii,iz) ! occupation number density of lower state
            npop_lup = npop(i,ii,iz)%n(lup)*nlte_ndens(i,ii,iz) ! occupation number density of upper state
+           if(npop_llw<=0d0) cycle !(none of the element in the cell)
 c-- absorption opacity
            caphelp = npop_llw*fconst*nlte_data(iz)%i(ii)%f(iln)
      &      *phi*(1d0-(npop_lup*g_llw/(npop_llw*g_lup)))
