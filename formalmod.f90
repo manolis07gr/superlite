@@ -68,9 +68,9 @@ subroutine fi_spectrum(ncell,xarr,vxarr,tempinv,wl1,wl2,dvkms,npc,impi,nmpi,lmpi
   logical,intent(in),optional :: dop       !Doppler line profiles (else Sobolev resonances)
   integer,intent(in),optional :: nes       !passes of the electron-scattering J (else the Monte Carlo J)
   integer :: nnu,i,j,ic,ig,ng,np,k,jg,nt,nesp,nj,mx,ipass,jj
-  real*8 :: dln,t,x,bnu,se,sig2,wsum,lnu0,dl,lt0,dlt,lext,lj0,wdep,dmax,lprev
+  real*8 :: dln,t,x,bnu,se,sig2,wsum,lnu0,dl,lt0,dlt,lext,lj0,wdep,dmax,lprev,nga
   real*8,allocatable :: wl(:),lnu(:),chi(:,:),eta(:,:),p(:),wp(:),lng(:),etes(:,:),jgx(:,:)
-  real*8,allocatable :: vdc(:,:),vdmax(:),jfi(:,:),jnw(:,:),etj(:,:),vol(:)
+  real*8,allocatable :: vdc(:,:),vdmax(:),jfi(:,:),jnw(:,:),etj(:,:),vol(:),jold(:,:)
   real*4,allocatable :: etr(:,:)
   logical :: ldop,lj,ldep
 !
@@ -209,7 +209,7 @@ subroutine fi_spectrum(ncell,xarr,vxarr,tempinv,wl1,wl2,dvkms,npc,impi,nmpi,lmpi
      mx = int(lext/dln) + 1
      nj = nnu + 2*mx
      lj0 = log(cc/wl(nnu)) - mx*dln
-     allocate(jfi(nj,ncell),jnw(nj,ncell),etj(nj,ncell),vol(ncell))
+     allocate(jfi(nj,ncell),jnw(nj,ncell),etj(nj,ncell),vol(ncell),jold(nj,ncell))
      do ic=1,ncell
         vol(ic) = 4d0*pi/3d0*(xarr(ic+1)**3 - xarr(ic)**3)
      enddo
@@ -238,14 +238,20 @@ subroutine fi_spectrum(ncell,xarr,vxarr,tempinv,wl1,wl2,dvkms,npc,impi,nmpi,lmpi
            x = sum(jfi(mx+1:mx+nnu,ic))
            if(x > 0d0) dmax = max(dmax,abs(sum(jnw(mx+1:mx+nnu,ic))/x - 1d0))
         enddo
+!-- every third pass Ng's acceleration from the last three J (the passes
+!-- are a linear iteration; in a thick scattering wind it converges slowly)
+        nga = 0d0
+        if(mod(ipass,3) == 0 .and. ipass < nesp) call ngacc(nga)
+        jold = jfi
         jfi = jnw
         x = sum(lnu(2:)*(cc/wl(1:nnu-1)-cc/wl(2:nnu)))
-        if(lmpi0) write(6,'(1x,a,i3,a,es11.4,a,f8.4,a,es9.2)') 'formal integral: e.s. pass',ipass, &
-             ', L =',x,' erg/s, change',x/max(lprev,1d-300)-1d0,', largest change of a cell J',dmax
+        if(lmpi0) write(6,'(1x,a,i3,a,es11.4,a,f8.4,a,es9.2,a,f8.3)') 'formal integral: e.s. pass',ipass, &
+             ', L =',x,' erg/s, change',x/max(lprev,1d-300)-1d0,', largest change of a cell J',dmax, &
+             ', Ng',nga
         lprev = x
         if(ipass < nesp) lnu = 0d0
      enddo
-     deallocate(jfi,jnw,etj,vol)
+     deallocate(jfi,jnw,etj,vol,jold)
   endif
   if(.not.lj) call allreduce_sum(nnu,lnu)
 !-- L_lambda [erg/s/A]
@@ -595,19 +601,26 @@ contains
 !-- The pieces march along the substep: within the profile of a line
 !-- (|x| < xpmax) at most dxp in its x, and they stop where a profile
 !-- begins; line and continuum share the source function within a piece.
+!-- A line whose profile the ray crosses within a tenth of the cell width
+!-- (path per Doppler width ds/|dx|: the Sobolev length) is a point
+!-- resonance as in substep (fast flows: the ejecta of a supernova).
     use nltextrmod, only:nxt_nact,nxt_act,nxt_wlact,nxt_kq
     use nlteatommod, only:nxa_lel
     real*8,intent(inout) :: ui
     real*8,intent(in) :: nu,za,zb,nua,nub,ch,sc
     integer,intent(in) :: c
     integer,parameter :: mxl = 400
-    real*8,parameter :: xpmax = 4.5d0, dxp = 0.5d0
-    integer :: ja,jb,j,k,nl,il
-    real*8 :: numin,numax,nul,vd,xa,xb,ds,t0,t1,dtc,dtl,st,x0,x1,w
+    real*8,parameter :: xpmax = 4.5d0, dxp = 0.5d0, fsob = 0.1d0
+    integer :: ja,jb,j,k,nl,il,ns,is,m
+    real*8 :: numin,numax,nul,vd,xa,xb,ds,t0,t1,dtc,dtl,st,x0,x1,w,dcell
     real*8 :: lxa(mxl),lxb(mxl),lsl(mxl),lkv(mxl),lta(mxl),ltb(mxl),ldt(mxl)
+    real*8 :: stk(mxl),sttau(mxl),stsl(mxl)
     numin = min(nua,nub)
     numax = max(nua,nub)
+    ds = zb - za
+    dcell = xarr(c+1) - xarr(c)
     nl = 0
+    ns = 0
     if(nxt_nact>0) then
        ja = lineidx(cc/(numax*(1d0 + xpmax*vdmax(c)/cc)),.true.)
        jb = lineidx(cc/(numin*(1d0 - xpmax*vdmax(c)/cc)),.false.)
@@ -619,7 +632,19 @@ contains
           xa = (nua/nul - 1d0)*cc/vd
           xb = (nub/nul - 1d0)*cc/vd
           if(min(xa,xb) >= xpmax .or. max(xa,xb) <= -xpmax) cycle
-          if(nl == mxl) exit
+!-- (short Sobolev length: a point resonance where x = 0, depth K ds/(v_D |dx|))
+          if(abs(xb - xa) > 1d-12) then
+             if(ds/abs(xb - xa) < fsob*dcell) then
+                w = -xa/(xb - xa)
+                if(w < 0d0 .or. w >= 1d0 .or. ns == mxl) cycle
+                ns = ns + 1
+                stk(ns) = w
+                sttau(ns) = nxt_kq(k,c)*ds/(vd*abs(xb - xa))
+                stsl(ns) = srcline(k,c,nul)/nul**3
+                cycle
+             endif
+          endif
+          if(nl == mxl) cycle
           nl = nl + 1
           lxa(nl) = xa
           lxb(nl) = xb
@@ -639,15 +664,27 @@ contains
           endif
        enddo
     endif
-    ds = zb - za
-    if(nl == 0) then
+    if(nl == 0 .and. ns == 0) then
        call contd(ui,ch*ds,sc,c,0.5d0*(nua+nub),ds)
        return
     endif
+!-- the point resonances in the order along the substep
+    do is=2,ns
+       w = stk(is); x0 = sttau(is); x1 = stsl(is)
+       m = is - 1
+       do while(m >= 1)
+          if(stk(m) <= w) exit
+          stk(m+1) = stk(m); sttau(m+1) = sttau(m); stsl(m+1) = stsl(m)
+          m = m - 1
+       enddo
+       stk(m+1) = w; sttau(m+1) = x0; stsl(m+1) = x1
+    enddo
+    is = 1
     t0 = 0d0
     do while(t0 < 1d0)
 !-- the end of this piece
        t1 = 1d0
+       if(is <= ns) t1 = stk(is)
        do il=1,nl
           if(ltb(il) <= t0) cycle
           if(lta(il) > t0) then
@@ -656,26 +693,37 @@ contains
              t1 = min(t1,t0+ldt(il),ltb(il))
           endif
        enddo
-       t1 = max(t1,min(t0+1d-9,1d0))
-       dtc = ch*(t1 - t0)*ds
-       dtl = 0d0
-       st = dtc*sc
-       do il=1,nl
-          if(ltb(il) <= t0 .or. lta(il) >= t1) cycle
-          x0 = lxa(il) + (lxb(il) - lxa(il))*t0
-          x1 = lxa(il) + (lxb(il) - lxa(il))*t1
-          if(abs(x1 - x0) > 1d-6) then
-             w = 0.5d0*(erf(x1) - erf(x0))/(x1 - x0)
-          else
-             w = exp(-(0.5d0*(x0+x1))**2)/sqrt(pi)
-          endif
+       if(t1 > t0) then
+          dtc = ch*(t1 - t0)*ds
+          dtl = 0d0
+          st = dtc*sc
+          do il=1,nl
+             if(ltb(il) <= t0 .or. lta(il) >= t1) cycle
+             x0 = lxa(il) + (lxb(il) - lxa(il))*t0
+             x1 = lxa(il) + (lxb(il) - lxa(il))*t1
+             if(abs(x1 - x0) > 1d-6) then
+                w = 0.5d0*(erf(x1) - erf(x0))/(x1 - x0)
+             else
+                w = exp(-(0.5d0*(x0+x1))**2)/sqrt(pi)
+             endif
 !-- (opacity in the observer frame: times nu_cmf/nu)
-          w = lkv(il)*w*(t1 - t0)*ds*(nua + (nub - nua)*0.5d0*(t0 + t1))/nu
-          dtl = dtl + w
-          st = st + w*lsl(il)
+             w = lkv(il)*w*(t1 - t0)*ds*(nua + (nub - nua)*0.5d0*(t0 + t1))/nu
+             dtl = dtl + w
+             st = st + w*lsl(il)
+          enddo
+          if(dtc + dtl > 0d0) call contd(ui,dtc+dtl,st/(dtc+dtl),c,nua+(nub-nua)*0.5d0*(t0+t1),(t1-t0)*ds)
+       endif
+!-- point resonances at the end of the piece
+       do while(is <= ns)
+          if(stk(is) > t1) exit
+          if(sttau(is) > 50d0) then
+             ui = stsl(is)
+          else
+             ui = ui*exp(-sttau(is)) + stsl(is)*(1d0 - exp(-sttau(is)))
+          endif
+          is = is + 1
        enddo
-       if(dtc + dtl > 0d0) call contd(ui,dtc+dtl,st/(dtc+dtl),c,nua+(nub-nua)*0.5d0*(t0+t1),(t1-t0)*ds)
-       t0 = t1
+       t0 = max(t1,min(t0+1d-9,1d0))
     enddo
   end subroutine substep_dop
 !
@@ -720,6 +768,36 @@ contains
     endif
     call cont(ui,dtau,sc)
   end subroutine contd
+!
+  subroutine ngacc(a)
+!-- Ng's acceleration (first order) of the J of the passes from the last
+!-- three iterates jold, jfi, jnw: jnw <- (1-a) jnw + a jfi with a from
+!-- the least squares of the relative changes (skipped when it would
+!-- extrapolate by more than a factor 100; J stays >= 0)
+    real*8,intent(out) :: a
+    real*8 :: s1,s2,d0,d1,w
+    integer :: c,jl
+    a = 0d0
+    s1 = 0d0
+    s2 = 0d0
+    do c=1,ncell
+       do jl=1,nj
+          if(jnw(jl,c) <= 0d0) cycle
+          w = 1d0/jnw(jl,c)**2
+          d0 = jnw(jl,c) - jfi(jl,c)
+          d1 = jfi(jl,c) - jold(jl,c)
+          s1 = s1 + w*d0*(d0 - d1)
+          s2 = s2 + w*(d0 - d1)**2
+       enddo
+    enddo
+    if(s2 <= 0d0) return
+    a = s1/s2
+    if(abs(a) > 100d0) then
+       a = 0d0
+       return
+    endif
+    jnw = max((1d0-a)*jnw + a*jfi, 0d0)
+  end subroutine ngacc
 !
   subroutine jinit
 !-- the Monte Carlo J of the groups on the J grid (linear in ln nu between
