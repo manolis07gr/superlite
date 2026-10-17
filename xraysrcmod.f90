@@ -24,7 +24,7 @@ module xraysrcmod
   real*8,allocatable,public :: xs_pow(:)    !(ncell) X-ray power of each cell [erg/s]
   real*8,allocatable :: xs_w1(:)            !(ncell) share of component 1
   real*8,allocatable,public :: xs_px(:)     !(ncell) share of the X-rays in the cell's emission
-  public :: xs_read,xs_setup,xs_sample
+  public :: xs_read,xs_setup,xs_sample,xs_group_emis
 !
 contains
 !
@@ -160,6 +160,49 @@ subroutine xs_sample(l,r1,r2,r3,wl)
   e = emin + (b - 1 + r3)*de
   wl = 6.6260693d-27*2.99792458d10/e
 end subroutine xs_sample
+!
+!
+subroutine xs_group_emis(ncell,ng,wlg,vol,em)
+!-- the X-ray emission of each cell in each group, Int eta_nu dnu over the
+!-- group per steradian [erg/s/cm^3/sr]; wlg(ng+1) the group edges [cm],
+!-- increasing.  (For the source functions of the optically thick groups,
+!-- where the X-ray photons are absorbed near where they are emitted.)
+  integer,intent(in) :: ncell,ng
+  real*8,intent(in) :: wlg(ng+1),vol(ncell)
+  real*8,intent(out) :: em(ng,ncell)
+  real*8,parameter :: hc = 6.6260693d-27*2.99792458d10, pi = 3.1415926535897932d0
+  integer :: l,ig,k
+  real*8 :: f(ng,2)
+  do k=1,2
+     do ig=1,ng
+        f(ig,k) = cumat(hc/wlg(ig),k) - cumat(hc/wlg(ig+1),k)
+     enddo
+  enddo
+  em = 0d0
+  do l=1,ncell
+     if(xs_pow(l)<=0d0 .or. vol(l)<=0d0) cycle
+     em(:,l) = xs_pow(l)/(4d0*pi*vol(l))*(xs_w1(l)*f(:,1) + (1d0-xs_w1(l))*f(:,2))
+  enddo
+contains
+  real*8 function cumat(e,k)
+!-- share of the emission of component k below the photon energy e
+    real*8,intent(in) :: e
+    integer,intent(in) :: k
+    real*8 :: u,c0
+    integer :: b
+    u = (e - emin)/de
+    if(u <= 0d0) then
+       cumat = 0d0
+    elseif(u >= dble(nbin)) then
+       cumat = 1d0
+    else
+       b = int(u)
+       c0 = 0d0
+       if(b>0) c0 = cumk(b,k)
+       cumat = c0 + (u - b)*(cumk(b+1,k) - c0)
+    endif
+  end function cumat
+end subroutine xs_group_emis
 !
 end module xraysrcmod
 ! vim: fdm=marker

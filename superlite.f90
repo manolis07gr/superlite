@@ -361,15 +361,21 @@ program superlite
           ', groups above 0.1:',nxt_bfstat(3)/nxt_bfstat(1)
 !-- microclumping: the transport sees the volume-mean opacities
      if(lclump) call clump_scale
+!-- source energy
+     call sourceenergy
+!-- the X-ray source and the shock cells in the source functions of the
+!-- thick groups (local detailed balance, DDMC spectra) and in the formal
+!-- integral
+     if(in_nltex .and. xs_on) call xray_emnbf
+     if(in_nltex .and. in_srctype=='lumg') then
+        if(any(src_tsh>0d0)) call shock_emnbf
+     endif
 !-- only the formal integral: the saved state and its Monte Carlo J
      if(in_fi_only) then
         call fi_spectrum(grd_ncell,grd_xarr,grd_vxarr, &
              grd_tempinv,in_fi_wl1,in_fi_wl2,in_fi_dv,in_fi_npc,impi,nmpi,lmpi0,dop=in_fi_doppler,nes=in_fi_nes,nesdv=in_fi_nesdv)
         exit
      endif
-
-!-- source energy
-     call sourceenergy
 
 !-- update photospheric radius for NLTE calculations (experimental iterative method)
      if(in_nlte) call get_rphot
@@ -551,6 +557,47 @@ subroutine clump_scale
      if(bbs_on) grd_capsc(:,l) = f4*grd_capsc(:,l)
   enddo
 end subroutine clump_scale
+!
+subroutine xray_emnbf
+!-- add the emission of the X-ray source to grd_emnbf (the emissivity of the
+!-- source functions, in the units of the Planck group integrals: Int eta
+!-- dnu/(sigma T^4/pi)).  In a group so thick that the radiation is in
+!-- local detailed balance (in_nltex_ldb, DDMC) the photoionizations then
+!-- take the X-ray photons emitted there, as CMFGEN's source function
+!-- holds its X-ray emissivity: without it J = S of the gas alone, and an
+!-- X-ray-irradiated wind kept the He ionization of the wind without X-rays.
+  integer :: l
+  real*8,allocatable :: em(:,:)
+  allocate(em(grp_ng,grd_ncell))
+  call xs_group_emis(grd_ncell,grp_ng,grp_wl,grd_vol,em)
+  do l=1,grd_ncell
+     grd_emnbf(:,l) = grd_emnbf(:,l) + real(em(:,l)*pc_pi*grd_tempinv(l)**4/pc_sb)
+  enddo
+  deallocate(em)
+end subroutine xray_emnbf
+!
+subroutine shock_emnbf
+!-- add the emission of the shock cells to grd_emnbf as xray_emnbf: their
+!-- injected energy (without the share of the wind X-rays), emitted as the
+!-- cooling flow of interior_source, uniform in T between the gas and the
+!-- post-shock temperatures (in_shock_tmax at most), CIE spectra
+!-- (in_shock_cie) or the bremsstrahlung shape
+  use shockciemod, only:shc_group_frac
+  integer :: l
+  real*8 :: tlo,thi,p
+  real*8,allocatable :: f(:)
+  allocate(f(grp_ng))
+  do l=1,grd_ncell
+     if(src_tsh(l)<=0d0 .or. grd_emit(l)<=0d0 .or. grd_vol(l)<=0d0) cycle
+     p = grd_emit(l)
+     if(xs_on) p = p*(1d0 - xs_px(l))
+     tlo = 1d0/grd_tempinv(l)
+     thi = max(tlo,min(src_tsh(l),in_shock_tmax))
+     call shc_group_frac(l,tlo,thi,grp_ng,grp_wl,f)
+     grd_emnbf(:,l) = grd_emnbf(:,l) + real(p*f/(4d0*pc_pi*grd_vol(l))*pc_pi*grd_tempinv(l)**4/pc_sb)
+  enddo
+  deallocate(f)
+end subroutine shock_emnbf
 !
 subroutine write_emitchan
 !-- escaped luminosity by last emission process and element, per band

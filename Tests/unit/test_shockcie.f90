@@ -2,13 +2,19 @@
 !-- emits in bin 5 only, Z = 8 in bin 10 at log T = 5 and in bin 20 at
 !-- log T = 6) and a shock cell with n(O)/n(H) = 3: the photons of each
 !-- line follow the composition and the temperature weights, and fall in
-!-- their bins.
+!-- their bins.  The shares per group of the cooling flow (shc_group_frac,
+!-- the source function of the thick groups): at one T on groups equal to
+!-- the bins the same shares as the photons; half a bin in log lambda half
+!-- of it; a T range of the table against the integral over T; above the
+!-- table the bremsstrahlung shape against its integral; all summing to 1.
 program test_shockcie
   use shockciemod
   implicit none
   integer,parameter :: nw = 30, nt = 2, ndraw = 400000
   real*8 :: edges(nw+1), r1, r2, r3, wl, t, f5, f10, f20, xfr(2,3), tsh(3)
   integer :: i, k, n5, n10, n20, nbad, nfail, iu
+  real*8 :: wlg(nw+1), fg(nw), wlh(nw+2), fh(nw+1), tt, fx, tlo, thi, e1, e2
+  real*8,parameter :: hck = 6.6260693d-27*2.99792458d10/1.3806505d-16
   nfail = 0
 !-- table: bins of 0.1 dex from 1 A
   do i = 1, nw+1
@@ -67,6 +73,41 @@ program test_shockcie
        .or. nbad > 0) nfail = nfail + 1
   write(*,'(a,2es10.3)') '  table range [K]:', shc_tmin(), shc_tmax()
   if(abs(shc_tmin()/1d5 - 1d0) > 1d-10 .or. abs(shc_tmax()/1d6 - 1d0) > 1d-10) nfail = nfail + 1
+!
+!-- shares per group: groups equal to the table bins, one T (to 1e-5: the
+!-- table holds the edges to 7 digits)
+  wlg = edges*1d-8
+  call shc_group_frac(2, t, t, nw, wlg, fg)
+  write(*,'(a,4f9.5)') '  group shares 5, 10, 20, sum:', fg(5), fg(10), fg(20), sum(fg)
+  if(abs(fg(5)-0.4d0) > 1d-5 .or. abs(fg(10)-0.45d0) > 1d-5 .or. abs(fg(20)-0.15d0) > 1d-5 &
+       .or. abs(sum(fg)-1d0) > 1d-12) nfail = nfail + 1
+!-- bin 10 split at its middle in log lambda
+  wlh(1:10) = wlg(1:10)
+  wlh(11) = sqrt(wlg(10)*wlg(11))
+  wlh(12:nw+2) = wlg(11:nw+1)
+  call shc_group_frac(2, t, t, nw+1, wlh, fh)
+  write(*,'(a,2f9.5)') '  halves of bin 10:', fh(10), fh(11)
+  if(abs(fh(10)-0.225d0) > 1d-5 .or. abs(fh(11)-0.225d0) > 1d-5) nfail = nfail + 1
+!-- T uniform over 10^5 - 10^5.5 K: bin 10 holds 0.6 (1 - log10(T) + 5)
+!-- averaged over T (the 64 midpoints of the routine against 10^5 points)
+  tlo = 1d5
+  thi = 10d0**5.5d0
+  call shc_group_frac(2, tlo, thi, nw, wlg, fg)
+  fx = 0d0
+  do k = 1, 100000
+     tt = tlo + (k-0.5d0)/100000*(thi-tlo)
+     fx = fx + 0.6d0*(1d0 - (log10(tt) - 5d0))/100000
+  enddo
+  write(*,'(a,3f9.5)') '  T range, bin 10 against the integral, sum:', fg(10), fx, sum(fg)
+  if(abs(fg(10)/fx-1d0) > 1d-4 .or. abs(sum(fg)-1d0) > 1d-12) nfail = nfail + 1
+!-- above the table: bremsstrahlung at 10^7 K, the share of 3-4 A, the
+!-- tails beyond the grid in the first and last group
+  tt = 1d7
+  call shc_group_frac(2, tt, tt, nw, wlg, fg)
+  e1 = exp(-hck/(wlg(6)*tt)) - exp(-hck/(wlg(5)*tt))
+  e2 = exp(-hck/(wlg(1)*tt)) + exp(-hck/(wlg(2)*tt)) - exp(-hck/(wlg(1)*tt))
+  write(*,'(a,4es12.4)') '  bremsstrahlung, group 5 and 1 against the integrals:', fg(5), e1, fg(1), e2
+  if(abs(fg(5)/e1-1d0) > 1d-12 .or. abs(fg(1)/e2-1d0) > 1d-12 .or. abs(sum(fg)-1d0) > 1d-12) nfail = nfail + 1
   if(nfail > 0) then
      write(*,'(a,i3)') 'test_shockcie: FAILED checks:', nfail
      stop 1

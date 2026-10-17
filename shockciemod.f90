@@ -25,7 +25,7 @@ module shockciemod
 !-- shock cells: cumulative normalized spectrum at each table temperature
   integer,allocatable :: shc_cell(:)            !(ncell) index of the shock cell, 0: none
   real*8,allocatable :: cum(:,:,:)              !(nw,nt,nshock)
-  public :: shc_read,shc_setup,shc_sample,shc_tmin,shc_tmax
+  public :: shc_read,shc_setup,shc_sample,shc_tmin,shc_tmax,shc_group_frac
 !
 contains
 !
@@ -157,6 +157,103 @@ subroutine shc_sample(l,t,r1,r2,r3,wl)
 !-- uniform in log lambda within the bin
   wl = 1d-8*10d0**(ledg(b) + r3*(ledg(b+1) - ledg(b)))
 end subroutine shc_sample
+!
+!
+subroutine shc_group_frac(l,tlo,thi,ng,wlg,f)
+!-----------------------------------------------------------------------
+! Share of the emission of shock cell l in each group, for the source
+! functions of the thick groups: the cooling flow emits uniformly in T
+! between tlo and thi [K] (the source, interior_source), at each T the CIE
+! spectrum within the table (the two neighbouring table temperatures with
+! the linear weight in log T, uniform in log lambda within a bin, as
+! shc_sample) and the bremsstrahlung shape outside it (photon energy
+! exponential with mean kT).  wlg(ng+1) the group edges [cm], increasing;
+! the emission beyond the grid goes to its first or last group, where the
+! source clips it.  Without the CIE table (shc_on false) bremsstrahlung.
+!-----------------------------------------------------------------------
+  integer,intent(in) :: l,ng
+  real*8,intent(in) :: tlo,thi,wlg(ng+1)
+  real*8,intent(out) :: f(ng)
+  integer,parameter :: nts = 64
+  real*8,parameter :: hck = 6.6260693d-27*2.99792458d10/1.3806505d-16
+  integer :: n,i,j,ig
+  real*8 :: t,x,e
+  real*8,allocatable :: lg(:),ft(:,:)
+  logical,allocatable :: done(:)
+!
+  f = 0d0
+  n = 0
+  if(shc_on) then
+     if(allocated(shc_cell)) n = shc_cell(l)
+  endif
+  if(n>0) then
+     allocate(lg(ng+1),ft(ng,nt),done(nt))
+     lg = log10(wlg*1d8)
+     done = .false.
+  endif
+  do i=1,nts
+     t = tlo + (i-0.5d0)/nts*max(thi-tlo,0d0)
+     if(n>0 .and. t>=shc_tmin() .and. t<=shc_tmax()) then
+        x = (log10(t) - logt(1))/(logt(2) - logt(1))
+        j = min(max(int(x) + 1,1),nt-1)
+        x = min(max(x - (j-1),0d0),1d0)
+        if(.not.done(j)) call tgroups(j)
+        if(.not.done(j+1)) call tgroups(j+1)
+        f = f + ((1d0-x)*ft(:,j) + x*ft(:,j+1))/nts
+     else
+!-- bremsstrahlung shape: the share of exp(-h nu/kT) in each group
+        do ig=1,ng
+           f(ig) = f(ig) + (exp(-hck/(wlg(ig+1)*t)) - exp(-hck/(wlg(ig)*t)))/nts
+        enddo
+!-- (above the highest energy of the grid, below its lowest)
+        e = exp(-hck/(wlg(1)*t))
+        f(1) = f(1) + e/nts
+        f(ng) = f(ng) + (1d0 - exp(-hck/(wlg(ng+1)*t)))/nts
+     endif
+  enddo
+contains
+  subroutine tgroups(jt)
+!-- the CIE spectrum of table temperature jt over the groups
+    integer,intent(in) :: jt
+    integer :: b,g
+    real*8 :: p,a0,a1,o
+    ft(:,jt) = 0d0
+    g = 1
+    do b=1,nw
+       p = cum(b,jt,n)
+       if(b>1) p = p - cum(b-1,jt,n)
+       if(p<=0d0) cycle
+       a0 = min(ledg(b),ledg(b+1))
+       a1 = max(ledg(b),ledg(b+1))
+       if(a1<=lg(1)) then
+          ft(1,jt) = ft(1,jt) + p
+          cycle
+       elseif(a0>=lg(ng+1)) then
+          ft(ng,jt) = ft(ng,jt) + p
+          cycle
+       endif
+!-- (the parts below and above the grid)
+       if(a0<lg(1)) ft(1,jt) = ft(1,jt) + p*(lg(1)-a0)/(a1-a0)
+       if(a1>lg(ng+1)) ft(ng,jt) = ft(ng,jt) + p*(a1-lg(ng+1))/(a1-a0)
+!-- the groups it overlaps
+       g = max(1,min(g,ng))
+       do while(g>1 .and. lg(g)>a0)
+          g = g - 1
+       enddo
+       do while(g<ng .and. lg(g+1)<=a0)
+          g = g + 1
+       enddo
+       do while(g<=ng)
+          if(lg(g)>=a1) exit
+          o = min(a1,lg(g+1)) - max(a0,lg(g))
+          if(o>0d0) ft(g,jt) = ft(g,jt) + p*o/(a1-a0)
+          g = g + 1
+       enddo
+       g = max(1,g-1)
+    enddo
+    done(jt) = .true.
+  end subroutine tgroups
+end subroutine shc_group_frac
 !
 end module shockciemod
 ! vim: fdm=marker
