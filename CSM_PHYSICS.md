@@ -261,6 +261,21 @@ coolant of the CSM.  The steep decrement of A4 points to the Balmer line transfe
 gas with b₂ ≫ 1 (Hβ optically thicker and converted to Hα + Pα), to be checked
 against an independent code (e.g. CMFGEN) on the same snapshot.
 
+With the stage-3 physics (NLTE macro-atoms for all 43 ions of the model,
+DDMC with local detailed balance for the thick continua, edge-aligned
+groups, the CIE spectrum of the shock cells, T_e from the thermal balance,
+the formal integral with Doppler profiles; `s9_A4`, 16 iterations and 2
+more from its state) A4 has the observed decrement (R5 = 3.1–4.2 against
+≈ 3.6) but EW5(Hα) = 340–390 Å, 3–4 times the observed median, and He I
+5876 as strong as Hα (EW ≈ 130 Å within ±3000 km/s) with He II 4686 and
+He I 7065: the shocked shell (T_e ≈ 1.8×10⁴ K, He fully He⁺) and the
+CSM photoionized by the shock's CIE spectrum (He⁺ up to 6 % at 2×10¹⁵ cm,
+H I 2×10⁻⁴–2×10⁻²). The solver matters here: IMC everywhere with uniform
+515 km/s groups (the Lyman edge inside a group, `s8_A4`) left the same CSM
+neutral (H I 0.8–0.97). There is no independent reference for this flow:
+its velocity falls outward from the cold dense shell (4800 → 630 →
+240 km/s), while CMFGEN's comoving-frame transfer assumes a monotonic flow.
+
 ### 4.4 Benchmark against CMFGEN: IIn-like dense wind
 
 CMFGEN models computed for this comparison (CMFGEN 2023 with the 21jun23
@@ -351,7 +366,34 @@ iterations, and of the formal integral):
   extended to τ ≥ 1: there J_ext adds 13–25 % to the Lyman-continuum J
   of the outer wind, where He is neutral; its source is not yet
   identified. Use DDMC for the thick continua (roadmap 7).
-* m002 with all elements: being rerun with these changes.
+* m002 with all elements (H, He, C, N, O, Ca, Fe; CMFGEN rerun to
+  convergence with Sobolev lines and T_e in radiative equilibrium,
+  `sn_iin_m002_re`, 6544 lines against SuperLite's 6663 from the same
+  atoms and cut; SuperLite with T_e fixed to it): the emergent spectrum
+  agrees within 2–14 % in every band from 1250 Å to 1 μm (912–1250 Å:
+  1.67 times CMFGEN's, 0.8 % of L), the continuum of 3500–13 500 Å within
+  0–5 %, and b₂, b₃ of H within 10–20 % everywhere. Hα 89 Å against 92 Å
+  and He I 10830 −2.8 against −3.5 Å (formal integral with the Monte Carlo
+  J); Hβ 16 against 20 Å and Pβ 59 against 47 Å lie in the noise of that
+  J (±5 % of the continuum per 300 km/s). Inside the wind, SuperLite's J
+  at 912–1240 Å and in the Lyman continuum is 1.6–4 times CMFGEN's
+  (CMFGEN's J at depth from its `EDDFACTOR` records) at 1.1–2×10¹⁵ cm,
+  while longward of 1240 Å it agrees within 10–18 %. Fe II has
+  photoionization edges from its excited levels at 900–1600 Å, so Fe II
+  (and H I and O I, tied to it by charge exchange and the Lyman
+  continuum) is 2–3 times less abundant there (b₁ 2–5 times lower), and
+  the narrow absorptions of Fe II 4924, 5018, 5169 Å and O I 7774 Å in
+  CMFGEN's spectrum (EW 1–1.9 Å) are missing. The H/He wind shows no such
+  excess (912–1230 Å within 25 %), so it is the metal lines. Neither DDMC
+  (`in_trn_tauddmc` 5 → 30: no NLTE lines in DDMC groups, roadmap 7) nor
+  incoherent scattering (coherent as CMFGEN's `COH_ES`) changes it.
+  CMFGEN's Sobolev option leaves the lines out of its continuum J (no
+  blanketing, and no line photons in the J of the photoionizations),
+  whereas SuperLite's J holds both, so the reference itself is in
+  question there: a comoving-frame (blanketed) CMFGEN model at the same
+  T_e is being converged (`sn_iin_m002_blk`). With DDMC only from τ = 30
+  the iterations are 2.5 times faster (fewer DDMC–IMC swaps) with the
+  same populations.
 
 Line profiles of the H/He wind (Hα; EW in Å of −2700…−300, ±300 and
 +300…+2700 km/s against the continuum fitted at 4000–6000 km/s on both
@@ -380,6 +422,7 @@ with 12 passes of the electron-scattering J:
 | CMFGEN `ies` (VTURB 10–20 km/s) | 100.9 | 21.1 | −0.0 | −1.6 | −0.0 | 55.2 | −3.7 |
 | SuperLite, Monte Carlo J | 94.7 | 20.7 | −1.6 | −1.6 | 1.5 | 41.7 | −7.7 |
 | SuperLite, 12 passes | 104.1 | 21.9 | 0.4 | −1.6 | −0.0 | 43.2 | −2.6 |
+| SuperLite, edge-aligned groups, 12 passes | 105.9 | 22.6 | 0.4 | −1.6 | 0.0 | 55.0 | −3.1 |
 
 * Doppler profiles: beyond 2×10¹⁵ cm the wind coasts (226–245 km/s;
   dv/dr ≈ v/r / 20), so along most directions a photon stays within the
@@ -446,12 +489,15 @@ with 12 passes of the electron-scattering J:
   include that scattering (`in_nltex_esrates`), so the layer is more
   neutral (x_HI up to 0.18 against 0.003, n_e 15 % lower), with n₂ and n₃
   within 25 % of `ies`.
-* Remaining: Pβ 14 % weaker: b₅ is 10–30 % below CMFGEN's where it
-  forms (1.1–2.2×10¹⁵ cm; b₅ < b₆ there, unlike CMFGEN's monotonic
-  b_n), so its source function is 15–35 % lower; the incident J of the
-  infrared lines of n = 5 is not starved (0.1–0.25 B); the cause is the
-  grid (the n = 4 edge inside a group, see `Tools/make_wlgrid.py` in §2:
-  with the edge as a boundary b₅ agrees within 5 %). The P-Cygni trough
+* Pβ and the grid: with the n = 4 (Brackett) edge inside a group b₅ was
+  10–30 % below CMFGEN's where Pβ forms (1.1–2.2×10¹⁵ cm; b₅ < b₆ there,
+  unlike CMFGEN's monotonic b_n) and Pβ 22 % weak (43 Å). With the edges
+  as group boundaries (`Tools/make_wlgrid.py`, §2) b₂…b₈ agree with
+  `ies` within 4–20 % at 1.1–6×10¹⁵ cm (b₅ within 4 %), and the formal
+  integral with 12 passes gives Pβ 55.0 Å against 55.2 Å, within 0.2 Å
+  in every wing bin (Hα 105.9, Hβ 22.6 Å; the J of the passes is 4 %
+  above the Monte Carlo J in every cell, 6 % at 3500–4650 Å).
+* Remaining: the P-Cygni trough
   is shallower than both CMFGEN models' (0.7 of the continuum against
   0.25, ≈ 2 Å). At −220 km/s the line is thick on every ray out to
   p ≈ 6×10¹⁵ cm and ends at the outer edge, so a formal solution gives
