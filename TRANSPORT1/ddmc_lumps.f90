@@ -41,11 +41,18 @@ subroutine ddmc_lumps
         enddo
      endif
      grd_nlump(ic) = glump
+!-- cumulative absorption rate over the lump (NLTE: absorbing group)
+     emitlump = 0d0
+     do iig=1,glump
+        emitlump = emitlump + grd_spk(grd_glump(iig,ic),ic)*grd_cap(grd_glump(iig,ic),ic)
+        grd_lumpcum(iig,ic) = real(emitlump)
+     enddo
      if(glump==grp_ng) then
         grd_vlump(:,ic) = [1d0, grd_capgrey(ic), grd_capemitgrey(ic), 0d0]
      else
-!-- (with the NLTE macro-atoms: Kirchhoff emission with all absorption
-!-- opacities; the macro-atom is not followed in DDMC)
+!-- (with the NLTE macro-atoms: the emission share of the absorption
+!-- opacities in the source spectrum; diffusion11 then re-emits through the
+!-- macro-atom instead)
         if(in_nlte .and. .not.nxt_on) then
            emitlump = grd_opaclump(9,ic)*capemitgreyinv
         else

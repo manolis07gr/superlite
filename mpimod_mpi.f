@@ -956,6 +956,7 @@ c     --------------------------
       deallocate(snd2)
 c-- radiation from elsewhere and DDMC lumps (nxt_ldb)
       call allreduce_sum(size(nxt_jxsum),nxt_jxsum)
+      call allreduce_sum(size(nxt_jlosum),nxt_jlosum)
       call allreduce_sum(size(nxt_jlsum),nxt_jlsum)
       t1 = t_time()
       call timereg(t_mpireduc, t1-t0)

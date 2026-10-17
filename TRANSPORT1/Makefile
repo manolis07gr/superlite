@@ -6,7 +6,7 @@ include $(TOP)/Makefile.compiler
 include $(TOP)/Makefile.include
 
 LIBRARY = transport1.a
-FILES = dopplermod.o diffusion11.o transport11.o
+FILES = dopplermod.o nxemitmod.o diffusion11.o transport11.o
 
 .PHONY: all clean
 

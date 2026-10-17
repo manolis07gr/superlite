@@ -99,6 +99,7 @@ subroutine boundary_source
     ptcl%e0 = esurfpart
     ptcl%em = 1
     ptcl%icem = 0
+    ptcl%ilem = 0
     ptcl%wl = wl0
 
 !-- save particle result

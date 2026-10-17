@@ -15,6 +15,7 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
   use comptonmod
   use nlteatommod, only:nxa_lnu,nxa_lwl
   use nltextrmod
+  use nxemitmod
   use bbsobmod, only:bbs_on,grd_capsc
   implicit none
 !
@@ -401,6 +402,8 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
      e = e*help
      e0 = e0*help
      if(nuratio/=1d0) then
+!-- (the comoving frequency history of a line photon ends here)
+        ptcl%ilem = 0
 !-- new comoving group
         ig = binsrch(wl/(1d0-mu*vx*cinv),grp_wl,grp_ng+1,.false.)
         if(((grd_sig(ic)+grd_cap(ig,ic)+grd_capsc(ig,ic))*dx(ix) >= trn_tauddmc) &
@@ -492,6 +495,8 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
         ptcl%em = nxt_emcode(kind,idx)
         ptcl%icem = 0
         if(nxt_emloc(ptcl%em)) ptcl%icem = ic
+        ptcl%ilem = 0
+        if(kind==em_line) ptcl%ilem = idx
      endif
 
 !
@@ -629,6 +634,8 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
         ptcl%em = nxt_emcode(kind,idx)
         ptcl%icem = 0
         if(nxt_emloc(ptcl%em)) ptcl%icem = ic
+        ptcl%ilem = 0
+        if(kind==em_line) ptcl%ilem = idx
      else
 !-- passes the resonance: now on the far side of the line
         ptcl2%iline = jres
@@ -720,92 +727,6 @@ contains
     enddo
     wlp = pc_h*pc_c/(pc_kb*temp*(-log(max(u(1)*u(2)*u(3)*u(4),1d-300))/dble(l2)))
   end subroutine planck_wl
-
-  pure subroutine line_mu(tau0,a,b,rndstate,mucmf)
-!-----------------------------------------------------------------------
-! Comoving direction of a photon leaving a Sobolev resonance in a flow
-! with dv/dr = a and v/r = b.  After any number of local scatterings the
-! photon escapes in direction mu with probability density proportional to
-! beta(mu) = (1-exp(-tau(mu)))/tau(mu), tau(mu) = tau0/|Q(mu)|,
-! Q(mu) = mu**2*a + (1-mu**2)*b (rejection sampling; isotropic when
-! a = b, as in homologous flows, or for optically thin lines).
-!-----------------------------------------------------------------------
-    real*8,intent(in) :: tau0,a,b
-    type(rnd_t),intent(inout) :: rndstate
-    real*8,intent(out) :: mucmf
-    real*8 :: qmax,qlo,q,fmax,rr
-    integer :: itry
-    qmax = max(abs(a),abs(b))
-    call rnd_r(rr,rndstate)
-    mucmf = 1d0-2d0*rr
-    if(tau0<=0d0 .or. qmax<=0d0) return
-    qlo = 1d-3*qmax
-!-- q*(1-exp(-tau0/q)) grows with q: maximal at qmax
-    fmax = qmax*(1d0-exp(-tau0/qmax))
-    do itry=1,10000
-       q = max(abs(mucmf**2*a+(1d0-mucmf**2)*b),qlo)
-       call rnd_r(rr,rndstate)
-       if(rr*fmax <= q*(1d0-exp(-tau0/q))) return
-       call rnd_r(rr,rndstate)
-       mucmf = 1d0-2d0*rr
-    enddo
-  end subroutine line_mu
-
-  pure subroutine nx_reemit(kind,idx,wlcmf,ig,wl,e,e0,mu,vx,x,ix,ic,ptcl2,totevelo,rndstate)
-!-----------------------------------------------------------------------
-! Re-emit the packet after a macro-atom/k-packet process with comoving
-! wavelength wlcmf (kind em_line/em_bf/em_2ph) or the thermal emissivity
-! (em_thermal).  mu (lab) and the lab energy are already set for the new
-! direction.
-!-----------------------------------------------------------------------
-    integer,intent(in) :: kind,idx,ix,ic
-    real*8,intent(in) :: wlcmf,mu,vx,x
-    integer,intent(inout) :: ig
-    real*8,intent(inout) :: wl,e,e0,totevelo
-    type(packet2),intent(inout) :: ptcl2
-    type(rnd_t),intent(inout) :: rndstate
-    real*8 :: wlc,qn,rr,dvdrl
-    if(kind==em_thermal) then
-       call rnd_r(rr,rndstate)
-       ig = emitgroup(rr,ic)
-       call rnd_r(rr,rndstate)
-       wlc = 1d0/((1d0-rr)*grp_wlinv(ig)+rr*grp_wlinv(ig+1))
-    else
-       wlc = wlcmf
-       if(kind==em_line) then
-          ig = nxt_lgrp(idx)
-       else
-          ig = 0
-       endif
-       if(ig<1) ig = binsrch(wlc,grp_wl,grp_ng+1,.false.)
-       if(wlc<grp_wl(1) .or. wlc>=grp_wl(grp_ng+1)) then
-!-- outside the group grid (e.g. mid-IR fine-structure lines): the medium
-!-- is not described there, the photon escapes (flux tally: outside the
-!-- bins unless the flux grid is wider)
-          wl = wlc*(1d0-vx*mu*cinv)
-          ptcl2%stat = 'flux'
-          return
-       elseif(kind==em_line .and. nxt_isrt(idx)>0) then
-!-- the packet sits on the (active) line it was emitted in
-          ptcl2%iline = nxt_isrt(idx)
-          dvdrl = (grd_vxarr(ix+1)-grd_vxarr(ix))/(grd_xarr(ix+1)-grd_xarr(ix))
-          qn = ((mu-vx*cinv)/(1d0-mu*vx*cinv))**2
-          qn = qn*dvdrl + (1d0-qn)*vx/x
-          ptcl2%ilside = merge(1,-1,qn>=0d0)
-       endif
-    endif
-    wl = wlc*(1d0-vx*mu*cinv)
-!-- DDMC in the new group
-    if(((grd_sig(ic)+grd_cap(ig,ic)+grd_capsc(ig,ic))*(grd_xarr(ix+1)-grd_xarr(ix)) >= trn_tauddmc) &
-         .and. .not.in_puretran) then
-       ptcl2%itype = 2
-       ptcl2%iline = 0
-       totevelo = totevelo+e*vx*mu*cinv
-       e = e*(1d0-vx*mu*cinv)
-       e0 = e0*(1d0-vx*mu*cinv)
-       wl = wlc
-    endif
-  end subroutine nx_reemit
 
 ! !-- updating the co-moving group for superluminal flow for \tilde{v} frame
 !   if(lsuplum.and.ptcl2%itype == 1) then

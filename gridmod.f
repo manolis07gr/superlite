@@ -50,6 +50,9 @@ c-- and Doppler opacities
       integer,allocatable :: grd_nlump(:) !(ncell)
       integer*2,allocatable :: grd_glump(:,:) !(ng,ncell)
       real*8,allocatable :: grd_vlump(:,:) !(4,ncell)
+!-- cumulative absorption rate (source spectrum times opacity) over the
+!-- lump, in the order of grd_glump (diffusion11 with the NLTE macro-atoms)
+      real*4,allocatable :: grd_lumpcum(:,:) !(ng,ncell)
 
 c-- Line+Cont extinction coeff
       real*4,allocatable :: grd_cap(:,:) !(ng,ncell)
@@ -209,6 +212,7 @@ c-- ndim=4 alloc
       allocate(grd_spk(ng,grd_ncell),grd_capgreyk(grd_ncell))
       allocate(grd_nlump(grd_ncell),grd_glump(ng,grd_ncell))
       allocate(grd_vlump(4,grd_ncell))
+      allocate(grd_lumpcum(ng,grd_ncell))
       allocate(grd_cap(ng,grd_ncell))
       allocate(grd_capemit(ng,grd_ncell))
       allocate(grd_emiss(ng,grd_ncell))
@@ -255,7 +259,7 @@ c-- ndim=4 alloc
       deallocate(grd_opaclump)
       deallocate(grd_emitprob,grd_emitprobk,grd_planck)
       deallocate(grd_spk,grd_capgreyk)
-      deallocate(grd_nlump,grd_glump,grd_vlump)
+      deallocate(grd_nlump,grd_glump,grd_vlump,grd_lumpcum)
 c-- ndim=4 alloc
       deallocate(grd_cap)
       deallocate(grd_capemit)

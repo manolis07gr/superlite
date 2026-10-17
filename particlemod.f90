@@ -15,6 +15,10 @@ module particlemod
 !-- cell of the last thermal or bound-free emission (part of the cell's
 !-- source function), 0 after any other emission (nxt_ldb)
      integer :: icem = 0
+!-- NLTE line of the last emission while the photon keeps its comoving
+!-- frequency history (no thermal electron scattering since), 0 otherwise:
+!-- in an expanding flow it is not incident on that line (nxt_tally_finish)
+     integer :: ilem = 0
   end type packet
 !
 !-- secondary particle properties

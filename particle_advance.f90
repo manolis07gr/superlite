@@ -18,7 +18,7 @@ subroutine particle_advance
   use countersmod
   use fluxmod
   use sourcemod
-  use nltextrmod, only:nxt_on,nxt_jbsum,nxt_jbcnt,nxt_jxsum,nxt_jlsum
+  use nltextrmod, only:nxt_on,nxt_jbsum,nxt_jbcnt,nxt_jxsum,nxt_jlsum,nxt_jlosum,nxt_lgrp
   implicit none
 !
 !##################################################
@@ -102,7 +102,7 @@ subroutine particle_advance
 !$omp    vx,vy,vz,help1,help2,vhelp1,vhelp2, &
 !$omp    i,t0,t1,help,tau,labfact,jrad, &
 !$omp    rndstate,eraddens,eamp,ierr,iomp,jbk,jbval) &
-!$omp reduction(+:grd_tally,grd_jrad,nxt_jbsum,nxt_jbcnt,nxt_jxsum,nxt_jlsum, &
+!$omp reduction(+:grd_tally,grd_jrad,nxt_jbsum,nxt_jbcnt,nxt_jxsum,nxt_jlsum,nxt_jlosum, &
 !$omp    tot_evelo,tot_eout,tot_sflux, &
 !$omp    npckt,nflux, &
 !$omp    nstepddmc,nstepimc,nmethodswap,ndist) &
@@ -250,6 +250,10 @@ subroutine particle_advance
 !-- (radiation from elsewhere: outside the cell of the last emission that
 !-- is part of the cell's source function; nxt_ldb)
            if(ptcl%icem/=icold) nxt_jxsum(igold,icold) = nxt_jxsum(igold,icold) + jrad
+!-- (photons of a line still in its group, not incident on it: nxt_tally_finish)
+           if(ptcl%ilem>0) then
+              if(nxt_lgrp(ptcl%ilem)==igold) nxt_jlosum(igold,icold) = nxt_jlosum(igold,icold) + jrad
+           endif
         elseif(grd_cap(igold,icold)*dx(ixold) >= trn_taulump) then
 !-- (DDMC in the cell's group lump: shared among its groups by nxt_ldb)
            nxt_jlsum(icold) = nxt_jlsum(icold) + jrad

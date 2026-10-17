@@ -13,7 +13,9 @@ pure subroutine diffusion11(ptcl,ptcl2,vx,vy,vz,cache,rndstate,&
   use transportmod
   use fluxmod
   use inputparmod
-  use nltextrmod, only:nxt_on
+  use nltextrmod, only:nxt_on,nxt_ntemin,nxt_kq,grd_capnbf,nxt_bfabs,nxt_kpacket, &
+       nxt_nonthermal,nxt_emcode,nxt_emloc,em_line
+  use nxemitmod, only:nx_emitwl,nx_place,line_mu
   implicit none
 !
   type(packet),target,intent(inout) :: ptcl
@@ -54,6 +56,10 @@ pure subroutine diffusion11(ptcl,ptcl2,vx,vy,vz,cache,rndstate,&
   real*8 :: dist, help
   real*8 :: vhelp1,vhelp2,help1,help2
   real*8 :: dummy
+!-- NLTE macro-atoms: absorption and re-emission
+  integer :: kind,idx,ilo,ihi,imid
+  real*8 :: nu,wlcmf,wlc,mucmf
+  logical :: lout,lddmc
 
   integer,pointer :: ix, ic, ig
   integer,parameter :: iy=1, iz=1
@@ -73,6 +79,8 @@ pure subroutine diffusion11(ptcl,ptcl2,vx,vy,vz,cache,rndstate,&
   e0 => ptcl%e0
   wl => ptcl%wl
 
+!-- (a DDMC packet has no frequency history)
+  ptcl%ilem = 0
   capgreyinv => cache%capgreyinv
   capemitgreyinv => cache%capemitgreyinv
   speclump => cache%speclump
@@ -196,8 +204,13 @@ pure subroutine diffusion11(ptcl,ptcl2,vx,vy,vz,cache,rndstate,&
 !-------------------------------------------------------------
 !
 
-!-- calculate time to event
-  denom = sum(opacleak) + (1d0-emitlump)*caplump + doplump
+!-- calculate time to event (NLTE macro-atoms: every absorption is an
+!-- event, unless all groups are lumped)
+  if(nxt_on .and. glump<grp_ng) then
+     denom = sum(opacleak) + caplump + doplump
+  else
+     denom = sum(opacleak) + (1d0-emitlump)*caplump + doplump
+  endif
   denom = 1d0/denom
 
   call rnd_r(r1,rndstate)
@@ -496,74 +509,142 @@ pure subroutine diffusion11(ptcl,ptcl2,vx,vy,vz,cache,rndstate,&
 !-- effective scattering sample
   else
      ptcl2%idist = -2
-!-- (re-emitted with the cell's source spectrum: local emission, nxt_ldb)
-     ptcl%icem = ic
-
-     if(glump==grp_ng) then
-!       stop 'diffusion11: effective scattering with glump==ng'
-        ierr = 102
-        return
-     endif
-
-     if(glump==0) then
-!-- sample group
+     if(nxt_on) then
+!-- NLTE: an absorption in the lump (group by its rate kappa J, J ~ S:
+!-- grd_spk) or in the group, followed by the macro-atom or the thermal
+!-- pool as on IMC steps (transport11), so that the energy of the thick
+!-- continua cascades through the lines.  A re-emission in a DDMC group of
+!-- the cell keeps the packet in DDMC (in the lump: no change); otherwise it
+!-- leaves as an IMC packet from a random point of the cell.
+        iiig = ig
+        if(glump>0) then
+           call rnd_r(r1,rndstate)
+           r1 = r1*grd_lumpcum(glump,ic)
+!-- (bisection: the first lump group whose cumulative rate exceeds r1)
+           ilo = 1
+           ihi = glump
+           do while(ilo<ihi)
+              imid = (ilo+ihi)/2
+              if(grd_lumpcum(imid,ic) > r1) then
+                 ihi = imid
+              else
+                 ilo = imid + 1
+              endif
+           enddo
+           iiig = grd_glump(ilo,ic)
+        endif
+!-- comoving frequency uniform in the group
         call rnd_r(r1,rndstate)
-        if(nxt_on) then
-           iiig = emitgroupk(r1,ic)
+        nu = pc_c*((1d0-r1)*grp_wlinv(iiig+1) + r1*grp_wlinv(iiig))
+        call rnd_r(r1,rndstate)
+        if(nxt_ntemin>0d0 .and. pc_h*nu>nxt_ntemin) then
+           call nxt_nonthermal(ic,rndstate,kind,idx,wlcmf)
+        elseif(r1*grd_cap(iiig,ic) < grd_capnbf(iiig,ic)) then
+           call nxt_bfabs(ic,iiig,nu,rndstate,kind,idx,wlcmf)
         else
-           iiig = emitgroup(r1,ic)
+           call nxt_kpacket(ic,rndstate,kind,idx,wlcmf)
+        endif
+        ptcl%em = nxt_emcode(kind,idx)
+        ptcl%icem = 0
+        if(nxt_emloc(ptcl%em)) ptcl%icem = ic
+        call nx_emitwl(kind,idx,wlcmf,ic,rndstate,wlc,iiig,lout)
+        lddmc = .false.
+        if(.not.lout) lddmc = (grd_sig(ic)+grd_cap(iiig,ic)+grd_capsc(iiig,ic))*dist >= trn_tauddmc
+        if(lddmc) then
+!-- DDMC in the new group
+           ig = iiig
+        else
+!-- IMC (or escape outside the group grid): position uniform in the cell,
+!-- direction isotropic, a line photon's along large |Q(mu)|
+           ptcl2%itype = 1
+           call rnd_r(r1,rndstate)
+           x = (r1*grd_xarr(ix+1)**3 + (1d0-r1)*grd_xarr(ix)**3)**(1d0/3d0)
+           x = min(x,grd_xarr(ix+1))
+           x = max(x,grd_xarr(ix))
+           vx = (grd_vxarr(ix)*(grd_xarr(ix+1)-x) + grd_vxarr(ix+1)*(x-grd_xarr(ix)))/dist
+           if(kind==em_line) then
+              call line_mu(nxt_kq(idx,ic),(grd_vxarr(ix+1)-grd_vxarr(ix))/dist,vx/x,rndstate,mucmf)
+           else
+              call rnd_r(r1,rndstate)
+              mucmf = 1d0-2d0*r1
+           endif
+           mu = (mucmf+vx*cinv)/(1d0+vx*mucmf*cinv)
+!-- velocity effects accounting
+           help = 1d0/(1d0-vx*mu*cinv)
+           totevelo = totevelo+e*(1d0-help)
+           e = e*help
+           e0 = e0*help
+           ig = iiig
+           if(kind==em_line) ptcl%ilem = idx
+           call nx_place(kind,idx,wlc,ig,lout,wl,e,e0,mu,vx,x,ix,ic,ptcl2,totevelo)
+           if(ptcl2%stat=='flux') return
         endif
      else
+!-- re-emitted with the cell's emission spectrum
+        ptcl%icem = ic
+
+        if(glump==grp_ng) then
+!       stop 'diffusion11: effective scattering with glump==ng'
+           ierr = 102
+           return
+        endif
+
+        if(glump==0) then
+!-- sample group
+           call rnd_r(r1,rndstate)
+           iiig = emitgroup(r1,ic)
+        else
 !
-        call rnd_r(r1,rndstate)
-        denom2 = 1d0/(1d0-emitlump)
-        denom3 = 0d0
-        do iig=grp_ng,glump+1,-1
-           iiig = grd_glump(iig,ic)
-           if(in_nlte .and. .not.nxt_on) then !NLTE (H only)
-             help = grd_planck(iiig,ic)*grd_capemit(iiig,ic)&
-                    *capemitgreyinv
-           else
-             help = grd_spk(iiig,ic)*grd_cap(iiig,ic)*capgreyinv
-           endif
-           denom3 = denom3 + help*denom2
-           if(denom3>r1) exit
-        enddo
-     endif
-     ig = iiig
-     if((grd_sig(ic)+grd_cap(ig,ic)+grd_capsc(ig,ic))*dist < trn_tauddmc) then
-        ptcl2%itype = 1
+           call rnd_r(r1,rndstate)
+           denom2 = 1d0/(1d0-emitlump)
+           denom3 = 0d0
+           do iig=grp_ng,glump+1,-1
+              iiig = grd_glump(iig,ic)
+              if(in_nlte) then !NLTE (H only)
+                help = grd_planck(iiig,ic)*grd_capemit(iiig,ic)&
+                       *capemitgreyinv
+              else
+                help = grd_spk(iiig,ic)*grd_cap(iiig,ic)*capgreyinv
+              endif
+              denom3 = denom3 + help*denom2
+              if(denom3>r1) exit
+           enddo
+        endif
+        ig = iiig
+        if((grd_sig(ic)+grd_cap(ig,ic)+grd_capsc(ig,ic))*dist < trn_tauddmc) then
+           ptcl2%itype = 1
 !-- sample wavelength
-        call rnd_r(r1,rndstate)
-        wl = 1d0/((1d0-r1)*grp_wlinv(ig) + r1*grp_wlinv(ig+1))
+           call rnd_r(r1,rndstate)
+           wl = 1d0/((1d0-r1)*grp_wlinv(ig) + r1*grp_wlinv(ig+1))
 !-- direction sampled isotropically
-        call rnd_r(r1,rndstate)
-        mu = 1d0-2d0*r1
+           call rnd_r(r1,rndstate)
+           mu = 1d0-2d0*r1
 !-- position sampled uniformly
-        call rnd_r(r1,rndstate)
-        x = (r1*grd_xarr(ix+1)**3 + (1.0-r1)*grd_xarr(ix)**3)**(1.0/3.0)
+           call rnd_r(r1,rndstate)
+           x = (r1*grd_xarr(ix+1)**3 + (1.0-r1)*grd_xarr(ix)**3)**(1.0/3.0)
 !-- must be inside cell
-        x = min(x,grd_xarr(ix+1))
-        x = max(x,grd_xarr(ix))
+           x = min(x,grd_xarr(ix+1))
+           x = max(x,grd_xarr(ix))
 !-- determine velocity coordinates (currently uses linear interpolation)
 !-- x
-        vhelp1 = grd_vxarr(ix)
-        vhelp2 = grd_vxarr(ix+1)
-        help1 = grd_xarr(ix)
-        help2 = grd_xarr(ix+1)
-        vx = (vhelp1*(help2-x)+vhelp2*(x-help1))/dx(ix)
+           vhelp1 = grd_vxarr(ix)
+           vhelp2 = grd_vxarr(ix+1)
+           help1 = grd_xarr(ix)
+           help2 = grd_xarr(ix+1)
+           vx = (vhelp1*(help2-x)+vhelp2*(x-help1))/dx(ix)
 !
 !-- doppler and aberration corrections
-        mu = (mu+vx*cinv)/(1.0+vx*mu*cinv)
+           mu = (mu+vx*cinv)/(1.0+vx*mu*cinv)
 !-- velocity effects accounting
-        help = 1d0/(1d0-vx*mu*cinv)
-        totevelo = totevelo+e*(1d0 - help)
+           help = 1d0/(1d0-vx*mu*cinv)
+           totevelo = totevelo+e*(1d0 - help)
 !
-        e = e*help
-        e0 = e0*help
-        wl = wl*(1.0-vx*mu*cinv)
-     endif
+           e = e*help
+           e0 = e0*help
+           wl = wl*(1.0-vx*mu*cinv)
+        endif
 
+     endif
   endif
 
 !-- eliminate particles crossing inner boundary

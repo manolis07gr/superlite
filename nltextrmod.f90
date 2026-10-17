@@ -16,8 +16,9 @@ module nltextrmod
 ! An absorbed line packet activates the macro-atom of the line's element in
 ! the upper level; bound-free absorption at nu by level l activates the
 ! continuum state of l with probability nu_l/nu and the thermal pool
-! otherwise.  The macro-atom jumps between the states of the element (all
-! levels of its NLTE ions and the top ion) with probabilities set by the
+! otherwise, on IMC steps and in DDMC groups alike (diffusion11).  The
+! macro-atom jumps between the states of the element (all levels of its
+! NLTE ions and the top ion) with probabilities set by the
 ! rates, weighted by the state energies (Lucy), and de-activates by emitting
 ! a line, recombination-continuum or two-photon packet, or by collisional
 ! de-excitation and three-body recombination into the thermal pool
@@ -73,7 +74,7 @@ module nltextrmod
   real*8,allocatable,public :: nxt_beta(:,:)  !(nlin,ncell) escape probability
   real*8,allocatable,public :: nxt_jg(:,:)    !(ng,ncell) MC mean intensity [erg/s/cm^2/Hz/sr]
   real*8,allocatable,public :: nxt_jb(:,:)    !(nlin,ncell) resonance mean intensity
-  logical,allocatable,public :: nxt_ljb(:,:)  !(nlin,ncell) jb from enough crossings
+  logical,allocatable,public :: nxt_ljb(:,:)  !(nlin,ncell) jb set (MC; nxt_tally_finish)
   real*8,allocatable,public :: nxt_jbsum(:,:) !(nlin,ncell) tally: sum e c/(nu |Q|)
   real*8,allocatable,public :: nxt_jbcnt(:,:) !(nlin,ncell) tally: crossings
 !-- radiation of the optically thick groups (nxt_ldb): tallies of the packets
@@ -88,7 +89,14 @@ module nltextrmod
 !-- tally of the radiation from elsewhere: Lambda* = 1)
   logical,public :: nxt_ldbone = .false.
   real*8,allocatable,public :: nxt_jxsum(:,:) !(ng,ncell)
+!-- tally of the photons of NLTE lines on IMC steps in the line's group with
+!-- their comoving frequency history (packet%ilem): not incident on the line
+  real*8,allocatable,public :: nxt_jlosum(:,:) !(ng,ncell)
   real*8,allocatable,public :: nxt_jlsum(:)   !(ncell)
+!-- (diagnostics, output.nltex_ldb: per cell, over the groups in local
+!-- detailed balance at 228-504 and 504-912 A, 4 pi Int dnu of Lambda* S,
+!-- J_ext and the Monte Carlo estimate)
+  real*8,allocatable :: nxt_ldbd(:,:,:)       !(3,2,ncell)
   real*4,allocatable,public :: grd_capnbf(:,:) !(ng,ncell) NLTE bound-free part of grd_cap
 !-- NLTE recombination emission per group, in the units of the Planck group
 !-- integrals times opacity (int eta dnu/(sigma T^4/pi)): DDMC source spectrum
@@ -236,8 +244,8 @@ subroutine nxt_init(ncell,gncell,ng,wlg,nfile,files,hnlev)
   allocate(nxt_kq(nxa_nlin,ncell),nxt_beta(nxa_nlin,ncell))
   allocate(nxt_jg(ng,ncell),nxt_jb(nxa_nlin,ncell),nxt_ljb(nxa_nlin,ncell))
   allocate(nxt_jbsum(nxa_nlin,ncell),nxt_jbcnt(nxa_nlin,ncell))
-  allocate(nxt_jxsum(ng,ncell),nxt_jlsum(ncell))
-  nxt_jxsum = 0d0; nxt_jlsum = 0d0
+  allocate(nxt_jxsum(ng,ncell),nxt_jlsum(ncell),nxt_jlosum(ng,ncell))
+  nxt_jxsum = 0d0; nxt_jlsum = 0d0; nxt_jlosum = 0d0
   allocate(grd_capnbf(ng,ncell),grd_emnbf(ng,ncell))
   allocate(nxt_xloc(nst,gncell),nxt_neloc(gncell),nxt_nelloc(nxa_nel,gncell),nxt_neothloc(gncell))
   allocate(gas_capnbf(ng,gncell),gas_emnbf(ng,gncell))
@@ -439,7 +447,7 @@ end subroutine nxt_init
 subroutine nxt_dealloc
 !-- free the cell arrays and tables (set up again by nxt_init)
   if(allocated(nxt_x)) deallocate(nxt_x,nxt_nel,nxt_ne,nxt_kq,nxt_beta,nxt_jg,nxt_jb,nxt_ljb, &
-       nxt_jbsum,nxt_jbcnt,nxt_jxsum,nxt_jlsum,grd_capnbf,nxt_xloc,nxt_neloc,nxt_nelloc,nxt_neothloc,gas_capnbf, &
+       nxt_jbsum,nxt_jbcnt,nxt_jxsum,nxt_jlsum,nxt_jlosum,grd_capnbf,nxt_xloc,nxt_neloc,nxt_nelloc,nxt_neothloc,gas_capnbf, &
        grd_emnbf,gas_emnbf, &
        nxt_lgrp,nxt_isrt,nxt_nug,nxt_dnug,nxt_act,nxt_wlact,nxt_w)
   if(allocated(nxt_lch)) deallocate(nxt_lch,nxt_bch,nxt_2pch)
@@ -460,6 +468,7 @@ subroutine nxt_dealloc
   nxt_warm = .false.
   nxt_dtinv = 0d0
   nxt_elh = 0; nxt_elhe = 0; nxt_kha = 0
+  if(allocated(nxt_ldbd)) deallocate(nxt_ldbd)
   nxt_sh1 = 0; nxt_sh2 = 0; nxt_shc = 0; nxt_she1 = 0; nxt_she2 = 0; nxt_shec = 0
 end subroutine nxt_dealloc
 !
@@ -709,9 +718,17 @@ subroutine nxt_ldb(ncell,ng,vol,dr,tempinv,cap,capemit,planck,spk,nlump,glump)
   integer,intent(in) :: nlump(ncell)
   integer*2,intent(in) :: glump(ng,ncell)
   real*8,parameter :: sb = 5.670374419d-5
-  integer :: i,ig,k
-  real*8 :: w,tau,s,u
+  integer :: i,ig,k,ib
+  real*8 :: w,tau,s,u,ls,jx,wl
+  logical :: ldiag
 !
+  ldiag = allocated(nxt_nug)
+  if(ldiag) ldiag = size(nxt_nug)==ng
+  if(allocated(nxt_ldbd)) then
+     if(size(nxt_ldbd,3)/=ncell) deallocate(nxt_ldbd)
+  endif
+  if(.not.allocated(nxt_ldbd)) allocate(nxt_ldbd(3,2,ncell))
+  nxt_ldbd = 0d0
   do i=1,ncell
      if(vol(i)<=0d0) cycle
 !-- DDMC lump: shared as the source spectrum
@@ -737,10 +754,19 @@ subroutine nxt_ldb(ncell,ng,vol,dr,tempinv,cap,capemit,planck,spk,nlump,glump)
         if(tau<nxt_ldbtau) cycle
         s = (planck(ig,i)*capemit(ig,i) + grd_emnbf(ig,i))/cap(ig,i)*u/nxt_dnug(ig)
         if(nxt_ldbone) then
-           nxt_jg(ig,i) = s + nxt_jxsum(ig,i)/(4d0*pi*vol(i)*nxt_dnug(ig))
+           ls = 1d0
         else
-           nxt_jg(ig,i) = nxt_lsldb(tau)*s + nxt_jxsum(ig,i)/(4d0*pi*vol(i)*nxt_dnug(ig))
+           ls = nxt_lsldb(tau)
         endif
+        jx = nxt_jxsum(ig,i)/(4d0*pi*vol(i)*nxt_dnug(ig))
+        ib = 0
+        if(ldiag) then
+           wl = cc/nxt_nug(ig)
+           if(wl>=228d-8 .and. wl<504d-8) ib = 1
+           if(wl>=504d-8 .and. wl<912d-8) ib = 2
+        endif
+        if(ib>0) nxt_ldbd(:,ib,i) = nxt_ldbd(:,ib,i) + 4d0*pi*nxt_dnug(ig)*[ls*s,jx,nxt_jg(ig,i)]
+        nxt_jg(ig,i) = ls*s + jx
      enddo
   enddo
 end subroutine nxt_ldb
@@ -787,17 +813,36 @@ subroutine nxt_tally_reset
   nxt_jbcnt = 0d0
   nxt_jxsum = 0d0
   nxt_jlsum = 0d0
+  nxt_jlosum = 0d0
 end subroutine nxt_tally_reset
 !
 !
 subroutine nxt_tally_finish(ncell,vol)
-!-- resonance tally (sum of e c/(nu |Q|)) to mean intensity incident on the line
+!-----------------------------------------------------------------------
+! Mean intensity incident on each NLTE line (after nxt_store_jg and
+! nxt_ldb): the resonance tally (sum of e c/(nu |Q|)) where the line has
+! nxt_njbmin crossings, else the J of the line's group without the photons
+! of its lines that have kept their comoving frequency history since their
+! emission (nxt_jlosum).  In an expanding flow those only redshift away
+! from their line: the Sobolev incident intensity is that of the continuum
+! (CMFGEN's Sobolev option).  The whole group J, which the line's own
+! escaping photons dominate where it is strong (Halpha in the outer wind of
+! a IIn: a few crossings per cell; 4-5 times the continuum in a 1000 km/s
+! group), pumped the upper level.
+!-----------------------------------------------------------------------
   integer,intent(in) :: ncell
   real*8,intent(in) :: vol(ncell)
-  integer :: i
+  integer :: i,k,g
   do i=1,ncell
      nxt_jb(:,i) = nxt_jbsum(:,i)/(4d0*pi*vol(i))
      nxt_ljb(:,i) = nxt_jbcnt(:,i) >= nxt_njbmin
+     do k=1,nxa_nlin
+        if(nxt_ljb(k,i)) cycle
+        g = nxt_lgrp(k)
+        if(g<1) cycle
+        nxt_jb(k,i) = max(nxt_jg(g,i) - nxt_jlosum(g,i)/(4d0*pi*vol(i)*nxt_dnug(g)),0d0)
+        nxt_ljb(k,i) = .true.
+     enddo
   enddo
   nxt_have_mc = .true.
 end subroutine nxt_tally_finish
@@ -1765,6 +1810,17 @@ subroutine nxt_write(ncell,rcell,vcell,tempinv,radtemp)
      write(4,'(1p,12e12.4)') rcell(ic),1d0/tempinv(ic),b8,trw(1),trw(2)
   enddo
   close(4)
+!-- local detailed balance: the parts of J in its groups
+  if(allocated(nxt_ldbd)) then
+     open(4,file='output.nltex_ldb',status='replace')
+     write(4,'(a)') '# groups in local detailed balance: 4 pi Int dnu [erg/s/cm^2] of Lambda* S, '// &
+          'J_ext and the Monte Carlo estimate, at 228-504 and 504-912 A'
+     write(4,'(a1,a11,6a12)') '#','r[cm]','LS_228','Jx_228','JMC_228','LS_504','Jx_504','JMC_504'
+     do ic=1,ncell
+        write(4,'(1p,7e12.4)') rcell(ic),nxt_ldbd(:,:,ic)
+     enddo
+     close(4)
+  endif
 !-- hydrogen in the format of the H-only treatment
   if(nxt_elh==0) return
   iel = nxt_elh
@@ -1789,7 +1845,7 @@ subroutine nxt_write(ncell,rcell,vcell,tempinv,radtemp)
      write(4,'(1p,19e12.4)') rcell(ic),vcell(ic),t,radtemp(ic),nxt_nel(iel,ic),nxt_ne(ic), &
           nxt_x(o+nxa_el(iel)%ns,ic),nxt_x(o+1,ic),nxt_x(o+2,ic),nxt_x(o+3,ic),b(1),b(2),b(3), &
           nxt_kq(kla,ic)/qv,nxt_kq(kha,ic)/qv,nxt_kq(khb,ic)/qv,nxt_beta(kha,ic), &
-          nxt_jb(kha,ic)/max(bplanck(nxa_lnu(kha),t),1d-300),merge(1d0,0d0,nxt_ljb(kha,ic))
+          nxt_jb(kha,ic)/max(bplanck(nxa_lnu(kha),t),1d-300),merge(1d0,0d0,nxt_jbcnt(kha,ic)>=nxt_njbmin)
   enddo
   close(4)
 contains
