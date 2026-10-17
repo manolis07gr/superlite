@@ -42,7 +42,7 @@ behaviour except for the bug fixes in rows 4 (exact Doppler, switch back with
 | `in_srctype = 'lumg'` | Energy injected where the hydro L(r) grows outward (`lum` column), plus L at the inner boundary; emitted isotropically with the local emissivity (k-packets). The inner-boundary packets have a Planck spectrum at the input radiation temperature of the innermost cell (or `in_srcmax`), held fixed: following the Monte Carlo radiation temperature of that cell fed back on itself (harder injection → more trapping near the boundary → higher T_rad), +18 % in four iterations in the CMFGEN benchmark. | `SOURCE/sourceenergy.f90`, `interior_source.f90`, `boundary_source.f90` |
 | `in_shock_dvmin`, `in_shock_tmax` | Shock cells (velocity drop > 50 km/s and 2 % per cell, ≥ `in_shock_dvmin` per shock) emit their injected energy as a radiatively cooling flow: T uniform between T_gas and min(T_postshock, `in_shock_tmax`) (isobaric cooling releases the same energy per unit T), bremsstrahlung shape. Its EUV/X-rays photoionize the CSM and the dense shell. | `SOURCE/shock_temperatures.f90` |
 | `in_shock_cie` | At each T of the cooling flow the photons follow the spectrum of gas in collisional ionization equilibrium of the cell's composition (lines, free-free, free-bound, two-photon; 10^4.5–10^8 K) instead of bremsstrahlung: at 10⁵–10⁷ K line cooling exceeds bremsstrahlung 10–100 times and comes out in the EUV/soft X-rays and the UV/optical coronal lines. Per-element tables from CHIANTI 11 (Dere et al. 1997; Del Zanna et al. 2021) made with `Tools/chianti_cie_spectra.py` (ChiantiPy; the table is not distributed). | `shockciemod.f90`, `SOURCE/interior_source.f90` |
-| tools | `Tools/stella2superlite_csm.py`: STELLA profile → `input.str` with `lum`, whole CSM, shock-preserving zone merging, recommended `input.par`. `Tools/make_wlgrid.py`: 100 km/s groups and flux bins in the optical, coarse elsewhere, with group boundaries at the main bound-free edges (H, He, abundant metals; `--from` adds them to an existing grid): in a group across an edge the cross-section is the group average, so the photons of the lines that converge on the edge from the red photoionize. | `Tools/` |
+| tools | `Tools/stella2superlite_csm.py`: STELLA profile → `input.str` with `lum`, whole CSM, shock-preserving zone merging, recommended `input.par`. `Tools/make_wlgrid.py`: 100 km/s groups and flux bins in the optical, coarse elsewhere, with group boundaries at the main bound-free edges (H, He, abundant metals; `--from` adds them to an existing grid): in a group across an edge the cross-section is the group average, so the photons of the lines that converge on the edge from the red photoionize. In the H/He benchmark the n = 4 edge (14 588 Å) inside a 1000 km/s group lowered b₅ by up to 40 % below CMFGEN's in the inner wind (Pβ forms there); with the edge as a boundary b₅ agrees within 5 % (§4.4). Use edge-aligned grids for line work. | `Tools/` |
 
 ### Validation
 
@@ -157,7 +157,7 @@ for H, He and the abundant metals), charge exchange, core-shell X-ray opacity.
 8. Time-dependent radiation transport (SuperNu's IMC with census) with light-travel time, for interaction phases where t_diff ≈ t_dyn.
 9. 2D/3D CSM (disks, clumps, asymmetric shells) with the SuperNu 2D/3D transport.
 9a. Continuum absorption of trapped line photons (Hummer & Rybicki 1985 line-photon destruction: the same trapped path as `in_nltex_vturb`, with the absorption opacity at the line, to the bound-free macro-atom or the thermal pool, and the photoionization it drives in the rates). In the H/He benchmark it matters only below 1.07×10¹⁵ cm, in the near-LTE layer above the photosphere (trapped Lyα photoionizing n = 2: β_abs/β > 1), and is below 0.2 % of β in the wind. Partial redistribution and pressure broadening of the Lorentz wings (only radiative damping now blocks the escape of scattered photons, as for Lyα).
-9b. Formal integral as CMFGEN's `cmf_flux`: ~~Doppler line profiles~~ (`in_fi_doppler`), ~~electron scattering with the J of the formal solution~~ (`in_fi_nes`, Ng's extrapolation every third pass). Still: an accelerated lambda operator for the scattering passes (the inner wind of a IIn, τ_es ≈ 5, converges slowly), the same scattering J in the statistical equilibrium (CMFGEN's incoherent scattering in its iterations), and the outermost-wind populations of the H/He benchmark: b_n of every level n ≥ 3 1.3–1.9 times CMFGEN's beyond 4×10¹⁵ cm (b₂, n_e, T_e agree), which fills the narrow P-Cygni trough (§4.4); suspects: the recombination coefficients of the excited levels (Milne relation) and CMFGEN's super-levels for n ≥ 15.
+9b. Formal integral as CMFGEN's `cmf_flux`: ~~Doppler line profiles~~ (`in_fi_doppler`), ~~electron scattering with the J of the formal solution~~ (`in_fi_nes`, Ng's extrapolation every third pass). Still: an accelerated lambda operator for the scattering passes (the inner wind of a IIn, τ_es ≈ 5, converges slowly), the same scattering J in the statistical equilibrium (CMFGEN's incoherent scattering in its iterations), and the depth of the narrow P-Cygni trough of the H/He benchmark (0.7 of the continuum against CMFGEN's 0.25, with the outer-wind populations of CMFGEN's `ies` model: a difference of the transfer, §4.4).
 
 **Stage 4 — validation and production**
 10. The observed-line-metric harness (EW, decrement, absorption share, peak velocity on a common ±5000 km/s window; `balmer_validation`) as regression tests; grids for the A/B/C model series; comparison with CMFGEN/ARTIS spectra of the same hydro snapshots.
@@ -363,6 +363,7 @@ restored at the warm start), CMFGEN: `cmf_flux` of its converged model.
 |---|---|---|---|---|
 | CMFGEN, VTURB 1 km/s | 12.1 | 58.2 | 21.3 | 92.1 |
 | CMFGEN, VTURB 10–20 km/s | 14.2 | 57.5 | 24.6 | 96.8 |
+| CMFGEN with comoving-frame lines and incoherent scattering in its iterations (`ies`), VTURB 10–20 km/s | 14.1 | 62.2 | 24.8 | 101.6 |
 | SuperLite, Sobolev lines, trapped-photon scattering (10–20 km/s) | 14.0 | 69.5 | 20.8 | 104.4 |
 | Doppler profiles (10–20 km/s), no trapped-photon scattering | 9.0 | 62.5 | 15.2 | 87.0 |
 | Doppler profiles, trapped-photon scattering, 1 km/s | 11.7 | 65.6 | 18.1 | 95.6 |
@@ -416,11 +417,27 @@ with 12 passes of the electron-scattering J:
   ≈ 0.5 % of the packets): with the J of two consecutive iterations the
   red wing of the formal integral is 20.8 and 25.7 Å. Average J over
   iterations (`in_fi_navg`) or iterate it (`in_fi_nes`).
+* Against CMFGEN's most complete model of this wind (comoving-frame
+  lines and incoherent electron scattering in its iterations, `ies`)
+  the converged formal integral agrees within 1 Å in each part of Hα
+  (total 102.0 against 101.6 Å) and within 0.5 Å in every wing bin.
+  The outer-wind populations that differ from CMFGEN's Sobolev model
+  (b₃ 1.3–1.9 times, b₁ 2–3 times lower beyond 4×10¹⁵ cm) are those of
+  `ies` (b₁ 725 against SuperLite's 685–727 at 7.4×10¹⁵ cm, b₃ 12.8
+  against 14.1): there n = 3 is fed as much by Hα absorption from the
+  overpopulated n = 2 and by the cascade from n = 4 as by recombination
+  (a rate breakdown of the cell at 8.2×10¹⁵ cm), and the incident J of
+  the Balmer lines includes the line photons scattered by electrons,
+  which `ies` has and CMFGEN's Sobolev option (continuum J only) lacks.
 * Remaining: Pβ 14 % weaker: b₅ is 10–30 % below CMFGEN's where it
   forms (1.1–2.2×10¹⁵ cm; b₅ < b₆ there, unlike CMFGEN's monotonic
   b_n), so its source function is 15–35 % lower; the incident J of the
-  infrared lines of n = 5 is not starved (0.1–0.25 B). The P-Cygni
-  trough is shallower (0.7 of the continuum against 0.25). At −220 km/s the line is optically thick on every ray
+  infrared lines of n = 5 is not starved (0.1–0.25 B); the cause is the
+  grid (the n = 4 edge inside a group, see `Tools/make_wlgrid.py` in §2:
+  with the edge as a boundary b₅ agrees within 5 %). The P-Cygni trough
+  is shallower than both CMFGEN models' (0.7 of the continuum against
+  0.25, ≈ 2 Å) although `ies` has SuperLite's outer-wind populations: a
+  difference of the transfer, not yet found. At −220 km/s the line is optically thick on every ray
   out to p ≈ 6×10¹⁵ cm, so the rays beyond the photosphere show the
   source function of the outermost wind, where SuperLite's b₃ (and the
   b_n of all higher levels) is 1.3–1.9 times CMFGEN's (b₂, n_e, T_e and
