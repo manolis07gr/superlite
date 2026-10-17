@@ -29,6 +29,7 @@ program superlite
   use nltextrmod
   use xraysrcmod
   use formalmod, only:fi_spectrum
+  use nltexmod, only:nx_esdamp
   use bbsobmod
   use tebalmod, only:te_damp,te_ntemin,te_zsolve
   use shockciemod, only:shc_read,shc_setup,shc_nel,shc_elz
@@ -45,6 +46,8 @@ program superlite
   integer :: i, nfatom, j, l
   real*8,allocatable :: shcx(:,:)
   real*8,allocatable :: mcell(:),xh(:),xhe(:)
+  real*8,allocatable :: jgfi(:,:) !formal integral: J of the last in_fi_navg iterations
+  integer :: nfi
   logical :: lclump = .false.
   character(256) :: fatom(150)
 !
@@ -198,6 +201,7 @@ program superlite
         mcell(icell1:icell1+ncell-1) = gas_mass
         call allreduce_sum(grd_ncell,mcell)
         call nxt_read_init(in_nltex_init,grd_ncell,mcell,lmpi0)
+        if(in_fi_only .and. .not.nxt_have_mc) stop 'in_fi_only: needs the output.nltex_jmc of in_nltex_init'
         deallocate(mcell)
         do i=1,ncell
            nxt_xloc(:,i) = nxt_xinit(:,icell1+i-1)
@@ -206,6 +210,25 @@ program superlite
      endif
      nxt_damp = in_nlteh_damp
      nxt_ldbtau = in_nltex_ldb
+!-- electron scattering of line photons trapped in their resonance zones
+!-- (the electrons' Doppler shifts: thermal Thomson scattering)
+     nxt_estrap = in_nltex_vturb>=0d0 .and. in_thm_thermal
+     nxt_esrates = nxt_estrap .and. in_nltex_esrates
+     nxt_esdamp = in_nltex_esdamp
+     nx_esdamp = in_nltex_esdamp
+!-- (the microturbulence also widens the line profiles of the formal integral)
+     if(in_nltex_vturb>=0d0) then
+        nxt_vturb = in_nltex_vturb*1d5
+        if(in_nltex_vturbmax>=0d0) nxt_vturb(2) = in_nltex_vturbmax*1d5
+        nxt_vmax = grd_vxarr(grd_nx+1)
+     endif
+     if(nxt_estrap) then
+        if(lmpi0) write(6,'(1x,a,f7.2,a,f7.2,a,l2)') 'NLTE lines: electron scattering in the resonance zones, '// &
+             'microturbulence',nxt_vturb(1)*1d-5,' to',nxt_vturb(2)*1d-5,' km/s; in the rates:',nxt_esrates
+     elseif(in_nltex_vturb>=0d0 .and. lmpi0) then
+        write(6,'(1x,a,f7.2,a,f7.2,a)') 'NLTE lines: microturbulence',nxt_vturb(1)*1d-5,' to', &
+             nxt_vturb(2)*1d-5,' km/s in the formal integral (the trapped-photon scattering needs in_thm_thermal)'
+     endif
      nxt_ldbone = .not.in_puretran .and. in_trn_tauddmc<=in_nltex_ldb
      nxt_alion = in_nltex_ali
      if(lclump) then
@@ -328,6 +351,12 @@ program superlite
           ', groups above 0.1:',nxt_bfstat(3)/nxt_bfstat(1)
 !-- microclumping: the transport sees the volume-mean opacities
      if(lclump) call clump_scale
+!-- only the formal integral: the saved state and its Monte Carlo J
+     if(in_fi_only) then
+        call fi_spectrum(grd_ncell,grd_xarr,grd_vxarr, &
+             grd_tempinv,in_fi_wl1,in_fi_wl2,in_fi_dv,in_fi_npc,impi,nmpi,lmpi0,dop=in_fi_doppler,nes=in_fi_nes)
+        exit
+     endif
 
 !-- source energy
      call sourceenergy
@@ -380,9 +409,24 @@ program superlite
         call nxt_ldb(grd_ncell,grp_ng,grd_vol,grd_xarr(2:grd_ncell+1)-grd_xarr(1:grd_ncell), &
              grd_tempinv,grd_cap,grd_capemit,grd_planck,grd_spk,grd_nlump,grd_glump)
         call nxt_tally_finish(grd_ncell,grd_vol)
-!-- formal integral of the emergent spectrum with the last radiation field
-        if(in_fi .and. it==in_niter) call fi_spectrum(grd_ncell,grd_xarr,grd_vxarr, &
-             grd_tempinv,in_fi_wl1,in_fi_wl2,in_fi_dv,in_fi_npc,impi,nmpi,lmpi0)
+!-- formal integral of the emergent spectrum with the radiation field of the
+!-- last in_fi_navg iterations
+        if(in_fi .and. it>in_niter-max(in_fi_navg,1)) then
+           if(.not.allocated(jgfi)) then
+              allocate(jgfi(grp_ng,grd_ncell))
+              jgfi = 0d0
+              nfi = 0
+           endif
+           jgfi = jgfi + nxt_jg
+           nfi = nfi + 1
+        endif
+        if(in_fi .and. it==in_niter) then
+           jgfi = jgfi/nfi
+           call fi_spectrum(grd_ncell,grd_xarr,grd_vxarr, &
+                grd_tempinv,in_fi_wl1,in_fi_wl2,in_fi_dv,in_fi_npc,impi,nmpi,lmpi0,jgfi,in_fi_doppler,in_fi_nes)
+           if(lmpi0 .and. nfi>1) write(6,'(1x,a,i3,a)') 'formal integral with the J of the last',nfi,' iterations'
+           deallocate(jgfi)
+        endif
      endif
      call scatter_jrad !MPI
 

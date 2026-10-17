@@ -8,7 +8,9 @@ module nltexmod
 !       R_lu = beta B_lu Jb,   R_ul = beta (A_ul + B_ul Jb),
 !    Jb the intensity incident on the resonance (Monte Carlo estimator) and
 !    beta the escape probability for the direction-dependent velocity
-!    gradient Q(mu) = mu^2 dv/dr + (1-mu^2) v/r (nlteh_beta)
+!    gradient Q(mu) = mu^2 dv/dr + (1-mu^2) v/r (nlteh_beta), plus the
+!    probability that a trapped photon is scattered out of the line by an
+!    electron (nx_bes; with a microturbulent velocity nx_vtb >= 0)
 !  - electron-impact excitation, de-excitation, ionization and three-body
 !    recombination (nxa_coll)
 !  - photoionization (to the ground state of the next ion) and stimulated
@@ -28,6 +30,7 @@ module nltexmod
 !-----------------------------------------------------------------------
   use nlteatommod
   use nltehmod, only:nlteh_beta,bplanck
+  use elemdatamod, only:elem_data
   implicit none
   private
   real*8,parameter :: pi = 3.141592653589793d0
@@ -35,6 +38,7 @@ module nltexmod
 !
   public :: nx_el_rates,nx_el_matrix,nx_el_step,nx_solve_cell,nx_lte,nx_kq,nx_jline
   public :: nx_beta_table,nx_beta,nx_cx_rates,nx_cx_heat
+  public :: nx_ytrap,nx_es_table,nx_bes,nx_vdop,nx_jes,nx_wq
 !-- rates of one element at a temperature (nx_el_rates); s: element-local
 !-- state, k: element-local level
   type,public :: nxrt
@@ -61,6 +65,24 @@ module nltexmod
   real*8,allocatable,public :: nx_ali_lst(:),nx_ali_kap(:) !(ng)
   real*8,parameter :: nx_blt0 = -16.1180957d0          !ln 1e-7
   real*8,parameter :: nx_bdlt = (20.7232658d0 - nx_blt0)/(nx_nbt-1)   !to ln 1e9
+!-- electron scattering of line photons trapped in their Sobolev resonance
+!-- zones (nx_bes), set by the caller per cell: the microturbulent velocity
+!-- [cm/s] added in quadrature to the thermal velocity for the Doppler width
+!-- of the lines (< 0: off, point resonances), and whether the scattered
+!-- photons must escape the Lorentz wings (nx_wq)
+  real*8,public :: nx_vtb = -1d0
+  logical,public :: nx_esdamp = .true.
+!-- y(tau) = tau G(tau) of nx_ytrap at log10(tau) = -2, -1.75, ..., 10
+  integer,parameter :: nx_nyt = 49
+  real*8,parameter :: nx_yt(nx_nyt) = [ &
+       3.96959d-05, 1.25043d-04, 3.92700d-04, 1.22671d-03, 3.79593d-03, 1.15524d-02, 3.41525d-02, &
+       9.60537d-02, 2.48580d-01, 5.64205d-01, 1.06469d+00, 1.63191d+00, 2.12760d+00, 2.54358d+00, &
+       2.90899d+00, 3.23942d+00, 3.54347d+00, 3.82665d+00, 4.09272d+00, 4.34446d+00, 4.58392d+00, &
+       4.81274d+00, 5.03220d+00, 5.24335d+00, 5.44706d+00, 5.64405d+00, 5.83494d+00, 6.02025d+00, &
+       6.20045d+00, 6.37591d+00, 6.54701d+00, 6.71404d+00, 6.87727d+00, 7.03695d+00, 7.19330d+00, &
+       7.34652d+00, 7.49678d+00, 7.64425d+00, 7.78908d+00, 7.93140d+00, 8.07133d+00, 8.20900d+00, &
+       8.34450d+00, 8.47794d+00, 8.60940d+00, 8.73897d+00, 8.86673d+00, 8.99275d+00, 9.11710d+00]
+  real*8,parameter :: sigt = 6.6524587d-25, amu = 1.66053907d-24, me = 9.1093826d-28
 !
 contains
 !
@@ -131,6 +153,170 @@ pure function nx_beta(kq,qb,qv,tab) result(beta)
      beta = exp((1d0-w)*log(tab(i)) + w*log(tab(i+1)))
   endif
 end function nx_beta
+!
+!
+pure function nx_ytrap(tau) result(y)
+!-----------------------------------------------------------------------
+! Electron scattering of a photon trapped in a line resonance of Sobolev
+! depth tau: complete redistribution over a Doppler profile phi(x), x the
+! comoving frequency in Doppler widths, which drifts by -s/L along a
+! flight (L = v_D/|Q|, the Sobolev length).  Per emission, the probability
+! of an electron scattering (opacity sigma, sigma L << 1) during a flight
+! that would have ended in re-absorption by the line is sigma L G(tau),
+!   G = int dx0 phi(x0) int_{-inf}^{x0} dx exp(-tau (Phi(x0)-Phi(x)))
+!       (1 - exp(-tau Phi(x))),         Phi(x) = int_{-inf}^x phi,
+! and y = tau G is tabulated (small tau: 0.397 tau^2; large tau:
+! 2 sqrt(ln(tau/sqrt(pi))) - 0.35: before it escapes, the photon drifts
+! across the core |x| < x_c, beyond which the line is thin).
+!-----------------------------------------------------------------------
+  real*8,intent(in) :: tau
+  real*8 :: y,l,w
+  integer :: i
+  y = 0d0
+  if(tau <= 0d0) return
+  l = 4d0*(log10(tau) + 2d0)
+  if(l <= 0d0) then
+     y = nx_yt(1)*(1d2*tau)**2
+  elseif(l >= nx_nyt-1) then
+     y = 2d0*sqrt(log(tau/sqrt(pi))) - 0.35d0
+  else
+     i = int(l) + 1
+     w = l - (i-1)
+     y = exp((1d0-w)*log(nx_yt(i)) + w*log(nx_yt(i+1)))
+  endif
+end function nx_ytrap
+!
+!
+subroutine nx_es_table(qb,qv,tab)
+!-----------------------------------------------------------------------
+! <y(K/|Q(mu)|)> over the directions (nx_ytrap) of a cell with gradients
+! qb = dv/dr, qv = v/r against ln(K/qs) on the grid of nx_beta_table;
+! tab(0) = <|Q|>/qs.  |Q| floored as in nlteh_beta.
+!-----------------------------------------------------------------------
+  real*8,intent(in) :: qb,qv
+  real*8,intent(out) :: tab(0:nx_nbt)
+  integer,parameter :: nmu = 16
+  integer :: i,j
+  real*8 :: qs,mu,kq,q(nmu)
+  qs = max(abs(qb),abs(qv),1d-30)
+  do j=1,nmu
+     mu = (j-0.5d0)/nmu
+     q(j) = max(abs(mu*mu*qb + (1d0-mu*mu)*qv),1d-3*qs)
+  enddo
+  tab(0) = sum(q)/nmu/qs
+  do i=1,nx_nbt
+     kq = exp(nx_blt0 + (i-1)*nx_bdlt)*qs
+     tab(i) = 0d0
+     do j=1,nmu
+        tab(i) = tab(i) + nx_ytrap(kq/q(j))
+     enddo
+     tab(i) = tab(i)/nmu
+  enddo
+end subroutine nx_es_table
+!
+!
+pure function nx_bes(kq,sv,wq,beta,qb,qv,tab) result(bes)
+!-----------------------------------------------------------------------
+! Probability per emission that a photon of a line of Sobolev strength kq
+! (and escape probability beta) is scattered out of the line by an
+! electron while trapped in its resonance zone: sigma v_D <y(K/|Q(mu)|)>/K
+! (nx_ytrap; tab from nx_es_table), sv = sigma v_D [1/s], times the
+! probability that the photon, shifted by the electron's Doppler motion,
+! escapes the Lorentz wings of the line, exp(-K wq/<|Q|>) with wq from
+! nx_wq (Lyman alpha of a dense wind keeps its photons in its damping
+! wings); bounded by the probability 1 - beta that the photon is absorbed
+! in the line again.  With the escape probability, beta + bes is the
+! effective escape probability of the line (as for a continuum in the
+! resonance zone, Hummer & Rybicki 1985, ApJ 293, 258).
+!-----------------------------------------------------------------------
+  real*8,intent(in) :: kq,sv,wq,beta,qb,qv,tab(0:nx_nbt)
+  real*8 :: bes,qs,lt,w,y
+  integer :: i
+  bes = 0d0
+  if(kq <= 0d0 .or. sv <= 0d0 .or. beta >= 1d0) return
+  qs = max(abs(qb),abs(qv),1d-30)
+  lt = log(kq/qs)
+  if(lt <= nx_blt0) return
+  if(lt >= nx_blt0 + (nx_nbt-1)*nx_bdlt) then
+     y = nx_ytrap(kq/(tab(0)*qs))
+  else
+     w = (lt - nx_blt0)/nx_bdlt
+     i = min(int(w) + 1,nx_nbt-1)
+     w = w - (i-1)
+     y = exp((1d0-w)*log(max(tab(i),1d-300)) + w*log(max(tab(i+1),1d-300)))
+  endif
+  w = sv*y/kq/(1d0-beta)*exp(-min(kq*wq/(tab(0)*qs),700d0))
+  if(w < 1d-6) then
+     bes = (1d0-beta)*w*(1d0-0.5d0*w)
+  else
+     bes = (1d0-beta)*(1d0-exp(-w))
+  endif
+end function nx_bes
+!
+!
+pure function nx_wq(k,temp) result(wq)
+!-----------------------------------------------------------------------
+! Lorentz-wing parameter of line k at electron temperature temp: a photon
+! scattered by an electron leaves the line centre by about Dx = v_e/v_D
+! Doppler widths (v_e = sqrt(2kT/m_e)); on its way to the red the
+! Lorentz wing of the line (damping a = Gamma lambda/(4 pi v_D)) has the
+! depth tau a/(pi Dx) = (K/<|Q|>) wq, wq = Gamma lambda/(4 pi^2 v_e), with
+! Gamma the radiative damping (nxa_lgam).
+!-----------------------------------------------------------------------
+  integer,intent(in) :: k
+  real*8,intent(in) :: temp
+  real*8 :: wq
+  wq = nxa_lgam(k)*(cc/nxa_lnu(k))/(4d0*pi*pi*sqrt(2d0*kb*max(temp,1d0)/me))
+end function nx_wq
+!
+!
+pure function nx_jes(k,temp,ng,nug,dnug,jg) result(je)
+!-----------------------------------------------------------------------
+! Mean intensity from which electrons scatter photons into the core of line
+! k: the group J averaged over the thermal-electron redistribution about
+! the line (Gaussian of sqrt(2kT/m_e)/c in ln nu, as the electron
+! scattering of formalmod).  The line's own escaped photons are part of it.
+!-----------------------------------------------------------------------
+  integer,intent(in) :: k,ng
+  real*8,intent(in) :: temp,nug(ng),dnug(ng),jg(ng)
+  real*8 :: je,se,lk,d,w,ws
+  integer :: g,g0
+  se = sqrt(2d0*kb*max(temp,1d0)/me)/cc
+  lk = log(nxa_lnu(k))
+  g0 = min(max(nxa_lgn(k),1),ng)
+  je = 0d0
+  ws = 0d0
+!-- groups in order of wavelength: to the blue, then to the red
+  do g=g0,1,-1
+     d = (log(nug(g)) - lk)/se
+     if(d > 3d0) exit
+     w = exp(-0.5d0*d*d)*dnug(g)/nug(g)
+     je = je + w*jg(g)
+     ws = ws + w
+  enddo
+  do g=g0+1,ng
+     d = (lk - log(nug(g)))/se
+     if(d > 3d0) exit
+     w = exp(-0.5d0*d*d)*dnug(g)/nug(g)
+     je = je + w*jg(g)
+     ws = ws + w
+  enddo
+  if(ws > 0d0) then
+     je = je/ws
+  else
+     je = jg(g0)
+  endif
+end function nx_jes
+!
+!
+pure function nx_vdop(iel,temp,vtb) result(vd)
+!-- Doppler velocity [cm/s] of the lines of element iel at temperature temp
+!-- with microturbulence vtb [cm/s]
+  integer,intent(in) :: iel
+  real*8,intent(in) :: temp,vtb
+  real*8 :: vd
+  vd = sqrt(2d0*kb*temp/(elem_data(nxa_el(iel)%z)%m*amu) + max(vtb,0d0)**2)
+end function nx_vdop
 !
 !
 pure function nx_jline(k,ng,nug,jg,jb,ljb) result(jl)
@@ -425,7 +611,7 @@ end subroutine nx_el_matrix
 !
 !
 subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
-     ncx,cxf,cxt,cxr,xp,dti)
+     ncx,cxf,cxt,cxr,xp,dti,sv,etab,wqe,jes)
 !-----------------------------------------------------------------------
 ! One iteration for the populations x of element iel (number density nel)
 ! at electron density ne: escape probabilities from x, then the linear
@@ -437,7 +623,11 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
 ! of the previous model at the same mass coordinate and 1/dt [1/s] for the
 ! time-dependent equations (backward Euler in the Lagrangian frame,
 ! dx/dt = M x: (M - 1/dt) x = -xp/dt; particle conservation holds since
-! sum xp = 1).
+! sum xp = 1).  Optional: sv = sigma_es v_D [1/s], etab (nx_es_table), the
+! Lorentz-wing parameters wqe (nx_wq) and the intensities jes (nx_jes) of
+! the element's lines add the electron scattering of the trapped photons
+! (nx_bes): escape probability beta + bes, incident intensity
+! (beta Jb + bes Jes)/(beta + bes).
 !-----------------------------------------------------------------------
   integer,intent(in) :: iel,it
   real*8,intent(in) :: nel,ne,qb,qv,btab(0:nx_nbt),jl(:)
@@ -447,8 +637,10 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
   real*8,intent(out) :: beta(:),d
   integer,intent(out) :: ierr
   integer,intent(in),optional :: ncx,cxf(:),cxt(:)
-  real*8,intent(in),optional :: cxr(:),xp(:),dti
+  real*8,intent(in),optional :: cxr(:),xp(:),dti,sv,etab(0:nx_nbt),wqe(:),jes(:)
   integer :: ns,nl,k,kg,k0,info,ir
+  real*8 :: kq,bes,jle(size(jl))
+  logical :: les
   real*8 :: m(nxa_el(iel)%ns,nxa_el(iel)%ns),xn(nxa_el(iel)%ns)
   integer :: ipiv(nxa_el(iel)%ns)
   logical :: ltd
@@ -458,11 +650,20 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
   ns = nxa_el(iel)%ns
   nl = size(jl)
   k0 = nxa_ion(nxa_el(iel)%ion(1))%loff
+  les = present(sv) .and. present(etab) .and. present(wqe) .and. present(jes)
+  if(les) les = sv > 0d0
   do k=1,nl
      kg = k0 + k
-     beta(k) = nx_beta(nx_kq(kg,nel,x,r%w),qb,qv,btab)
+     kq = nx_kq(kg,nel,x,r%w)
+     beta(k) = nx_beta(kq,qb,qv,btab)
+     jle(k) = jl(k)
+     if(les) then
+        bes = nx_bes(kq,sv,wqe(k),beta(k),qb,qv,etab)
+        if(bes > 0d0) jle(k) = (beta(k)*jl(k) + bes*jes(k))/(beta(k) + bes)
+        beta(k) = beta(k) + bes
+     endif
   enddo
-  call nx_el_matrix(iel,ne,r,jl,beta,nti,ntx,m)
+  call nx_el_matrix(iel,ne,r,jle,beta,nti,ntx,m)
   if(present(ncx)) then
      do k=1,ncx
         m(cxt(k),cxf(k)) = m(cxt(k),cxf(k)) + cxr(k)
@@ -522,7 +723,9 @@ subroutine nx_solve_cell(temp,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx
 !               the previous model at the same mass coordinate and 1/dt
 !               [1/s] (nx_el_step)
 ! The escape probabilities, populations and electron density are iterated
-! together (each iteration: one linear solve per element).
+! together (each iteration: one linear solve per element).  With nx_vtb >=
+! 0 the escape probabilities include the electron scattering of trapped
+! line photons (nx_bes, with the electron density of the iteration).
 !-----------------------------------------------------------------------
   real*8,intent(in) :: temp,trad,nel(nxa_nel),neoth,qb,qv
   integer,intent(in) :: ng
@@ -538,6 +741,7 @@ subroutine nx_solve_cell(temp,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx
   integer :: iel,ns,o,l0,l1,it,ie,k,ncx,mit
   real*8 :: dtol
   real*8 :: neold,nenew,d,dmax,dne,dold,jl(nxa_nlin),btab(0:nx_nbt),wg(nxa_nlv)
+  real*8 :: etab(0:nx_nbt),sv,wq(nxa_nlin),jes(nxa_nlin)
   integer,parameter :: mcx = 4096
   integer :: cxf(mcx),cxt(mcx)
   real*8 :: cxr(mcx)
@@ -553,6 +757,8 @@ subroutine nx_solve_cell(temp,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx
   mit = 300
   if(present(maxit)) mit = maxit
   call nx_beta_table(qb,qv,btab)
+  etab = 0d0
+  if(nx_vtb >= 0d0) call nx_es_table(qb,qv,etab)
   call nxa_weights(temp,wg)
   ne = neoth + chg(x)
   do iel=1,nxa_nel
@@ -568,6 +774,16 @@ subroutine nx_solve_cell(temp,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx
   do k=1,nxa_nlin
      jl(k) = nx_jline(k,ng,nug,jg,jb(k),ljb(k))
   enddo
+  if(nx_vtb >= 0d0) then
+     do k=1,nxa_nlin
+        wq(k) = 0d0
+        if(nx_esdamp) wq(k) = nx_wq(k,temp)
+        jes(k) = nx_jes(k,temp,ng,nug,dnug,jg)
+     enddo
+  else
+     wq = 0d0
+     jes = 0d0
+  endif
   dold = 0d0
   do it=1,mit
      dmax = 0d0
@@ -580,14 +796,16 @@ subroutine nx_solve_cell(temp,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx
              nxa_ion(nxa_el(iel)%ion(nxa_el(iel)%nion))%nlin
         ncx = 0
         if(nxa_ncx>0) call nx_cx_rates(iel,temp,nel,x,wg,ncx,cxf,cxt,cxr)
+        sv = 0d0
+        if(nx_vtb >= 0d0) sv = ne*sigt*nx_vdop(iel,temp,nx_vtb)
         if(present(xprev) .and. present(dtinv)) then
            call nx_el_step(iel,nel(iel),ne,qb,qv,btab,jl(l0:l1),r(iel), &
                 nti(o+1:o+ns),ntx(o+1:o+ns),it,x(o+1:o+ns),beta(l0:l1),d,ie, &
-                ncx,cxf,cxt,cxr,xprev(o+1:o+ns),dtinv)
+                ncx,cxf,cxt,cxr,xprev(o+1:o+ns),dtinv,sv=sv,etab=etab,wqe=wq(l0:l1),jes=jes(l0:l1))
         else
            call nx_el_step(iel,nel(iel),ne,qb,qv,btab,jl(l0:l1),r(iel), &
                 nti(o+1:o+ns),ntx(o+1:o+ns),it,x(o+1:o+ns),beta(l0:l1),d,ie, &
-                ncx,cxf,cxt,cxr)
+                ncx,cxf,cxt,cxr,sv=sv,etab=etab,wqe=wq(l0:l1),jes=jes(l0:l1))
         endif
         if(ie/=0) then
            ierr = ie

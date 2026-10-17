@@ -100,6 +100,7 @@ module nlteatommod
   integer,allocatable,public :: nxa_lloc(:)      !(nlin) line index within the ion
   real*8,allocatable,public :: nxa_lnu(:),nxa_lwl(:)  !(nlin) frequency [Hz], wavelength [cm]
   real*8,allocatable,public :: nxa_lf(:),nxa_la(:),nxa_lblu(:),nxa_lbul(:) !(nlin)
+  real*8,allocatable,public :: nxa_lgam(:)       !(nlin) radiative damping: A out of the upper and lower level [1/s]
   integer,allocatable,public :: nxa_lsrt(:)      !(nlin) lines sorted by wavelength
   integer,allocatable,public :: nxa_llv(:),nxa_luv(:) !(nlin) global level of the lower, upper level
 !-- global levels (all ions)
@@ -460,7 +461,7 @@ subroutine nxa_setup(nion,ions)
   integer :: order(nion)
   real*8 :: e0
   integer,allocatable :: idx(:)
-  real*8,allocatable :: gsum(:)
+  real*8,allocatable :: gsum(:),atot(:)
 !
   nxa_nion = nion
   if(allocated(nxa_ion)) deallocate(nxa_ion)
@@ -468,6 +469,7 @@ subroutine nxa_setup(nion,ions)
 !-- set up again: drop the previous lists
   if(allocated(nxa_lion)) deallocate(nxa_lion,nxa_lel,nxa_lsl,nxa_lsu,nxa_lloc,nxa_lnu, &
        nxa_lwl,nxa_lf,nxa_la,nxa_lblu,nxa_lbul,nxa_lsrt,nxa_llv,nxa_luv)
+  if(allocated(nxa_lgam)) deallocate(nxa_lgam)
   if(allocated(nxa_lvion)) deallocate(nxa_lvion,nxa_lvel,nxa_lvs,nxa_lvc,nxa_lvnu0,nxa_lvphi,nxa_lvcl)
   if(allocated(nxa_lalp)) deallocate(nxa_lalp,nxa_lrc)
 !-- sort by (z, stage)
@@ -632,6 +634,16 @@ subroutine nxa_setup(nion,ions)
   idx = [(k,k=1,nxa_nlin)]
   call sortidx(nxa_lwl,idx)
   nxa_lsrt = idx
+!-- radiative damping of the lines (Lorentz wings of the Voigt profile)
+  allocate(nxa_lgam(nxa_nlin),atot(nxa_nlv))
+  atot = 0d0
+  do m=1,nxa_nlin
+     atot(nxa_luv(m)) = atot(nxa_luv(m)) + nxa_la(m)
+  enddo
+  do m=1,nxa_nlin
+     nxa_lgam(m) = atot(nxa_luv(m)) + atot(nxa_llv(m))
+  enddo
+  deallocate(atot)
 !-- collision pairs with their own Omega
   do i=1,nion
      call coll_pairs(nxa_ion(i))

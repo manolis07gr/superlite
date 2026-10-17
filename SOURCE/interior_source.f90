@@ -13,6 +13,7 @@ subroutine interior_source!(it)
   use inputparmod
   use countersmod
   use nltextrmod
+  use nxemitmod, only:nx_linees,nx_ilem
   use shockciemod, only:shc_on,shc_sample,shc_tmin,shc_tmax
   use xraysrcmod, only:xs_on,xs_px,xs_sample
 
@@ -27,7 +28,7 @@ subroutine interior_source!(it)
   integer*8,allocatable :: nvacantall(:)
   real*8 :: pwr
   real*8 :: r1, r2, r3, uul, uur, uumax
-  real*8 :: om0, mu0, x0, ep0, wl0
+  real*8 :: om0, mu0, x0, ep0, wl0, mues
   real*8 :: denom2,x1,x2
 !-- neighbor emit values (for source tilting)
   integer :: icnb(6)
@@ -147,6 +148,9 @@ subroutine interior_source!(it)
            else
               call nxt_kpacket(l,rnd_state,kind,idx,wlc)
            endif
+!-- (a line photon scattered by an electron in its resonance zone; the
+!-- direction is isotropic anyway)
+           if(kind==em_line) call nx_linees(kind,idx,l,rnd_state,mues,wlc)
         else
            kind = em_thermal
         endif
@@ -168,7 +172,7 @@ subroutine interior_source!(it)
         ptcl%icem = 0
         if(nxt_emloc(ptcl%em)) ptcl%icem = l
         ptcl%ilem = 0
-        if(nxt_on .and. ptcl%em/=6 .and. kind==em_line) ptcl%ilem = idx
+        if(nxt_on .and. ptcl%em/=6) ptcl%ilem = nx_ilem(kind,idx,wlc)
         ep0 = grd_emit(l)/dble(nemit)
         ptcl%e = ep0
         ptcl%e0 = ep0

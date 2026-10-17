@@ -15,7 +15,7 @@ subroutine nltex_gas_update(it)
   integer,intent(in) :: it
   integer :: i,l,iel
   real*8 :: nelv(nxa_nel,gas_ncell),neoth(gas_ncell),qb(gas_ncell),qv(gas_ncell)
-  real*8 :: edep(gas_ncell),dr(gas_ncell)
+  real*8 :: edep(gas_ncell),dr(gas_ncell),vel(gas_ncell)
 !
   do i=1,gas_ncell
      l = gas_icell1 + i - 1
@@ -29,6 +29,7 @@ subroutine nltex_gas_update(it)
         neoth(i) = nxt_neothloc(i)*gas_natom(i)/gas_volcl(i)
      endif
      dr(i) = grd_xarr(l+1)-grd_xarr(l)
+     vel(i) = 0.5d0*(grd_vxarr(l)+grd_vxarr(l+1))
      qb(i) = (grd_vxarr(l+1)-grd_vxarr(l))/(grd_xarr(l+1)-grd_xarr(l))
      qv(i) = (grd_vxarr(l+1)+grd_vxarr(l))/(grd_xarr(l+1)+grd_xarr(l))
 !-- microclumping: the Sobolev depths of the clump populations with the
@@ -43,9 +44,9 @@ subroutine nltex_gas_update(it)
   enddo
   if(in_nltex_ali .or. in_nltex_ldb>0d0) then
      call nxt_gas_solve(it,gas_ncell,gas_temp,gas_radtemp,nelv,neoth,qb,qv,gas_icell1,edep, &
-          kap=gas_cap,fcl=gas_fcl,dr=dr)
+          kap=gas_cap,fcl=gas_fcl,dr=dr,vel=vel)
   else
-     call nxt_gas_solve(it,gas_ncell,gas_temp,gas_radtemp,nelv,neoth,qb,qv,gas_icell1,edep)
+     call nxt_gas_solve(it,gas_ncell,gas_temp,gas_radtemp,nelv,neoth,qb,qv,gas_icell1,edep,vel=vel)
   endif
   if(lmpi0 .and. it>1 .and. nxt_have_mc) write(6,'(1x,a,i3,a,es9.2,a,es9.2,a)') 'NLTE (it',it, &
        '): largest change of a state above 1e-4 per cell, median',nxt_dxstat(1),', max',nxt_dxstat(2),' (rank 0)'

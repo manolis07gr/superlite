@@ -72,6 +72,7 @@ module nltextrmod
   real*8,allocatable,public :: nxt_ne(:)      !(ncell) electron density [cm^-3]
   real*8,allocatable,public :: nxt_kq(:,:)    !(nlin,ncell) Sobolev strength K [1/s]
   real*8,allocatable,public :: nxt_beta(:,:)  !(nlin,ncell) escape probability
+  real*8,allocatable,public :: nxt_bes(:,:)   !(nlin,ncell) electron scattering of trapped photons (nx_bes)
   real*8,allocatable,public :: nxt_jg(:,:)    !(ng,ncell) MC mean intensity [erg/s/cm^2/Hz/sr]
   real*8,allocatable,public :: nxt_jb(:,:)    !(nlin,ncell) resonance mean intensity
   logical,allocatable,public :: nxt_ljb(:,:)  !(nlin,ncell) jb set (MC; nxt_tally_finish)
@@ -165,7 +166,8 @@ module nltextrmod
   real*8,allocatable :: nxt_rcum(:,:)         !(nst,ncell) cumulative weight of the activation states
 !-- warm start (in_nltex_init): populations, T_e and n_e of a saved state
 !-- (output.nltex_state) at this model's cells; the first iteration keeps
-!-- them instead of solving with J = B(T_R)
+!-- them instead of solving with J = B(T_R), and makes its tables with the
+!-- saved Monte Carlo estimators (output.nltex_jmc) when there are any
   logical,public :: nxt_warm = .false.
   real*8,allocatable,public :: nxt_xinit(:,:) !(nst,ncell)
   real*8,allocatable,public :: nxt_tinit(:),nxt_neinit(:) !(ncell)
@@ -194,15 +196,32 @@ module nltextrmod
 !-- cells of the cell's largest relative change of a state above 1e-4
 !-- (after the damping; nxt_gas_solve)
   real*8,public :: nxt_dxstat(2) = 0d0
-!-- emission kinds returned by the macro-atom
-  integer,parameter,public :: em_line = 1, em_bf = 2, em_thermal = 3, em_2ph = 4
+!-- electron scattering of line photons trapped in their Sobolev resonance
+!-- zones (in_nltex_vturb >= 0): microturbulent velocity [cm/s] at v = 0
+!-- and at the outer edge nxt_vmax (linear in v) for the Doppler widths.
+!-- The probability per emission (nxt_bes) gives the scattered emission of
+!-- the formal integral, n_u A bes h nu (formalmod).  With nxt_esrates also
+!-- the rates and the macro-atom have beta+bes, and a line de-activation
+!-- emits the photon scattered by a thermal electron with probability
+!-- bes/(beta+bes) (em_lines, nxemitmod)
+  logical,public :: nxt_estrap = .false.
+  real*8,public :: nxt_vturb(2) = 0d0, nxt_vmax = 0d0
+!-- (and in the statistical equilibrium, the macro-atom and the transport;
+!-- off: only in the formal integral, as CMFGEN adds the incoherent
+!-- scattering to the observer spectrum of iterations with coherent
+!-- scattering)
+  logical,public :: nxt_esrates = .false.
+  logical,public :: nxt_esdamp = .true.   !Lorentz-wing escape factor (nx_wq)
+!-- emission kinds returned by the macro-atom (em_lines: a line photon
+!-- scattered by an electron in the resonance zone, nxemitmod)
+  integer,parameter,public :: em_line = 1, em_bf = 2, em_thermal = 3, em_2ph = 4, em_lines = 5
 !
   public :: nxt_init,nxt_gas_solve,nxt_store_jg,nxt_tally_reset,nxt_tally_finish
   public :: nxt_tables,nxt_neighbors,nxt_activate,nxt_activate_line,nxt_kpacket
   public :: nxt_bfabs,nxt_bfpick,nxt_nonthermal,nxt_ntdep,nxt_ntrates,nxt_write,nxt_bffreq
   public :: nxt_shares,nxt_dealloc,nxt_emcode,nxt_emloc
   public :: nxt_write_state,nxt_read_prev,nxt_read_init,nxt_release,nxt_activate_rel
-  public :: nxt_ali_cell,nxt_ali_off,nxt_ldb,nxt_lsldb
+  public :: nxt_ali_cell,nxt_ali_off,nxt_ldb,nxt_lsldb,nxt_vtb,nxt_vturbv
 !
 contains
 !
@@ -241,7 +260,7 @@ subroutine nxt_init(ncell,gncell,ng,wlg,nfile,files,hnlev)
   nst = nxa_nst
   allocate(nxt_x(nst,ncell),nxt_nel(nxa_nel,ncell),nxt_ne(ncell),nxt_w(nxa_nlv,ncell))
   nxt_w = 1d0
-  allocate(nxt_kq(nxa_nlin,ncell),nxt_beta(nxa_nlin,ncell))
+  allocate(nxt_kq(nxa_nlin,ncell),nxt_beta(nxa_nlin,ncell),nxt_bes(nxa_nlin,ncell))
   allocate(nxt_jg(ng,ncell),nxt_jb(nxa_nlin,ncell),nxt_ljb(nxa_nlin,ncell))
   allocate(nxt_jbsum(nxa_nlin,ncell),nxt_jbcnt(nxa_nlin,ncell))
   allocate(nxt_jxsum(ng,ncell),nxt_jlsum(ncell),nxt_jlosum(ng,ncell))
@@ -251,7 +270,7 @@ subroutine nxt_init(ncell,gncell,ng,wlg,nfile,files,hnlev)
   allocate(gas_capnbf(ng,gncell),gas_emnbf(ng,gncell))
   allocate(nxt_lgrp(nxa_nlin),nxt_isrt(nxa_nlin),nxt_nug(ng),nxt_dnug(ng))
   allocate(nxt_act(nxa_nlin),nxt_wlact(nxa_nlin))
-  nxt_x = 0d0; nxt_nel = 0d0; nxt_ne = 0d0; nxt_kq = 0d0; nxt_beta = 1d0
+  nxt_x = 0d0; nxt_nel = 0d0; nxt_ne = 0d0; nxt_kq = 0d0; nxt_beta = 1d0; nxt_bes = 0d0
   nxt_jg = 0d0; nxt_jb = 0d0; nxt_ljb = .false.; nxt_jbsum = 0d0; nxt_jbcnt = 0d0
   grd_capnbf = 0.; gas_capnbf = 0.; grd_emnbf = 0.; gas_emnbf = 0.
   nxt_xloc = 0d0; nxt_neloc = 0d0; nxt_nelloc = 0d0; nxt_neothloc = 0d0
@@ -446,7 +465,7 @@ end subroutine nxt_init
 !
 subroutine nxt_dealloc
 !-- free the cell arrays and tables (set up again by nxt_init)
-  if(allocated(nxt_x)) deallocate(nxt_x,nxt_nel,nxt_ne,nxt_kq,nxt_beta,nxt_jg,nxt_jb,nxt_ljb, &
+  if(allocated(nxt_x)) deallocate(nxt_x,nxt_nel,nxt_ne,nxt_kq,nxt_beta,nxt_bes,nxt_jg,nxt_jb,nxt_ljb, &
        nxt_jbsum,nxt_jbcnt,nxt_jxsum,nxt_jlsum,nxt_jlosum,grd_capnbf,nxt_xloc,nxt_neloc,nxt_nelloc,nxt_neothloc,gas_capnbf, &
        grd_emnbf,gas_emnbf, &
        nxt_lgrp,nxt_isrt,nxt_nug,nxt_dnug,nxt_act,nxt_wlact,nxt_w)
@@ -546,7 +565,7 @@ pure subroutine nxt_ntrates(nel,x,edep,nti,ntx)
 end subroutine nxt_ntrates
 !
 !
-subroutine nxt_gas_solve(it,gncell,temp,trad,nelv,neoth,qb,qv,icell1,edep,kap,fcl,dr)
+subroutine nxt_gas_solve(it,gncell,temp,trad,nelv,neoth,qb,qv,icell1,edep,kap,fcl,dr,vel)
 !-----------------------------------------------------------------------
 ! Statistical equilibrium of the NLTE elements in this rank's gas cells.
 ! The first iteration uses J = B(trad); later ones the Monte Carlo
@@ -556,12 +575,14 @@ subroutine nxt_gas_solve(it,gncell,temp,trad,nelv,neoth,qb,qv,icell1,edep,kap,fc
 ! kap, fcl, dr (optional): absorption opacity of the groups with which J
 ! was made, volume filling factor and width of the cells, for the
 ! accelerated lambda iteration of the bound-free transitions (nxt_ali_cell).
+! vel (optional): flow velocity of the cells, for the microturbulence of
+! the electron scattering of trapped line photons (nxt_vtb).
 !-----------------------------------------------------------------------
   integer,intent(in) :: it,gncell,icell1
   real*8,intent(in) :: temp(gncell),trad(gncell),nelv(nxa_nel,gncell),neoth(gncell)
   real*8,intent(in) :: edep(gncell),qb(gncell),qv(gncell)
   real*4,intent(in),optional :: kap(:,:)
-  real*8,intent(in),optional :: fcl(gncell),dr(gncell)
+  real*8,intent(in),optional :: fcl(gncell),dr(gncell),vel(gncell)
   integer :: i,l,ig,ierr,nfail,k,nc,nnan
   real*8 :: x(nxa_nst),xold(nxa_nst),ne,beta(nxa_nlin),jg(nxt_ng),jb(nxa_nlin)
   real*8 :: nti(nxa_nst),ntx(nxa_nst),ntot,dxc(gncell),w
@@ -599,6 +620,8 @@ subroutine nxt_gas_solve(it,gncell,temp,trad,nelv,neoth,qb,qv,icell1,edep,kap,fc
      endif
      xold = x
      call nxt_ntrates(nelv(:,i),x,edep(i),nti,ntx)
+     nx_vtb = -1d0
+     if(present(vel) .and. nxt_esrates) nx_vtb = nxt_vtb(vel(i))
      if(present(kap) .and. present(fcl) .and. present(dr) .and. it>1 .and. nxt_have_mc) &
           call nxt_ali_cell(nxt_ng,kap(:,i),fcl(i),dr(i),lali=nxt_alion)
      if(nxt_dtinv>0d0) then
@@ -609,6 +632,7 @@ subroutine nxt_gas_solve(it,gncell,temp,trad,nelv,neoth,qb,qv,icell1,edep,kap,fc
              nxt_nug,nxt_dnug,jg,jb,ljb,nti,ntx,x,ne,beta,ierr)
      endif
      call nxt_ali_off
+     nx_vtb = -1d0
 !-- (a solution that is not finite counts as failed; the guess is kept)
      if(any(x/=x) .or. any(abs(x)>huge(x))) then
         if(nnan<5) write(0,'(a,i6,a,es11.3,a,es11.3,a,i2,a,l2)') 'nxt_gas_solve: populations not finite in cell', &
@@ -659,6 +683,28 @@ contains
     enddo
   end subroutine renorm
 end subroutine nxt_gas_solve
+!
+!
+pure function nxt_vtb(v) result(vt)
+!-- microturbulent velocity [cm/s] at flow velocity v for the electron
+!-- scattering of trapped line photons (-1: off; nx_vtb)
+  real*8,intent(in) :: v
+  real*8 :: vt
+  vt = -1d0
+  if(.not.nxt_estrap) return
+  vt = nxt_vturbv(v)
+end function nxt_vtb
+!
+!
+pure function nxt_vturbv(v) result(vt)
+!-- microturbulent velocity [cm/s] at flow velocity v (in_nltex_vturb, 0
+!-- if not given): linear in v between nxt_vturb(1) and nxt_vturb(2)
+  real*8,intent(in) :: v
+  real*8 :: vt
+  vt = nxt_vturb(1)
+  if(nxt_vmax > 0d0) vt = vt + (nxt_vturb(2)-nxt_vturb(1))*min(abs(v)/nxt_vmax,1d0)
+  vt = max(vt,0d0)
+end function nxt_vturbv
 !
 !
 pure function free_el(nel,x) result(ne)
@@ -860,7 +906,7 @@ subroutine nxt_tables(ncell,tempinv,radtemp,capemitgrey,xarr,vxarr)
   real*8 :: t,ne,qb,qv,ww,wth
   real*8 :: bnd(nxa_nlv),bnb(nxa_nlv) !bound-free weights and their bounds in a block of groups
   integer :: ixb(nxa_nlv)
-  real*8 :: jg(nxt_ng),jb(nxa_nlin),jl(nxa_nlin),btab(0:nx_nbt)
+  real*8 :: jg(nxt_ng),jb(nxa_nlin),jl(nxa_nlin),btab(0:nx_nbt),etab(0:nx_nbt),sig,vt
   logical :: ljb(nxa_nlin)
   real*8 :: kw(nxt_nko)            !k-packet: non-returning flows
   type(nxrt) :: r
@@ -896,6 +942,23 @@ subroutine nxt_tables(ncell,tempinv,radtemp,capemitgrey,xarr,vxarr)
         if(allocated(nxt_fcl)) nxt_kq(k,ic) = nxt_fcl(ic)*nxt_kq(k,ic)
         nxt_beta(k,ic) = nx_beta(nxt_kq(k,ic),qb,qv,btab)
      enddo
+!-- electron scattering of the trapped line photons (volume-mean Thomson
+!-- opacity with the volume-mean K); with nxt_esrates the macro-atom emits
+!-- with beta + bes and absorbs (beta Jb + bes Jes)
+     nxt_bes(:,ic) = 0d0
+     if(nxt_estrap .and. nxt_tau0<=0d0) then
+        call nx_es_table(qb,qv,etab)
+        sig = 6.6524587d-25*nxt_ne(ic)
+        if(allocated(nxt_fcl)) sig = sig*nxt_fcl(ic)
+        vt = nxt_vtb(0.5d0*(vxarr(ic)+vxarr(ic+1)))
+        do k=1,nxa_nlin
+           nxt_bes(k,ic) = nx_bes(nxt_kq(k,ic),sig*nx_vdop(nxa_lel(k),t,vt), &
+                merge(nx_wq(k,t),0d0,nxt_esdamp),nxt_beta(k,ic),qb,qv,etab)
+           if(nxt_bes(k,ic) <= 0d0 .or. .not.nxt_esrates) cycle
+           jl(k) = (nxt_beta(k,ic)*jl(k) + nxt_bes(k,ic)*nx_jes(k,t,nxt_ng,nxt_nug,nxt_dnug,jg))/ &
+                (nxt_beta(k,ic) + nxt_bes(k,ic))
+        enddo
+     endif
      if(nxt_tau0>0d0 .and. nxt_kha>0) then
 !-- benchmark: only H-alpha, tau = tau0 for a gradient v/r
         nxt_kq(:,ic) = 0d0
@@ -919,7 +982,7 @@ subroutine nxt_tables(ncell,tempinv,radtemp,capemitgrey,xarr,vxarr)
         ch1 = nxt_chst(o+ns+1) - 1
         allocate(chw(ch0:ch1))
         call el_chain(iel,ne,nxt_nel(iel,ic),nxt_x(o+1:o+ns,ic),r, &
-             jl(l0:l1),nxt_beta(l0:l1,ic),q,tot,emt,kex,kin,chw,ch0)
+             jl(l0:l1),nxt_beta(l0:l1,ic)+merge(nxt_bes(l0:l1,ic),0d0,nxt_esrates),q,tot,emt,kex,kin,chw,ch0)
 !-- recombination cooling per level of this element (from level 1 of the next ion)
         do k=1,nxa_el(iel)%nlv
            lv = lo + k
@@ -986,7 +1049,7 @@ subroutine nxt_tables(ncell,tempinv,radtemp,capemitgrey,xarr,vxarr)
         k = nxt_inl(m)
         iel = nxa_lel(k)
         kw(ko+m) = nxt_nel(iel,ic)*nxt_x(nxa_el(iel)%xoff+nxa_lsu(k),ic)*nxt_w(nxa_luv(k),ic)* &
-             nxa_la(k)*nxt_beta(k,ic)*hh*nxa_lnu(k)
+             nxa_la(k)*(nxt_beta(k,ic)+merge(nxt_bes(k,ic),0d0,nxt_esrates))*hh*nxa_lnu(k)
      enddo
 !-- k-packet outcome distribution
      ww = 0d0
@@ -1415,7 +1478,7 @@ pure function nxt_emcode(kind,idx) result(code)
   code = 2
   if(idx <= 0) return
   select case(kind)
-  case(em_line)
+  case(em_line,em_lines)
      code = 4 + 100*nxa_el(nxa_lel(idx))%z
   case(em_bf)
      code = 3 + 100*nxa_el(nxa_lvel(idx))%z
@@ -1832,8 +1895,8 @@ subroutine nxt_write(ncell,rcell,vcell,tempinv,radtemp)
   open(4,file='output.nlteh',status='replace')
   write(4,'(a)') '# NLTE hydrogen per cell: b_n = departure coefficients relative to the'// &
        ' actual ion density (b = 1: LTE); tau = K/(v/r) (homologous equivalent)'
-  write(4,'(a1,a11,19a12)') '#','r[cm]','v[cm/s]','T[K]','Trad[K]','nH','ne','x_HII','x_1','x_2','x_3', &
-       'b_1','b_2','b_3','tau_Lya','tau_Ha','tau_Hb','beta_Ha','Jb_Ha/B','ljb_Ha'
+  write(4,'(a1,a11,20a12)') '#','r[cm]','v[cm/s]','T[K]','Trad[K]','nH','ne','x_HII','x_1','x_2','x_3', &
+       'b_1','b_2','b_3','tau_Lya','tau_Ha','tau_Hb','beta_Ha','Jb_Ha/B','ljb_Ha','bes_Ha'
   do ic=1,ncell
      t = 1d0/tempinv(ic)
      call nx_lte(t,nxt_ne(ic),xl)
@@ -1842,10 +1905,11 @@ subroutine nxt_write(ncell,rcell,vcell,tempinv,radtemp)
              (xl(o+k)/max(xl(o+nxa_el(iel)%ns),1d-300))
      enddo
      qv = max(vcell(ic)/rcell(ic),1d-30)
-     write(4,'(1p,19e12.4)') rcell(ic),vcell(ic),t,radtemp(ic),nxt_nel(iel,ic),nxt_ne(ic), &
+     write(4,'(1p,20e12.4)') rcell(ic),vcell(ic),t,radtemp(ic),nxt_nel(iel,ic),nxt_ne(ic), &
           nxt_x(o+nxa_el(iel)%ns,ic),nxt_x(o+1,ic),nxt_x(o+2,ic),nxt_x(o+3,ic),b(1),b(2),b(3), &
           nxt_kq(kla,ic)/qv,nxt_kq(kha,ic)/qv,nxt_kq(khb,ic)/qv,nxt_beta(kha,ic), &
-          nxt_jb(kha,ic)/max(bplanck(nxa_lnu(kha),t),1d-300),merge(1d0,0d0,nxt_jbcnt(kha,ic)>=nxt_njbmin)
+          nxt_jb(kha,ic)/max(bplanck(nxa_lnu(kha),t),1d-300),merge(1d0,0d0,nxt_jbcnt(kha,ic)>=nxt_njbmin), &
+          merge(nxt_bes(kha,ic),0d0,nxt_bes(kha,ic)>1d-99)
   enddo
   close(4)
 contains
@@ -1946,7 +2010,37 @@ subroutine nxt_write_state(ncell,mass,vol,tempinv)
      write(4,'(1p,8es16.7e3)') max(nxt_x(:,ic),0d0)
   enddo
   close(4)
+!-- the radiation field of the last iteration (warm start)
+  call nxt_write_jmc(ncell,mext)
 end subroutine nxt_write_state
+!
+!
+subroutine nxt_write_jmc(ncell,mext)
+!-----------------------------------------------------------------------
+! output.nltex_jmc: the Monte Carlo estimators of the last iteration that
+! the next iteration's tables take (nxt_tables), the J of the groups and
+! the incident J of the lines (-1: none), per cell with the exterior mass
+! of the cell centre.  A warm start from output.nltex_state reads them
+! from this file next to it (nxt_read_init), so that its first iteration
+! has the macro-atom of the saved state instead of J = B(T_R).
+!-----------------------------------------------------------------------
+  integer,intent(in) :: ncell
+  real*8,intent(in) :: mext(ncell)
+  integer :: ic,ig
+  open(4,file='output.nltex_jmc',status='replace')
+  write(4,'(a)') '# SuperLite Monte Carlo radiation field per cell (warm start: in_nltex_init)'
+  write(4,'(a,3i9)') 'ng nlin ncell',nxt_ng,nxa_nlin,ncell
+  write(4,'(a)') '# group boundaries [Hz] (decreasing)'
+  write(4,'(1p,6es22.14e3)') nxt_nug(1)+0.5d0*nxt_dnug(1),(nxt_nug(ig)-0.5d0*nxt_dnug(ig),ig=1,nxt_ng)
+  write(4,'(a)') '# per cell: exterior mass of the cell centre [g]; J of the groups '// &
+       '[erg/s/cm^2/Hz/sr]; incident J of the lines (-1: none)'
+  do ic=1,ncell
+     write(4,'(1p,es16.7e3)') mext(ic)
+     write(4,'(1p,10es13.4e3)') max(nxt_jg(:,ic),0d0)
+     write(4,'(1p,10es13.4e3)') merge(max(nxt_jb(:,ic),0d0),-1d0,nxt_ljb(:,ic))
+  enddo
+  close(4)
+end subroutine nxt_write_jmc
 !
 !
 subroutine nxt_read_prev(fname,ncell,mass,dt,lprint)
@@ -1978,17 +2072,140 @@ subroutine nxt_read_init(fname,ncell,mass,lprint)
 ! nltex_state of a run on the same structure and model atoms) at the
 ! exterior mass coordinate of each cell centre (nxt_read_state).  The
 ! first iteration keeps them (nxt_gas_solve) and the transport starts
-! from that state, so a rerun converges in a few iterations.
+! from that state, with its radiation field (nxt_read_jmc), so a rerun
+! converges in a few iterations.
 !-----------------------------------------------------------------------
   character(*),intent(in) :: fname
   integer,intent(in) :: ncell
   real*8,intent(in) :: mass(ncell)
   logical,intent(in) :: lprint
+  integer :: k
   if(allocated(nxt_xinit)) deallocate(nxt_xinit,nxt_tinit,nxt_neinit)
   allocate(nxt_xinit(nxa_nst,ncell),nxt_tinit(ncell),nxt_neinit(ncell))
   call nxt_read_state(fname,ncell,mass,nxt_xinit,nxt_tinit,nxt_neinit,lprint,'warm start from')
   nxt_warm = .true.
+!-- the radiation field of that state (output.nltex_jmc next to it)
+  k = index(fname,'nltex_state',back=.true.)
+  if(k>0) call nxt_read_jmc(fname(:k-1)//'nltex_jmc'//fname(k+11:),ncell,mass,lprint)
 end subroutine nxt_read_init
+!
+!
+subroutine nxt_read_jmc(fname,ncell,mass,lprint)
+!-----------------------------------------------------------------------
+! Warm start: the Monte Carlo estimators of the saved state (output.
+! nltex_jmc, nxt_write_jmc) at the exterior mass coordinate of each cell
+! centre, linear in it between that model's cell centres as the
+! populations (nxt_read_state), the J of this model's groups averaged over
+! the overlap with that model's groups.  The first iteration then makes
+! the tables of the saved state (nxt_have_mc); without the file it makes
+! them with J = B(T_R) and jb = 0, and its Monte Carlo J lacks most of the
+! re-emission in the lines.
+!-----------------------------------------------------------------------
+  character(*),intent(in) :: fname
+  integer,intent(in) :: ncell
+  real*8,intent(in) :: mass(ncell)
+  logical,intent(in) :: lprint
+  integer :: iu,ios,ngp,nl,npc,ic,ig,k,kk,a,b,m
+  character(256) :: line
+  real*8,allocatable :: nub(:),mp(:),jgp(:,:),jbp(:,:),jgn(:,:)
+  real*8 :: mext(ncell),w,nlo,nhi,s,o
+!
+  open(newunit=iu,file=fname,status='old',action='read',iostat=ios)
+  if(ios/=0) then
+     if(lprint) write(6,'(1x,a,1x,a,a)') 'NLTE warm start: no',trim(fname), &
+          '; the first iteration makes its tables with J = B(T_R)'
+     return
+  endif
+  call skipc
+  read(iu,'(a)') line
+  if(index(line,'ng nlin ncell')/=1) stop 'nxt_read_jmc: not an output.nltex_jmc file'
+  read(line(14:),*) ngp,nl,npc
+  if(nl/=nxa_nlin) stop 'nxt_read_jmc: other model atoms than this model'
+  allocate(nub(ngp+1),mp(npc),jgp(ngp,npc),jbp(nl,npc),jgn(nxt_ng,npc))
+  call skipc
+  read(iu,*) nub
+  do ic=1,npc
+     call skipc
+     read(iu,*) mp(ic)
+     read(iu,*) jgp(:,ic)
+     read(iu,*) jbp(:,ic)
+  enddo
+  close(iu)
+!-- this model's groups (decreasing frequency, as that model's)
+  k = 1
+  do ig=1,nxt_ng
+     nhi = nxt_nug(ig) + 0.5d0*nxt_dnug(ig)
+     nlo = nxt_nug(ig) - 0.5d0*nxt_dnug(ig)
+     do while(k<ngp)
+        if(nub(k+1) < nhi) exit
+        k = k + 1
+     enddo
+     jgn(ig,:) = 0d0
+     s = 0d0
+     do kk=k,ngp
+        if(nub(kk) <= nlo) exit
+        o = min(nhi,nub(kk)) - max(nlo,nub(kk+1))
+        if(o <= 0d0) cycle
+        jgn(ig,:) = jgn(ig,:) + o*jgp(kk,:)
+        s = s + o
+     enddo
+     if(s > 0d0) then
+        jgn(ig,:) = jgn(ig,:)/s
+     elseif(nlo >= nub(1)) then
+        jgn(ig,:) = jgp(1,:)
+     else
+        jgn(ig,:) = jgp(ngp,:)
+     endif
+  enddo
+!-- exterior mass of the cell centres of this model (mp decreases outward)
+  mext(ncell) = 0.5d0*mass(ncell)
+  do ic=ncell-1,1,-1
+     mext(ic) = mext(ic+1) + 0.5d0*(mass(ic+1) + mass(ic))
+  enddo
+  do ic=1,ncell
+     if(mext(ic) >= mp(1)) then
+        a = 1; b = 1; w = 0d0
+     elseif(mext(ic) <= mp(npc)) then
+        a = npc; b = npc; w = 0d0
+     else
+        a = 1
+        b = npc
+        do while(b-a>1)
+           m = (a+b)/2
+           if(mp(m) >= mext(ic)) then
+              a = m
+           else
+              b = m
+           endif
+        enddo
+        w = (mp(a) - mext(ic))/(mp(a) - mp(b))
+     endif
+     nxt_jg(:,ic) = (1d0-w)*jgn(:,a) + w*jgn(:,b)
+     do k=1,nxa_nlin
+        if(jbp(k,a)>=0d0 .and. jbp(k,b)>=0d0) then
+           nxt_jb(k,ic) = (1d0-w)*jbp(k,a) + w*jbp(k,b)
+        else
+           nxt_jb(k,ic) = max(jbp(k,a),jbp(k,b))
+        endif
+        nxt_ljb(k,ic) = nxt_jb(k,ic) >= 0d0
+        nxt_jb(k,ic) = max(nxt_jb(k,ic),0d0)
+     enddo
+  enddo
+  nxt_have_mc = .true.
+  if(lprint) write(6,'(1x,a,1x,a,a,i5,a,i6,a)') 'NLTE warm start: Monte Carlo radiation field from', &
+       trim(fname),':',npc,' cells,',ngp,' groups'
+  deallocate(nub,mp,jgp,jbp,jgn)
+contains
+  subroutine skipc
+!-- to the next record that is not a comment
+    do
+       read(iu,'(a)',iostat=ios) line
+       if(ios/=0) stop 'nxt_read_jmc: file truncated'
+       if(line(1:1)/='#' .and. len_trim(line)>0) exit
+    enddo
+    backspace(iu)
+  end subroutine skipc
+end subroutine nxt_read_jmc
 !
 !
 subroutine nxt_read_state(fname,ncell,mass,x,t,ne,lprint,what)

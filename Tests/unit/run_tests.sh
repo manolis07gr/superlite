@@ -21,15 +21,16 @@ build() {   # build <test> <sources...>
 }
 build test_doppler   "$src/TRANSPORT1/dopplermod.f90"
 build test_compton   "$src/randommod.f" "$src/TRANSPORT1/comptonmod.f90"
-NLTEX="$src/physconstmod.f $src/miscmod.f $src/groupmod.f $src/gridmod.f $src/randommod.f \
+NLTEX="$src/elemdatamod.f $src/physconstmod.f $src/miscmod.f $src/groupmod.f $src/gridmod.f $src/randommod.f \
        $src/nltehmod.f90 $src/nlteatommod.f90 $src/nltexmod.f90 $src/nltextrmod.f90"
 build test_nlteh     "$src/nltehmod.f90"
 build test_nltex     $NLTEX
 build test_bbsob     "$src/physconstmod.f" "$src/bbsobmod.f90"
 build test_tebal     $NLTEX "$src/tebalmod.f90"
 build test_superlevel $NLTEX
+build test_estrap    $NLTEX
 build test_shockcie  "$src/shockciemod.f90"
-tests="test_doppler test_compton test_nlteh test_nltex test_bbsob test_tebal test_superlevel test_shockcie"
+tests="test_doppler test_compton test_nlteh test_nltex test_bbsob test_tebal test_superlevel test_estrap test_shockcie"
 if [ -n "$SL_BUILD" ]; then
   objs=$(find "$SL_BUILD/CMakeFiles/superlite.dir" -name "*.o" ! -name "superlite.f90.o")
   LD=gfortran; command -v mpif90 >/dev/null && grep -q "USE_MPI:BOOL=ON" "$SL_BUILD/CMakeCache.txt" && LD=mpif90

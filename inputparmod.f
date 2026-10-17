@@ -141,6 +141,22 @@ c-- absorption depth across a cell is at least this (0: off): J = Lambda* S
 c-- + the radiation from elsewhere instead of the Monte Carlo estimate
 c-- (nltextrmod, nxt_ldb)
       real*8 :: in_nltex_ldb = 0d0
+c-- electron scattering of NLTE line photons trapped in their Sobolev
+c-- resonance zones (nltexmod, nx_bes): microturbulent velocity [km/s] of
+c-- the line profiles at v = 0 and at the outer edge (linear in v; < 0:
+c-- the value at v = 0), added in quadrature to the thermal velocity.  < 0:
+c-- off (point resonances).  Default: in the formal integral, from the
+c-- populations of the iterations (as CMFGEN's observer spectrum with
+c-- incoherent scattering after iterations with coherent scattering).
+c-- in_nltex_esrates (experimental): also in the statistical equilibrium,
+c-- the macro-atom and the transport (escape probability beta + bes, and
+c-- the photons scattered into the line cores)
+      real*8 :: in_nltex_vturb = -1d0, in_nltex_vturbmax = -1d0
+      logical :: in_nltex_esrates = .false.
+c-- (the escape of the scattered photons through the Lorentz wings of the
+c-- lines, radiative damping; f: Doppler profiles only, as CMFGEN's
+c-- iterations)
+      logical :: in_nltex_esdamp = .true.
 c-- formal integral of the emergent spectrum after the last iteration
 c-- (formalmod): range [cm], spacing [km/s], rays through the inner
 c-- boundary
@@ -148,6 +164,22 @@ c-- boundary
       real*8 :: in_fi_wl1 = 1000d-8, in_fi_wl2 = 10000d-8
       real*8 :: in_fi_dv = 20d0
       integer :: in_fi_npc = 20
+c-- (the Monte Carlo J of the last in_fi_navg iterations, averaged: less
+c-- noise in the electron-scattering emissivity of a converged model)
+      integer :: in_fi_navg = 1
+c-- (NLTE lines with Doppler profiles, thermal and the microturbulence
+c-- in_nltex_vturb..in_nltex_vturbmax, as CMFGEN's cmf_flux; f: Sobolev
+c-- resonances, no width)
+      logical :: in_fi_doppler = .true.
+c-- (only the formal integral, with the populations and the Monte Carlo J
+c-- of the saved state of in_nltex_init and its output.nltex_jmc; no
+c-- transport: as CMFGEN's cmf_flux after a model)
+      logical :: in_fi_only = .false.
+c-- (passes of the electron scattering with the J of the formal solution,
+c-- from the Monte Carlo J, as CMFGEN's cmf_flux: line photons trapped in
+c-- their resonance zones and their scattering through the flow, no Monte
+c-- Carlo noise in the scattering emissivity; 0: the Monte Carlo J)
+      integer :: in_fi_nes = 0
 c-- X-ray emission of wind shocks as CMFGEN's INC_XRAYS (xraysrcmod):
 c-- plasma table in CMFGEN's RS_XRAY_FLUXES format ('none': off); two
 c-- components: filling factor, shock temperature [K], onset velocity
@@ -237,8 +269,10 @@ c-- runtime parameter namelist
      & in_nlteh_tau0,in_nltex_atoms,in_nltex_dir,in_nltex_chgexch,
      & in_srctype,in_shock_dvmin,in_shock_tmax,in_shock_cie,
      & in_nltex_prev,in_nltex_dtprev,in_nltex_init,in_nltex_ali,
-     & in_nltex_ldb,
-     & in_fi,in_fi_wl1,in_fi_wl2,in_fi_dv,in_fi_npc,
+     & in_nltex_ldb,in_nltex_vturb,in_nltex_vturbmax,in_nltex_esrates,
+     & in_nltex_esdamp,
+     & in_fi,in_fi_wl1,in_fi_wl2,in_fi_dv,in_fi_npc,in_fi_navg,
+     & in_fi_doppler,in_fi_only,in_fi_nes,
      & in_xray_table,in_xray_ff1,in_xray_ff2,in_xray_t1,in_xray_t2,
      & in_xray_v1,in_xray_v2,in_xray_smooth,
      & in_bbsobolev,in_bbeps,in_tesolve,in_te_damp,in_te_zsolve,
@@ -375,11 +409,19 @@ c
       call insertl(in_xray_smooth,in_l,il)
       call insertl(in_nltex_ali,in_l,il)
       call insertr(in_nltex_ldb,in_r,ir)
+      call insertr(in_nltex_vturb,in_r,ir)
+      call insertr(in_nltex_vturbmax,in_r,ir)
+      call insertl(in_nltex_esrates,in_l,il)
+      call insertl(in_nltex_esdamp,in_l,il)
       call insertl(in_fi,in_l,il)
       call insertr(in_fi_wl1,in_r,ir)
       call insertr(in_fi_wl2,in_r,ir)
       call insertr(in_fi_dv,in_r,ir)
       call inserti(in_fi_npc,in_i,ii)
+      call inserti(in_fi_navg,in_i,ii)
+      call insertl(in_fi_doppler,in_l,il)
+      call insertl(in_fi_only,in_l,il)
+      call inserti(in_fi_nes,in_i,ii)
       call insertl(in_bbsobolev,in_l,il)
       call insertr(in_bbeps,in_r,ir)
       call insertl(in_tesolve,in_l,il)

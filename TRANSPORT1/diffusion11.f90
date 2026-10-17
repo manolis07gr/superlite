@@ -14,8 +14,8 @@ pure subroutine diffusion11(ptcl,ptcl2,vx,vy,vz,cache,rndstate,&
   use fluxmod
   use inputparmod
   use nltextrmod, only:nxt_on,nxt_ntemin,nxt_kq,grd_capnbf,nxt_bfabs,nxt_kpacket, &
-       nxt_nonthermal,nxt_emcode,nxt_emloc,em_line
-  use nxemitmod, only:nx_emitwl,nx_place,line_mu
+       nxt_nonthermal,nxt_emcode,nxt_emloc,em_line,em_lines
+  use nxemitmod, only:nx_emitwl,nx_place,line_mu,nx_linees,nx_ilem
   implicit none
 !
   type(packet),target,intent(inout) :: ptcl
@@ -547,6 +547,9 @@ pure subroutine diffusion11(ptcl,ptcl2,vx,vy,vz,cache,rndstate,&
         ptcl%em = nxt_emcode(kind,idx)
         ptcl%icem = 0
         if(nxt_emloc(ptcl%em)) ptcl%icem = ic
+!-- (a line photon scattered by an electron in its resonance zone: new
+!-- comoving wavelength and direction)
+        if(kind==em_line) call nx_linees(kind,idx,ic,rndstate,mucmf,wlcmf)
         call nx_emitwl(kind,idx,wlcmf,ic,rndstate,wlc,iiig,lout)
         lddmc = .false.
         if(.not.lout) lddmc = (grd_sig(ic)+grd_cap(iiig,ic)+grd_capsc(iiig,ic))*dist >= trn_tauddmc
@@ -564,7 +567,7 @@ pure subroutine diffusion11(ptcl,ptcl2,vx,vy,vz,cache,rndstate,&
            vx = (grd_vxarr(ix)*(grd_xarr(ix+1)-x) + grd_vxarr(ix+1)*(x-grd_xarr(ix)))/dist
            if(kind==em_line) then
               call line_mu(nxt_kq(idx,ic),(grd_vxarr(ix+1)-grd_vxarr(ix))/dist,vx/x,rndstate,mucmf)
-           else
+           elseif(kind/=em_lines) then
               call rnd_r(r1,rndstate)
               mucmf = 1d0-2d0*r1
            endif
@@ -575,7 +578,7 @@ pure subroutine diffusion11(ptcl,ptcl2,vx,vy,vz,cache,rndstate,&
            e = e*help
            e0 = e0*help
            ig = iiig
-           if(kind==em_line) ptcl%ilem = idx
+           ptcl%ilem = nx_ilem(kind,idx,wlc)
            call nx_place(kind,idx,wlc,ig,lout,wl,e,e0,mu,vx,x,ix,ic,ptcl2,totevelo)
            if(ptcl2%stat=='flux') return
         endif

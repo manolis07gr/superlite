@@ -3,9 +3,10 @@ module nxemitmod
 !-----------------------------------------------------------------------
 ! Re-emission of a packet after a macro-atom or k-packet process of the
 ! NLTE elements, shared by the IMC (transport11) and DDMC (diffusion11)
-! steps: the comoving wavelength and group of the emission, the packet
-! placed in the lab frame (on the line it was emitted in, or into DDMC),
-! and the escape direction of a line photon.
+! steps and the interior source: the comoving wavelength and group of the
+! emission, the packet placed in the lab frame (on the line it was emitted
+! in, or into DDMC), the escape direction of a line photon, and the
+! electron scattering of line photons trapped in their resonance zone.
 !-----------------------------------------------------------------------
   use randommod
   use miscmod
@@ -17,10 +18,12 @@ module nxemitmod
   use inputparmod
   use nltextrmod
   use bbsobmod, only:grd_capsc
+  use comptonmod, only:thermal_thomson
+  use nlteatommod, only:nxa_lwl
   implicit none
   private
   real*8,parameter :: cinv = 1d0/pc_c
-  public :: nx_emitwl,nx_place,nx_reemit,line_mu
+  public :: nx_emitwl,nx_place,nx_reemit,line_mu,nx_linees,nx_ilem
 !
 contains
 !
@@ -28,9 +31,9 @@ contains
   pure subroutine nx_emitwl(kind,idx,wlcmf,ic,rndstate,wlc,ig,lout)
 !-----------------------------------------------------------------------
 ! Comoving wavelength wlc and group ig of an emission of kind em_line,
-! em_bf, em_2ph (at wlcmf) or em_thermal (the emissivity of the other
-! opacities, uniform in frequency within the group).  lout: outside the
-! group grid.
+! em_lines, em_bf, em_2ph (at wlcmf) or em_thermal (the emissivity of the
+! other opacities, uniform in frequency within the group).  lout: outside
+! the group grid.
 !-----------------------------------------------------------------------
     integer,intent(in) :: kind,idx,ic
     real*8,intent(in) :: wlcmf
@@ -117,6 +120,52 @@ contains
     call nx_emitwl(kind,idx,wlcmf,ic,rndstate,wlc,ig,lout)
     call nx_place(kind,idx,wlc,ig,lout,wl,e,e0,mu,vx,x,ix,ic,ptcl2,totevelo)
   end subroutine nx_reemit
+!
+!
+  pure subroutine nx_linees(kind,idx,ic,rndstate,mucmf,wlcmf)
+!-----------------------------------------------------------------------
+! With nxt_esrates (the trapped-photon electron scattering in the rates
+! and the macro-atom; otherwise only in the formal integral): a photon of
+! line idx leaving the macro-atom in cell ic was scattered by a thermal
+! electron while trapped in the resonance zone with probability
+! bes/(beta+bes) (nxt_bes).  It then leaves the line centre with the
+! electron's Doppler shift (comoving wavelength wlcmf/ratio) in a new
+! comoving direction mucmf, kind em_lines; a shift to the blue brings it
+! back to the line further along its path.  Otherwise kind stays em_line
+! (mucmf is not set).
+!-----------------------------------------------------------------------
+    integer,intent(inout) :: kind
+    integer,intent(in) :: idx,ic
+    type(rnd_t),intent(inout) :: rndstate
+    real*8,intent(inout) :: mucmf,wlcmf
+    real*8 :: r,b,ratio
+    if(kind/=em_line .or. .not.nxt_esrates) return
+    b = nxt_bes(idx,ic)
+    if(b <= 0d0) return
+    call rnd_r(r,rndstate)
+    if(r*(nxt_beta(idx,ic)+b) >= b) return
+!-- the photon's direction in the zone is isotropic
+    call rnd_r(r,rndstate)
+    call thermal_thomson(1d0-2d0*r,wlcmf,1d0/grd_tempinv(ic),trn_thm_aniso, &
+         rndstate,mucmf,ratio)
+    wlcmf = wlcmf/ratio
+    kind = em_lines
+  end subroutine nx_linees
+!
+!
+  pure function nx_ilem(kind,idx,wlcmf) result(ilem)
+!-- packet%ilem after an emission: the line of a line photon while it is on
+!-- the red side of the line (comoving wavelength wlcmf)
+    integer,intent(in) :: kind,idx
+    real*8,intent(in) :: wlcmf
+    integer :: ilem
+    ilem = 0
+    if(kind==em_line) then
+       ilem = idx
+    elseif(kind==em_lines) then
+       if(wlcmf > nxa_lwl(idx)) ilem = idx
+    endif
+  end function nx_ilem
 !
 !
   pure subroutine line_mu(tau0,a,b,rndstate,mucmf)

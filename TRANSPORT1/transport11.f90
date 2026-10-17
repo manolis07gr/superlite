@@ -445,9 +445,11 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
            call nxt_kpacket(ic,rndstate,kind,idx,wlcmf)
         endif
         lremit = .true.
-!-- a line photon leaves its Sobolev resonance along directions of large |Q(mu)|
+!-- a line photon leaves its Sobolev resonance along directions of large
+!-- |Q(mu)|, or scattered by an electron in the resonance zone
         if(kind==em_line) then
-           call line_mu(nxt_kq(idx,ic),dvdr(ix),vx/x,rndstate,mucmf)
+           call nx_linees(kind,idx,ic,rndstate,mucmf,wlcmf)
+           if(kind==em_line) call line_mu(nxt_kq(idx,ic),dvdr(ix),vx/x,rndstate,mucmf)
            mu = (mucmf+vx*cinv)/(1d0+vx*mucmf*cinv)
         endif
      endif
@@ -497,8 +499,7 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
         ptcl%em = nxt_emcode(kind,idx)
         ptcl%icem = 0
         if(nxt_emloc(ptcl%em)) ptcl%icem = ic
-        ptcl%ilem = 0
-        if(kind==em_line) ptcl%ilem = idx
+        ptcl%ilem = nx_ilem(kind,idx,wlcmf)
      endif
 
 !
@@ -620,10 +621,12 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
         else
            call nxt_activate_line(ic,kres,rndstate,kind,idx,wlcmf)
         endif
-!-- line photons escape along directions of large |Q(mu)|, continuum isotropically
+!-- line photons escape along directions of large |Q(mu)| (or are
+!-- scattered by an electron in the resonance zone), continuum isotropically
+        if(kind==em_line) call nx_linees(kind,idx,ic,rndstate,mucmf,wlcmf)
         if(kind==em_line) then
            call line_mu(nxt_kq(idx,ic),dvdr(ix),vx/x,rndstate,mucmf)
-        else
+        elseif(kind/=em_lines) then
            call rnd_r(r1,rndstate)
            mucmf = 1d0-2d0*r1
         endif
@@ -636,8 +639,7 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
         ptcl%em = nxt_emcode(kind,idx)
         ptcl%icem = 0
         if(nxt_emloc(ptcl%em)) ptcl%icem = ic
-        ptcl%ilem = 0
-        if(kind==em_line) ptcl%ilem = idx
+        ptcl%ilem = nx_ilem(kind,idx,wlcmf)
      else
 !-- passes the resonance: now on the far side of the line
         ptcl2%iline = jres
