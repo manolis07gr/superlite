@@ -402,8 +402,10 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
      e = e*help
      e0 = e0*help
      if(nuratio/=1d0) then
-!-- (the comoving frequency history of a line photon ends here)
-        ptcl%ilem = 0
+!-- (a line photon scattered to the blue of its line will cross it again)
+        if(ptcl%ilem>0) then
+           if(wl/(1d0-mu*vx*cinv) < nxa_lwl(ptcl%ilem)) ptcl%ilem = 0
+        endif
 !-- new comoving group
         ig = binsrch(wl/(1d0-mu*vx*cinv),grp_wl,grp_ng+1,.false.)
         if(((grd_sig(ic)+grd_cap(ig,ic)+grd_capsc(ig,ic))*dx(ix) >= trn_tauddmc) &

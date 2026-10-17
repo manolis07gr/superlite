@@ -822,9 +822,9 @@ subroutine nxt_tally_finish(ncell,vol)
 ! Mean intensity incident on each NLTE line (after nxt_store_jg and
 ! nxt_ldb): the resonance tally (sum of e c/(nu |Q|)) where the line has
 ! nxt_njbmin crossings, else the J of the line's group without the photons
-! of its lines that have kept their comoving frequency history since their
-! emission (nxt_jlosum).  In an expanding flow those only redshift away
-! from their line: the Sobolev incident intensity is that of the continuum
+! of its lines that are still to the red of their line in the comoving
+! frame (nxt_jlosum; packet%ilem).  In an expanding flow those only
+! redshift away from it: the Sobolev incident intensity is that of the continuum
 ! (CMFGEN's Sobolev option).  The whole group J, which the line's own
 ! escaping photons dominate where it is strong (Halpha in the outer wind of
 ! a IIn: a few crossings per cell; 4-5 times the continuum in a 1000 km/s
