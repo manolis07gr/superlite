@@ -490,6 +490,8 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
      if(lremit) then
         call nx_reemit(kind,idx,wlcmf,ig,wl,e,e0,mu,vx,x,ix,ic,ptcl2,totevelo,rndstate)
         ptcl%em = nxt_emcode(kind,idx)
+        ptcl%icem = 0
+        if(nxt_emloc(ptcl%em)) ptcl%icem = ic
      endif
 
 !
@@ -625,6 +627,8 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
         e0 = e0*help
         call nx_reemit(kind,idx,wlcmf,ig,wl,e,e0,mu,vx,x,ix,ic,ptcl2,totevelo,rndstate)
         ptcl%em = nxt_emcode(kind,idx)
+        ptcl%icem = 0
+        if(nxt_emloc(ptcl%em)) ptcl%icem = ic
      else
 !-- passes the resonance: now on the far side of the line
         ptcl2%iline = jres

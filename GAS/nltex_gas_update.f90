@@ -10,7 +10,7 @@ subroutine nltex_gas_update(it)
   use nlteatommod, only:nxa_nel,nxa_el
   use nltextrmod
   use mpimod, only:lmpi0
-  use inputparmod, only:in_nltex_ali
+  use inputparmod, only:in_nltex_ali,in_nltex_ldb
   implicit none
   integer,intent(in) :: it
   integer :: i,l,iel
@@ -41,7 +41,7 @@ subroutine nltex_gas_update(it)
      if(it>1 .and. nxt_have_mc .and. gas_mass(i)>0d0) &
           edep(i) = nxt_ntdep(nxt_ng,nxt_nug,nxt_dnug,nxt_jg(:,l),gas_cap(:,i))
   enddo
-  if(in_nltex_ali) then
+  if(in_nltex_ali .or. in_nltex_ldb>0d0) then
      call nxt_gas_solve(it,gas_ncell,gas_temp,gas_radtemp,nelv,neoth,qb,qv,gas_icell1,edep, &
           kap=gas_cap,fcl=gas_fcl,dr=dr)
   else

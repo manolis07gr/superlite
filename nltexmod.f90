@@ -309,13 +309,20 @@ subroutine nx_el_rates(iel,temp,trad,ng,nug,dnug,jg,r,xo,nelo,neo)
 !-- photoionization of l by the re-absorbed recombinations: dal n_c n_e/n_l
         gsf = dal*nelo*xo(nxa_lvc(lv))*r%wc(kl)*neo/nlo
         if(gsf <= 0d0) cycle
-!-- (Monte Carlo noise: never more than the photoionization itself)
+!-- (Monte Carlo noise: never more than the photoionization itself; and
+!-- the group sum of dal never more than the recombination coefficient,
+!-- which it can exceed by its quadrature error when Lambda* -> 1: both
+!-- terms scaled together, so that they stay equal at xo)
         if(gsf > r%gaml(kl)) then
            dal = dal*r%gaml(kl)/gsf
            gsf = r%gaml(kl)
         endif
+        if(dal > r%arl(kl)) then
+           gsf = gsf*r%arl(kl)/dal
+           dal = r%arl(kl)
+        endif
         r%gaml(kl) = r%gaml(kl) - gsf
-        r%arl(kl) = max(0d0,r%arl(kl) - dal)
+        r%arl(kl) = r%arl(kl) - dal
      enddo
   endif
 !-- sums per state

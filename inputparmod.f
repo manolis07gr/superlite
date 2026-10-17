@@ -132,6 +132,11 @@ c-- the time since that model [s]
 c-- accelerated lambda iteration of the NLTE bound-free transitions (local
 c-- operator of each cell and group; nltexmod)
       logical :: in_nltex_ali = .false.
+c-- local detailed balance of the NLTE elements in the groups whose
+c-- absorption depth across a cell is at least this (0: off): J = Lambda* S
+c-- + the radiation from elsewhere instead of the Monte Carlo estimate
+c-- (nltextrmod, nxt_ldb)
+      real*8 :: in_nltex_ldb = 0d0
 c-- formal integral of the emergent spectrum after the last iteration
 c-- (formalmod): range [cm], spacing [km/s], rays through the inner
 c-- boundary
@@ -227,7 +232,7 @@ c-- runtime parameter namelist
      & in_nlte,in_nlte_nelem,in_nlteh,in_nlteh_nlev,in_nlteh_damp,
      & in_nlteh_tau0,in_nltex_atoms,in_nltex_dir,in_nltex_chgexch,
      & in_srctype,in_shock_dvmin,in_shock_tmax,in_shock_cie,
-     & in_nltex_prev,in_nltex_dtprev,in_nltex_ali,
+     & in_nltex_prev,in_nltex_dtprev,in_nltex_ali,in_nltex_ldb,
      & in_fi,in_fi_wl1,in_fi_wl2,in_fi_dv,in_fi_npc,
      & in_xray_table,in_xray_ff1,in_xray_ff2,in_xray_t1,in_xray_t2,
      & in_xray_v1,in_xray_v2,in_xray_smooth,
@@ -364,6 +369,7 @@ c
       call insertr(in_xray_v2,in_r,ir)
       call insertl(in_xray_smooth,in_l,il)
       call insertl(in_nltex_ali,in_l,il)
+      call insertr(in_nltex_ldb,in_r,ir)
       call insertl(in_fi,in_l,il)
       call insertr(in_fi_wl1,in_r,ir)
       call insertr(in_fi_wl2,in_r,ir)

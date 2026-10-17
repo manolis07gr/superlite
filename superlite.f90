@@ -192,6 +192,8 @@ program superlite
         deallocate(mcell)
      endif
      nxt_damp = in_nlteh_damp
+     nxt_ldbtau = in_nltex_ldb
+     nxt_alion = in_nltex_ali
      if(lclump) then
         allocate(nxt_fcl(grd_ncell))
         nxt_fcl = grd_fcl
@@ -361,6 +363,8 @@ program superlite
      if(in_nltex) then
         call allreduce_nlteh !MPI
         call nxt_store_jg(grd_ncell,grp_ng,grd_jrad,grd_vol)
+        call nxt_ldb(grd_ncell,grp_ng,grd_vol,grd_xarr(2:grd_ncell+1)-grd_xarr(1:grd_ncell), &
+             grd_tempinv,grd_cap,grd_capemit,grd_planck,grd_spk,grd_nlump,grd_glump)
         call nxt_tally_finish(grd_ncell,grd_vol)
 !-- formal integral of the emergent spectrum with the last radiation field
         if(in_fi .and. it==in_niter) call fi_spectrum(grd_ncell,grd_xarr,grd_vxarr, &
@@ -399,7 +403,9 @@ program superlite
         call output_grp
         if(it>1.and.in_io_opacdump=='one') in_io_opacdump = 'off'
         if(it==in_niter.and.in_io_profdump) call output_profile
-        if(it==in_niter.and.in_nltex) call nxt_write(grd_ncell,grd_rcell, &
+!-- (NLTE populations and radiation field: every iteration, to follow the
+!-- convergence)
+        if(in_nltex) call nxt_write(grd_ncell,grd_rcell, &
              0.5d0*(grd_vxarr(:grd_ncell)+grd_vxarr(2:)),grd_tempinv,grd_radtemp)
         if(it==in_niter.and.in_nltex) call nxt_write_state(grd_ncell,grd_mass,grd_vol,grd_tempinv)
 

@@ -936,7 +936,8 @@ c     --------------------------
       use timingmod
       implicit none
 ************************************************************************
-* Sum the NLTE line resonance estimators over all ranks.
+* Sum the NLTE line resonance estimators and the tallies of nxt_ldb over
+* all ranks.
 ************************************************************************
       integer :: n
       real*8,allocatable :: snd2(:,:)
@@ -951,6 +952,9 @@ c     --------------------------
       call mpi_allreduce(snd2,nxt_jbcnt,n,MPI_REAL8,MPI_SUM,
      &  MPI_COMM_WORLD,ierr)
       deallocate(snd2)
+c-- radiation from elsewhere and DDMC lumps (nxt_ldb)
+      call allreduce_sum(size(nxt_jxsum),nxt_jxsum)
+      call allreduce_sum(size(nxt_jlsum),nxt_jlsum)
       t1 = t_time()
       call timereg(t_mpireduc, t1-t0)
       end subroutine allreduce_nlteh

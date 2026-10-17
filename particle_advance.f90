@@ -18,7 +18,7 @@ subroutine particle_advance
   use countersmod
   use fluxmod
   use sourcemod
-  use nltextrmod, only:nxt_on,nxt_jbsum,nxt_jbcnt
+  use nltextrmod, only:nxt_on,nxt_jbsum,nxt_jbcnt,nxt_jxsum,nxt_jlsum
   implicit none
 !
 !##################################################
@@ -39,7 +39,8 @@ subroutine particle_advance
   real*8 :: t0,t1
   real*8 :: labfact
 !
-  integer :: icold, igold, ierr
+  integer :: icold, igold, ixold, ierr
+  logical :: limc
   real*8 :: eraddens, eamp
   real*8 :: jrad
   integer :: jbk
@@ -92,16 +93,16 @@ subroutine particle_advance
 !$omp shared(rnd_states,prt_npartmax,prt_isvacant,prt_particles, &
 !$omp    grd_nx,grd_xarr,grd_ny,grd_yarr,grd_nz,grd_zarr,grd_icell, &
 !$omp    grp_ng,grp_wl,grd_igeom,grd_sig,grd_cap,grd_capsc,grd_eamp, &
-!$omp    trn_tauddmc,trn_noampfact,trn_errorfatal, &
+!$omp    trn_tauddmc,trn_taulump,trn_noampfact,trn_errorfatal, &
 !$omp    grd_vxarr,grd_methodswap,t_pckt_stat,transport,diffusion, &
 !$omp    in_puretran,in_io_dogrdtally,in_nomp,nxt_on) &
 !$omp private(ptcl,ptcl2,cache, &
 !$omp    specarr,glumps,llumps, &
-!$omp    x,y,z,mu,om,wl,e,e0,ix,iy,iz,ic,ig,icold,igold, &
+!$omp    x,y,z,mu,om,wl,e,e0,ix,iy,iz,ic,ig,icold,igold,ixold,limc, &
 !$omp    vx,vy,vz,help1,help2,vhelp1,vhelp2, &
 !$omp    i,t0,t1,help,tau,labfact,jrad, &
 !$omp    rndstate,eraddens,eamp,ierr,iomp,jbk,jbval) &
-!$omp reduction(+:grd_tally,grd_jrad,nxt_jbsum,nxt_jbcnt, &
+!$omp reduction(+:grd_tally,grd_jrad,nxt_jbsum,nxt_jbcnt,nxt_jxsum,nxt_jlsum, &
 !$omp    tot_evelo,tot_eout,tot_sflux, &
 !$omp    npckt,nflux, &
 !$omp    nstepddmc,nstepimc,nmethodswap,ndist) &
@@ -211,7 +212,9 @@ subroutine particle_advance
         ptcl2%istep = ptcl2%istep + 1
         icold = ic
         igold = ig
-        if(ptcl2%itype==1 .or. in_puretran) then
+        ixold = ix
+        limc = ptcl2%itype==1 .or. in_puretran
+        if(limc) then
            nstepimc = nstepimc + 1
            call transport(ptcl,ptcl2,vx,vy,vz,rndstate, &
                 eraddens,eamp,jrad,tot_evelo,ierr,jbk,jbval)
@@ -240,7 +243,19 @@ subroutine particle_advance
         ndist(i) = ndist(i) + 1
 !-- tally rest
         grd_tally(icold) = grd_tally(icold) + eraddens
-        grd_jrad(igold,icold) = grd_jrad(igold,icold) + jrad
+        if(.not.nxt_on) then
+           grd_jrad(igold,icold) = grd_jrad(igold,icold) + jrad
+        elseif(limc) then
+           grd_jrad(igold,icold) = grd_jrad(igold,icold) + jrad
+!-- (radiation from elsewhere: outside the cell of the last emission that
+!-- is part of the cell's source function; nxt_ldb)
+           if(ptcl%icem/=icold) nxt_jxsum(igold,icold) = nxt_jxsum(igold,icold) + jrad
+        elseif(grd_cap(igold,icold)*dx(ixold) >= trn_taulump) then
+!-- (DDMC in the cell's group lump: shared among its groups by nxt_ldb)
+           nxt_jlsum(icold) = nxt_jlsum(icold) + jrad
+        else
+           grd_jrad(igold,icold) = grd_jrad(igold,icold) + jrad
+        endif
 !
 !-- verify position
         if(ptcl2%itype==1 .and. ptcl2%stat=='live') then

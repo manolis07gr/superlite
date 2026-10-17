@@ -165,6 +165,8 @@ subroutine interior_source!(it)
         else
            ptcl%em = 2
         endif
+        ptcl%icem = 0
+        if(nxt_emloc(ptcl%em)) ptcl%icem = l
         ep0 = grd_emit(l)/dble(nemit)
         ptcl%e = ep0
         ptcl%e0 = ep0

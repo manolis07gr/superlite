@@ -12,6 +12,9 @@ module particlemod
 !-- 2 thermal emissivity, 3 bound-free, 4 line, 5 two-photon, 6 shock;
 !-- + 100 Z of the emitting element for 3-5
      integer :: em = 0
+!-- cell of the last thermal or bound-free emission (part of the cell's
+!-- source function), 0 after any other emission (nxt_ldb)
+     integer :: icem = 0
   end type packet
 !
 !-- secondary particle properties

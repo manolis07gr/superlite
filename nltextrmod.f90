@@ -76,6 +76,15 @@ module nltextrmod
   logical,allocatable,public :: nxt_ljb(:,:)  !(nlin,ncell) jb from enough crossings
   real*8,allocatable,public :: nxt_jbsum(:,:) !(nlin,ncell) tally: sum e c/(nu |Q|)
   real*8,allocatable,public :: nxt_jbcnt(:,:) !(nlin,ncell) tally: crossings
+!-- radiation of the optically thick groups (nxt_ldb): tallies of the packets
+!-- on IMC steps outside the cell of their last thermal or bound-free
+!-- emission (radiation from elsewhere), and of the DDMC packets in the
+!-- cell's group lump; groups with absorption depth across the cell above
+!-- nxt_ldbtau (0: none) are in local detailed balance
+  real*8,public :: nxt_ldbtau = 0d0
+  logical,public :: nxt_alion = .true.        !accelerated lambda iteration in the other groups
+  real*8,allocatable,public :: nxt_jxsum(:,:) !(ng,ncell)
+  real*8,allocatable,public :: nxt_jlsum(:)   !(ncell)
   real*4,allocatable,public :: grd_capnbf(:,:) !(ng,ncell) NLTE bound-free part of grd_cap
 !-- NLTE recombination emission per group, in the units of the Planck group
 !-- integrals times opacity (int eta dnu/(sigma T^4/pi)): DDMC source spectrum
@@ -173,9 +182,9 @@ module nltextrmod
   public :: nxt_init,nxt_gas_solve,nxt_store_jg,nxt_tally_reset,nxt_tally_finish
   public :: nxt_tables,nxt_neighbors,nxt_activate,nxt_activate_line,nxt_kpacket
   public :: nxt_bfabs,nxt_bfpick,nxt_nonthermal,nxt_ntdep,nxt_ntrates,nxt_write,nxt_bffreq
-  public :: nxt_shares,nxt_dealloc,nxt_emcode
+  public :: nxt_shares,nxt_dealloc,nxt_emcode,nxt_emloc
   public :: nxt_write_state,nxt_read_prev,nxt_release,nxt_activate_rel
-  public :: nxt_ali_cell,nxt_ali_off
+  public :: nxt_ali_cell,nxt_ali_off,nxt_ldb,nxt_lsldb
 !
 contains
 !
@@ -217,6 +226,8 @@ subroutine nxt_init(ncell,gncell,ng,wlg,nfile,files,hnlev)
   allocate(nxt_kq(nxa_nlin,ncell),nxt_beta(nxa_nlin,ncell))
   allocate(nxt_jg(ng,ncell),nxt_jb(nxa_nlin,ncell),nxt_ljb(nxa_nlin,ncell))
   allocate(nxt_jbsum(nxa_nlin,ncell),nxt_jbcnt(nxa_nlin,ncell))
+  allocate(nxt_jxsum(ng,ncell),nxt_jlsum(ncell))
+  nxt_jxsum = 0d0; nxt_jlsum = 0d0
   allocate(grd_capnbf(ng,ncell),grd_emnbf(ng,ncell))
   allocate(nxt_xloc(nst,gncell),nxt_neloc(gncell),nxt_nelloc(nxa_nel,gncell),nxt_neothloc(gncell))
   allocate(gas_capnbf(ng,gncell),gas_emnbf(ng,gncell))
@@ -418,7 +429,7 @@ end subroutine nxt_init
 subroutine nxt_dealloc
 !-- free the cell arrays and tables (set up again by nxt_init)
   if(allocated(nxt_x)) deallocate(nxt_x,nxt_nel,nxt_ne,nxt_kq,nxt_beta,nxt_jg,nxt_jb,nxt_ljb, &
-       nxt_jbsum,nxt_jbcnt,grd_capnbf,nxt_xloc,nxt_neloc,nxt_nelloc,nxt_neothloc,gas_capnbf, &
+       nxt_jbsum,nxt_jbcnt,nxt_jxsum,nxt_jlsum,grd_capnbf,nxt_xloc,nxt_neloc,nxt_nelloc,nxt_neothloc,gas_capnbf, &
        grd_emnbf,gas_emnbf, &
        nxt_lgrp,nxt_isrt,nxt_nug,nxt_dnug,nxt_act,nxt_wlact,nxt_w)
   if(allocated(nxt_lch)) deallocate(nxt_lch,nxt_bch,nxt_2pch)
@@ -562,7 +573,7 @@ subroutine nxt_gas_solve(it,gncell,temp,trad,nelv,neoth,qb,qv,icell1,edep,kap,fc
      xold = x
      call nxt_ntrates(nelv(:,i),x,edep(i),nti,ntx)
      if(present(kap) .and. present(fcl) .and. present(dr) .and. it>1 .and. nxt_have_mc) &
-          call nxt_ali_cell(nxt_ng,kap(:,i),fcl(i),dr(i))
+          call nxt_ali_cell(nxt_ng,kap(:,i),fcl(i),dr(i),lali=nxt_alion)
      if(nxt_dtinv>0d0) then
         call nx_solve_cell(temp(i),trad(i),nelv(:,i),neoth(i),qb(i),qv(i),nxt_ng, &
              nxt_nug,nxt_dnug,jg,jb,ljb,nti,ntx,x,ne,beta,ierr,xprev=nxt_xprev(:,l),dtinv=nxt_dtinv)
@@ -640,9 +651,111 @@ subroutine nxt_store_jg(ncell,ng,jrad,vol)
 end subroutine nxt_store_jg
 !
 !
+subroutine nxt_ldb(ncell,ng,vol,dr,tempinv,cap,capemit,planck,spk,nlump,glump)
+!-----------------------------------------------------------------------
+! Mean intensity of the groups for the statistical equilibrium, after
+! nxt_store_jg.
+! * DDMC packets in the lump of a cell's optically thick groups stand for
+!   radiation in equilibrium with the source function there: their tally
+!   (nxt_jlsum) is shared among the lump's groups as the DDMC source
+!   spectrum (spk, proportional to S dnu), not given to the group that the
+!   packet happens to carry.
+! * Local detailed balance (nxt_ldbtau > 0): a group with absorption depth
+!   tau = kappa dr >= nxt_ldbtau across the cell gets
+!      J = Lambda* S + J_ext,
+!   S = (kappa_th B + eta_nbf)/kappa the source function of the populations
+!   with which the packets ran, Lambda* (nxt_lsldb) the share of its own
+!   emission that a slab of depth tau keeps, and J_ext the radiation from
+!   elsewhere (nxt_jxsum: packets on IMC steps outside the cell of their
+!   last thermal or bound-free emission; the DDMC lump is local).  The
+!   Monte Carlo estimate of such a group is the cell's own emission as
+!   sampled by the few packets emitted in it: zero where the group's share
+!   of the emission is small (the Lyman continuum of a cool wind), which
+!   turns the on-the-spot cycle into net recombination.  The statistical
+!   equilibrium takes the cell's own cycle out with the same Lambda*
+!   (nxt_ali_cell).
+!-----------------------------------------------------------------------
+  integer,intent(in) :: ncell,ng
+  real*8,intent(in) :: vol(ncell),dr(ncell),tempinv(ncell)
+  real*4,intent(in) :: cap(ng,ncell),capemit(ng,ncell)
+  real*8,intent(in) :: planck(ng,ncell),spk(ng,ncell)
+  integer,intent(in) :: nlump(ncell)
+  integer*2,intent(in) :: glump(ng,ncell)
+  real*8,parameter :: sb = 5.670374419d-5
+  integer :: i,ig,k
+  real*8 :: w,tau,s,u
+!
+  do i=1,ncell
+     if(vol(i)<=0d0) cycle
+!-- DDMC lump: shared as the source spectrum
+     if(nxt_jlsum(i)>0d0 .and. nlump(i)>0) then
+        w = 0d0
+        do k=1,nlump(i)
+           w = w + spk(glump(k,i),i)
+        enddo
+        do k=1,nlump(i)
+           ig = glump(k,i)
+           if(w>0d0) then
+              nxt_jg(ig,i) = nxt_jg(ig,i) + nxt_jlsum(i)*spk(ig,i)/w/(4d0*pi*vol(i)*nxt_dnug(ig))
+           else
+              nxt_jg(ig,i) = nxt_jg(ig,i) + nxt_jlsum(i)/dble(nlump(i))/(4d0*pi*vol(i)*nxt_dnug(ig))
+           endif
+        enddo
+     endif
+!-- local detailed balance
+     if(nxt_ldbtau<=0d0) cycle
+     u = sb/(pi*tempinv(i)**4)
+     do ig=1,ng
+        tau = cap(ig,i)*dr(i)
+        if(tau<nxt_ldbtau) cycle
+        s = (planck(ig,i)*capemit(ig,i) + grd_emnbf(ig,i))/cap(ig,i)*u/nxt_dnug(ig)
+        nxt_jg(ig,i) = nxt_lsldb(tau)*s + nxt_jxsum(ig,i)/(4d0*pi*vol(i)*nxt_dnug(ig))
+     enddo
+  enddo
+end subroutine nxt_ldb
+!
+!
+pure function nxt_lsldb(tau) result(ls)
+!-- share of the isotropic emission of a slab of absorption depth tau
+!-- absorbed in it (mean over the slab), 1 - (1 - 2 E_3(tau))/(2 tau)
+  real*8,intent(in) :: tau
+  real*8 :: ls
+  if(tau < 1d-6) then
+     ls = 0d0
+  else
+     ls = 1d0 - (1d0 - 2d0*nxt_e3(tau))/(2d0*tau)
+  endif
+end function nxt_lsldb
+!
+!
+pure function nxt_e3(x) result(e3)
+!-- exponential integral E_3(x), x > 0: E_1 from Abramowitz & Stegun 5.1.53
+!-- (x <= 1) and 5.1.56, then the recurrence E_n+1 = (e^-x - x E_n)/n up to
+!-- x = 5 and the asymptotic series above (where the recurrence cancels)
+  real*8,intent(in) :: x
+  real*8 :: e3,e1,e2,y
+  if(x > 5d0) then
+     y = 1d0/(x+3d0)
+     e3 = exp(-x)*y*(1d0 + 3d0*y**2 + 3d0*(3d0-2d0*x)*y**4)
+     return
+  endif
+  if(x <= 1d0) then
+     e1 = -log(x) - 0.57721566d0 + x*(0.99999193d0 + x*(-0.24991055d0 + x*(0.05519968d0 + &
+          x*(-0.00976004d0 + x*0.00107857d0))))
+  else
+     e1 = exp(-x)/x*(x**4 + 8.5733287401d0*x**3 + 18.0590169730d0*x**2 + 8.6347608925d0*x + 0.2677737343d0)/ &
+          (x**4 + 9.5733223454d0*x**3 + 25.6329561486d0*x**2 + 21.0996530827d0*x + 3.9584969228d0)
+  endif
+  e2 = exp(-x) - x*e1
+  e3 = 0.5d0*(exp(-x) - x*e2)
+end function nxt_e3
+!
+!
 subroutine nxt_tally_reset
   nxt_jbsum = 0d0
   nxt_jbcnt = 0d0
+  nxt_jxsum = 0d0
+  nxt_jlsum = 0d0
 end subroutine nxt_tally_reset
 !
 !
@@ -1209,6 +1322,15 @@ pure subroutine emit_state(ic,gs,state,kind,idx,wlc)
 end subroutine emit_state
 !
 !
+pure function nxt_emloc(em) result(l)
+!-- emission (packet%em) that is part of the source function of the cell's
+!-- groups (thermal or bound-free; nxt_ldb)
+  integer,intent(in) :: em
+  logical :: l
+  l = mod(em,100)==2 .or. mod(em,100)==3
+end function nxt_emloc
+!
+!
 pure function nxt_emcode(kind,idx) result(code)
 !-- emission process for the diagnostics (packet%em): 2 thermal emissivity,
 !-- 3 bound-free, 4 line, 5 two-photon, + 100 Z of the element
@@ -1666,19 +1788,25 @@ contains
 end subroutine nxt_write
 !
 !
-subroutine nxt_ali_cell(ng,kap,fcl,dr)
+subroutine nxt_ali_cell(ng,kap,fcl,dr,lali)
 !-----------------------------------------------------------------------
 ! Accelerated lambda iteration in the next statistical-equilibrium solves
 ! (nltexmod): the absorption opacity kap of the cell's groups with which
 ! the Monte Carlo J was made (per clump volume), and the local operator
-! Lambda* = 1 - (1 - e^-tau)/tau of the cell with tau = fcl kap dr (the
-! volume-mean opacity across the cell width dr), at most 0.99.
+! Lambda* of the cell with tau = fcl kap dr (the volume-mean opacity
+! across the cell width dr): in the groups in local detailed balance
+! (tau >= nxt_ldbtau, nxt_ldb) the Lambda* of their J, in the others
+! (with lali, default true) 1 - (1 - e^-tau)/tau, at most 0.99, else 0.
 !-----------------------------------------------------------------------
   integer,intent(in) :: ng
   real*4,intent(in) :: kap(ng)
   real*8,intent(in) :: fcl,dr
+  logical,intent(in),optional :: lali
   integer :: ig
   real*8 :: tau
+  logical :: la
+  la = .true.
+  if(present(lali)) la = lali
   if(allocated(nx_ali_lst)) then
      if(size(nx_ali_lst)/=ng) deallocate(nx_ali_lst,nx_ali_kap)
   endif
@@ -1686,12 +1814,15 @@ subroutine nxt_ali_cell(ng,kap,fcl,dr)
   do ig=1,ng
      nx_ali_kap(ig) = kap(ig)
      tau = fcl*kap(ig)*dr
-     if(tau < 1d-4) then
+     if(nxt_ldbtau>0d0 .and. tau>=nxt_ldbtau) then
+        nx_ali_lst(ig) = nxt_lsldb(tau)
+     elseif(.not.la) then
+        nx_ali_lst(ig) = 0d0
+     elseif(tau < 1d-4) then
         nx_ali_lst(ig) = 0.5d0*tau
      else
-        nx_ali_lst(ig) = 1d0 - (1d0 - exp(-tau))/tau
+        nx_ali_lst(ig) = min(1d0 - (1d0 - exp(-tau))/tau,0.99d0)
      endif
-     nx_ali_lst(ig) = min(nx_ali_lst(ig),0.99d0)
   enddo
   nx_ali_on = .true.
 end subroutine nxt_ali_cell

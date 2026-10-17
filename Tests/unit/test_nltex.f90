@@ -114,6 +114,7 @@ program test_nltex
   enddo
   call td_tests
   call ali_tests
+  call ldb_tests
   deallocate(x, xl, beta, jb, ljb, nti, ntx, nel)
 !
 !-- 2. He model atoms
@@ -245,6 +246,162 @@ contains
          xa(nxa_nst), ' and', xb(nxa_nst), ', difference', sl
     if(d1 > 1d-6 .or. na == 0 .or. nb == 0 .or. nb >= na .or. sl > 1d-4) nfail = nfail + 1
   end subroutine ali_tests
+!
+  subroutine ldb_tests
+!-- local detailed balance in thick groups (nxt_ldb, nxt_ali_cell):
+!--  a) the share Lambda* of its own emission that a slab keeps, against
+!--     1 - (1 - 2 E_3(tau))/(2 tau) with E_3 by quadrature;
+!--  b) J of a one-cell grid: Lambda* S + J_ext in the thick groups, the
+!--     DDMC lump tally shared as the source spectrum, the others kept;
+!--  c) the toy cell of ali_tests with a cell width that makes its Lyman
+!--     continuum thick: J = jext + Lambda* S (Lambda* of the slab), with a
+!--     Monte Carlo estimate that misses the cell's own emission in the
+!--     groups above nxt_ldbtau (J = jext there, as when few packets are
+!--     emitted in them) the gas is too neutral (case A); with local
+!--     detailed balance it reaches the fixed point of the full J in a few
+!--     steps
+    real*8,parameter :: sb_ = 5.670374419d-5
+    real*8 :: tt(4), e3, sv, ds, dev1, dev2, u, sg, jw, w0, dsl
+    real*8 :: vol1(1), dr1(1), ti1(1)
+    real*8,allocatable :: plk(:,:), spk1(:,:)
+    real*4,allocatable :: cap1(:,:), cape1(:,:)
+    integer*2,allocatable :: gl1(:,:)
+    integer :: nl1(1), i2, j2, ig, na, nb
+    real*8 :: xa(nxa_nst), xb(nxa_nst), xc(nxa_nst), x1(nxa_nst), kap(ng), sl(ng), dra, da, db
+!-- a) slab share
+    tt = [0.1d0, 2d0, 5d0, 30d0]
+    dev1 = 0d0
+    do i2 = 1, 4
+       e3 = 0d0
+       ds = 60d0/2d6
+       do j2 = 1, 2000000
+          sv = (j2 - 0.5d0)*ds
+          e3 = e3 + exp(-sv)/(1d0 + sv/tt(i2))**3*ds
+       enddo
+       e3 = e3*exp(-tt(i2))/tt(i2)
+       dev1 = max(dev1, abs((1d0 - nxt_lsldb(tt(i2)))/((1d0 - 2d0*e3)/(2d0*tt(i2))) - 1d0))
+    enddo
+!-- b) one-cell grid: groups 1-10 thick (tau = 100), lump = groups 1-20
+    allocate(plk(ng,1), spk1(ng,1), cap1(ng,1), cape1(ng,1), gl1(ng,1))
+    if(allocated(nxt_jg)) deallocate(nxt_jg)
+    if(allocated(nxt_jxsum)) deallocate(nxt_jxsum)
+    if(allocated(nxt_jlsum)) deallocate(nxt_jlsum)
+    if(allocated(nxt_dnug)) deallocate(nxt_dnug)
+    if(allocated(grd_emnbf)) deallocate(grd_emnbf)
+    allocate(nxt_jg(ng,1), nxt_jxsum(ng,1), nxt_jlsum(1), nxt_dnug(ng), grd_emnbf(ng,1))
+    nxt_dnug = dnug
+    vol1 = 1d45; dr1 = 1d14; ti1 = 1d-4
+    plk(:,1) = 1d0/ng
+    spk1(:,1) = [(1d0 + 0.01d0*ig, ig=1,ng)]
+    spk1 = spk1/sum(spk1)
+    cap1 = 1e-16; cap1(1:10,1) = 1e-12
+    cape1 = 0.5*cap1
+    grd_emnbf(:,1) = 0.3*cap1(:,1)*real(plk(:,1))
+    nxt_jg = 1d0
+    nxt_jxsum(:,1) = 1d20*[(dble(ig), ig=1,ng)]
+    nxt_jlsum = 7d33
+    nl1 = 20
+    gl1(:,1) = [(int(ig,2), ig=1,ng)]
+    nxt_ldbtau = 30d0
+    call nxt_ldb(1, ng, vol1, dr1, ti1, cap1, cape1, plk, spk1, nl1, gl1)
+    u = sb_/(pi_*ti1(1)**4)
+    w0 = sum(spk1(1:20,1))
+    dev2 = 0d0
+    do ig = 1, 30
+       if(ig <= 10) then
+          sg = (plk(ig,1)*cape1(ig,1) + grd_emnbf(ig,1))/cap1(ig,1)*u/dnug(ig)
+          jw = nxt_lsldb(dble(cap1(ig,1))*dr1(1))*sg + nxt_jxsum(ig,1)/(4d0*pi_*vol1(1)*dnug(ig))
+       elseif(ig <= 20) then
+          jw = 1d0 + nxt_jlsum(1)*spk1(ig,1)/w0/(4d0*pi_*vol1(1)*dnug(ig))
+       else
+          jw = 1d0
+       endif
+       dev2 = max(dev2, abs(nxt_jg(ig,1)/jw - 1d0))
+    enddo
+    nxt_ldbtau = 0d0
+    deallocate(plk, spk1, cap1, cape1, gl1)
+    deallocate(nxt_jg, nxt_jxsum, nxt_jlsum, nxt_dnug, grd_emnbf)
+!-- c) toy cell, Lyman continuum thick (cell width dra)
+    t = 1d4; nh = 1d10; w = 1d-14; t2 = 5d4; q = 1d-9; dra = 1d13
+    jb = 0d0; ljb = .true.; nti = 0d0; ntx = 0d0; nel = nh
+!-- (case A: the Monte Carlo estimate without the cell's own emission in
+!-- the thick groups)
+    nxt_ldbtau = 30d0
+    xa = 0d0; xa(1) = 0.5d0; xa(nxa_nst) = 0.5d0
+    do i2 = 1, 5000
+       x1 = xa
+       call lyc_sk(xa, sl, kap, jg)
+       do ig = 1, ng
+          if(kap(ig) > 0d0 .and. kap(ig)*dra < nxt_ldbtau) jg(ig) = jg(ig) + nxt_lsldb(kap(ig)*dra)*sl(ig)
+       enddo
+       call nx_solve_cell(t, t2, nel, 0d0, q, q, ng, nug, dnug, jg, jb, ljb, nti, ntx, xa, ne, beta, ierr)
+       if(abs(xa(nxa_nst)/x1(nxa_nst) - 1d0) < 1d-9) exit
+    enddo
+!-- (reference: plain lambda iteration of J = jext + Lambda*(tau) S)
+    xb = 0d0; xb(1) = 0.5d0; xb(nxa_nst) = 0.5d0
+    na = 0
+    do i2 = 1, 5000
+       x1 = xb
+       call lyc_sk(xb, sl, kap, jg)
+       do ig = 1, ng
+          if(kap(ig) > 0d0) jg(ig) = jg(ig) + nxt_lsldb(kap(ig)*dra)*sl(ig)
+       enddo
+       call nx_solve_cell(t, t2, nel, 0d0, q, q, ng, nug, dnug, jg, jb, ljb, nti, ntx, xb, ne, beta, ierr)
+       da = abs(xb(nxa_nst)/x1(nxa_nst) - 1d0)
+       if(da < 1d-9) then
+          na = i2
+          exit
+       endif
+    enddo
+!-- (local detailed balance: J of nxt_ldb, own cycle out with nxt_ali_cell;
+!-- the thin groups with the full J of a well-sampled estimate)
+    xc = 0d0; xc(1) = 0.5d0; xc(nxa_nst) = 0.5d0
+    nb = 0
+    do i2 = 1, 200
+       x1 = xc
+       call lyc_sk(xc, sl, kap, jg)
+       do ig = 1, ng
+          if(kap(ig) > 0d0) jg(ig) = jg(ig) + nxt_lsldb(kap(ig)*dra)*sl(ig)
+       enddo
+       call nxt_ali_cell(ng, real(kap,4), 1d0, dra, lali=.false.)
+       call nx_solve_cell(t, t2, nel, 0d0, q, q, ng, nug, dnug, jg, jb, ljb, nti, ntx, xc, ne, beta, ierr)
+       call nxt_ali_off
+       db = abs(xc(nxa_nst)/x1(nxa_nst) - 1d0)
+       if(db < 1d-9) then
+          nb = i2
+          exit
+       endif
+    enddo
+    nxt_ldbtau = 0d0
+    write(*,'(a,es9.2,a,es9.2)') '  LDB: slab share against E_3 quadrature to', dev1, &
+         '; J of the one-cell grid to', dev2
+    write(*,'(a,f9.6,a,f9.6,a,i5,a,f9.6,a,i3,a)') '  LDB toy cell: x(H II) case A', xa(nxa_nst), &
+         ', reference', xb(nxa_nst), ' (', na, ' steps), local detailed balance', xc(nxa_nst), ' (', nb, ' steps)'
+    if(dev1 > 1d-4 .or. dev2 > 1d-6 .or. na == 0 .or. nb == 0 .or. nb >= na) nfail = nfail + 1
+    if(abs(xc(nxa_nst)/xb(nxa_nst) - 1d0) > 1d-5 .or. abs(xa(nxa_nst)/xb(nxa_nst) - 1d0) < 1d-2) nfail = nfail + 1
+  end subroutine ldb_tests
+!
+  subroutine lyc_sk(xx, ss, kk, jj)
+!-- toy cell: source function and opacity of the ground state's Lyman
+!-- continuum (Milne, populations xx at t), and jext
+    real*8, intent(in) :: xx(nxa_nst)
+    real*8, intent(out) :: ss(ng), kk(ng), jj(ng)
+    real*8 :: wv(nxa_nlv), nstar, nu, phit
+    integer :: ig
+    call nxa_weights(t, wv)
+    ss = 0d0; kk = 0d0; jj = 0d0
+    do k = 1, ng
+       if(nug(k) > nh_nu0(1)) jj(k) = w*bplanck(nug(k), t2)
+    enddo
+    phit = nxa_lvphi(1)*nxa_sahac*t**(-1.5d0)
+    nstar = nh*xx(nxa_nst)*nh*xx(nxa_nst)*phit
+    do ig = 1, nxa_g1(1)
+       nu = max(nug(ig), nxa_lvnu0(1))
+       kk(ig) = nh*xx(nxa_lvs(1))*wv(1)*nxa_sgm(nxa_sgo(1)+ig)
+       if(kk(ig) > 0d0) ss(ig) = 2d0*hh*nu**3/cc**2*nstar*exp(-hh*(nu-nxa_lvnu0(1))/(kb*t))* &
+            nxa_sgm(nxa_sgo(1)+ig)/kk(ig)
+    enddo
+  end subroutine lyc_sk
 !
   subroutine lyc_j(xx, jj)
 !-- J = jext + Lambda* S of the ground state's Lyman continuum (Lambda* =

@@ -496,6 +496,8 @@ pure subroutine diffusion11(ptcl,ptcl2,vx,vy,vz,cache,rndstate,&
 !-- effective scattering sample
   else
      ptcl2%idist = -2
+!-- (re-emitted with the cell's source spectrum: local emission, nxt_ldb)
+     ptcl%icem = ic
 
      if(glump==grp_ng) then
 !       stop 'diffusion11: effective scattering with glump==ng'
