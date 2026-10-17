@@ -113,7 +113,7 @@ macro-atom are `nltextrmod.f90`; `GAS/nlteh_gas_update.f90` is
 | `in_nltex_ldb` | Local detailed balance in the groups whose volume-mean absorption depth across a cell is at least this (e.g. 30; 0: off). The Monte Carlo J of such a group is the cell's own emission, sampled by the few packets emitted in it. Where the group carries a small share of the cell's emission (the Lyman continuum of a cool wind) the estimate is mostly zero, and the on-the-spot cycle (recombination to the ground state, re-absorbed in place) becomes net recombination: case A in place of case B. There the rates use J = Λ* S + J_ext. S = (κ_th B + η)/κ is the source function of the populations with which the packets ran. Λ* = 1 − (1 − 2E₃(τ))/(2τ) is the share of its own emission that a slab of depth τ keeps. J_ext is the radiation from elsewhere: the packets on IMC steps outside the cell of their last thermal or bound-free emission (DDMC packets in a lump are local). The same Λ* takes the cell's own cycle out of the rates, as in the ALI, so the iteration has the fixed point of the exact J and needs no Monte Carlo samples of the local emission. With DDMC (`in_puretran = f`, `in_trn_tauddmc` ≤ `in_nltex_ldb`) these groups are DDMC groups, whose radiation is the diffusion limit: there Λ* = 1 and J = S (to second order in 1/τ), as no external radiation is tallied in them. DDMC packets in a cell's lump of thick groups are shared among them as the source spectrum (S Δν), not given to the group the packet carries. `output.nltex_ldb` lists per cell the parts Λ*S and J_ext and the Monte Carlo estimate at 228–504 and 504–912 Å. | `nltextrmod.f90` (`nxt_ldb`, `nxt_lsldb`, `nxt_ali_cell`), `particle_advance.f90` |
 | `in_nltex_vturb`, `in_nltex_vturbmax` (km/s; the scattering with `in_thm_thermal`), `in_nltex_esrates`, `in_nltex_esdamp` | Electron scattering of line photons trapped in their Sobolev resonance zones. A photon of a thick line is absorbed and re-emitted about 1/β times before it escapes, while its comoving frequency drifts across the line core, |x| < x_c ≈ √ln(τ/√π) Doppler widths. That is a path of several Sobolev lengths v_D/\|Q\|, on which an electron can scatter it out of the line with a Doppler shift of hundreds of km/s: to the red it escapes, to the blue the flow brings it back to the line. Point resonances (the Sobolev approximation) have no such path. In a IIn wind σ_es v_D/\|Q\| ≈ 0.1–0.4 where Hα forms, so the trapped scattering is as likely as a scattering on the whole free path, and it builds the red shoulder of the Balmer lines (CMFGEN's comoving-frame transfer of the observer spectrum includes it). Per emission its probability is β_es = σ_es v_D ⟨y(τ_μ)⟩_μ/K × exp(−K Γλ/(4π²⟨\|Q\|⟩v_e)), with y = τG(τ) for complete redistribution over a Doppler profile (`nx_ytrap`; tabulated, and checked by a Monte Carlo of a resonance in `Tests/unit/test_estrap.f90`). The exponential is the escape of the scattered photon, shifted by v_e = √(2kT/m_e), through the Lorentz wings of the line (radiative damping Γ; off with `in_nltex_esdamp = f`, Doppler profiles as CMFGEN's iterations): Lyα and the low Lyman lines of a dense wind keep their photons. v_D² = 2kT/m + v_turb², with v_turb linear in v from `in_nltex_vturb` (v = 0) to `in_nltex_vturbmax` (outer edge), as CMFGEN's VTURB_MIN/MAX. By default the formal integral adds the emissivity n_u A β_es hν/4π of every line, redistributed with the angle-averaged thermal-electron kernel, to the resonances, with the populations of the iterations, which do not include it: as CMFGEN's observer spectrum adds the incoherent scattering to iterations with coherent scattering. CMFGEN's iterations with incoherent scattering change n₃ by < 10 % and Hα by 4 % in the H/He benchmark, so the populations need not see it. With `in_nltex_esrates` (experimental) the statistical equilibrium, the macro-atom and the transport have it as well: escape probability β + β_es with the incident intensity (β J_b + β_es J_es)/(β + β_es), J_es the group J averaged over the electron kernel about the line (photons scattered into the line core), and a line photon scattered by a thermal electron from the line centre (comptonmod kernel, new direction) with probability β_es/(β + β_es). In the H/He benchmark this does not converge and over-ionizes the wind: 2–8 times more than CMFGEN with incoherent scattering in its iterations after four iterations, 10–150 times after six with CMFGEN's Doppler profiles (`in_nltex_esdamp = f`); Hα 198 Å against 102 Å. Sharing a line's photons between the line and its wings in the transport alone (rates with β) keeps the populations but takes Pβ from 56 to 34 Å. The red shoulder depends on the microturbulence (CMFGEN H/He wind, EW of +300–2700 km/s on the air scale: 21, 25 and 38 Å for 1, 10–20 and 50 km/s; §4.4). The microturbulence also sets the Doppler widths of the lines in the formal integral (`in_fi_doppler`), and with `in_fi_nes` the trapped photons come from the iterated J of the formal integral instead of β_es. | `nltexmod.f90` (`nx_ytrap`, `nx_es_table`, `nx_bes`, `nx_wq`, `nx_jes`), `nltextrmod.f90`, `TRANSPORT1/nxemitmod.f90` (`nx_linees`), `formalmod.f90` |
 | `in_nltex_init` | Warm start: the `output.nltex_state` of a run on the same structure and model atoms (populations, and T_e with `in_tesolve`, matched by exterior mass as `in_nltex_prev`), and its Monte Carlo radiation field, `output.nltex_jmc` next to it (the J of the groups, averaged over this run's groups, and the incident J of the lines; written with the state). The first iteration keeps the populations instead of solving with J = B(T_R) and makes its macro-atom tables with the saved J, so it is an iteration of the saved state: a rerun with other output settings (formal integral, its line profiles) needs one iteration. Without the J file (runs before it existed) the first iteration's tables have J = B(T_R) and no line incident intensity: the line re-emission of its transport differs and its Monte Carlo J is not that of the state (the Hα electron-scattering wings of a formal integral with it were a third to a half of the converged ones); do not average it into the formal integral. | `nltextrmod.f90` (`nxt_read_init`, `nxt_read_jmc`, `nxt_write_jmc`, `nxt_gas_solve`), `superlite.f90` |
-| `in_fi`, `in_fi_wl1`, `in_fi_wl2`, `in_fi_dv`, `in_fi_npc`, `in_fi_navg`, `in_fi_doppler`, `in_fi_nes`, `in_fi_only` | Formal integral of the emergent spectrum after the last iteration, as CMFGEN's `cmf_flux`: noise-free line profiles at the spacing `in_fi_dv` [km/s] between `in_fi_wl1` and `in_fi_wl2` [cm] (`output.fi_spectrum`: λ [Å], L_λ, L_ν). The observer-frame invariant I/ν³ is integrated along rays of impact parameter p through the spherical grid, with the comoving source functions of the last iteration (first order in v/c). Continuum: absorption and thermal emission of the LTE opacities, the recombination emissivity of the NLTE levels, electron scattering of the Monte Carlo J redistributed by the thermal electrons with the angle-averaged kernel of Thomson scattering (isotropic, or dipole with `in_trn_thm_aniso`), the scattering part of the LTE expansion opacity. The Monte Carlo noise of J is that of the scattering emissivity, so of the continuum where electron scattering dominates (≈ 3 % per 100 km/s group with 2¹⁸ packets): `in_fi_navg` averages J over the last iterations of a converged model. NLTE lines: the source function of the level populations (complete redistribution) with Doppler profiles, the thermal width of the ion and the microturbulence of `in_nltex_vturb` (`in_fi_doppler`, default): opacity K/(√π v_D) e^(−x²) per unit length, which gives the Sobolev depth K/\|Q(μ)\| where the flow crosses the profile quickly and, in a slow flow, the depth along the path through the profile (the narrow P-Cygni absorption of a coasting wind, §4.4); a line whose profile a ray crosses within a tenth of the cell width is a point resonance there (fast flows: supernova ejecta, at the cost of the Sobolev integral); with `in_fi_doppler = f` Sobolev resonances wherever the comoving frequency crosses a line. With `in_nltex_vturb` also the electron scattering of the photons trapped in the lines (above), added where they are scattered first. `in_fi_nes` > 0 (with the Doppler profiles) iterates the electron scattering instead, as CMFGEN's `cmf_flux`: the comoving J of each cell on the grid of the spectrum (extended by the kernel and the flow) starts from the Monte Carlo J; each pass integrates the rays of all frequencies with the scattering emissivity of the previous J and tallies the new J along them (parallel rays sample every direction of a spherical shell: J = V⁻¹ Σ_p 2πp dp ∫ I dz; core rays also behind the inner boundary). Inside a line J approaches its source function, so the trapped photons and their further scatterings through the flow (with its Doppler shifts) are in J, and the scattering emissivity has no Monte Carlo noise; the trapped-photon terms above are then left out. Each pass costs a formal integral; Ng's extrapolation every third pass; 12 passes converge the H/He IIn wind (τ_es ≈ 5) to 0.1 % of L per pass. `in_fi_only` computes only the formal integral of the saved state and Monte Carlo J of `in_nltex_init` (no transport; one iteration): a rerun with other spectrum settings, as CMFGEN's `cmf_flux` after a model. Rays through the inner boundary (`in_fi_npc`, uniform in p²) start with the Monte Carlo J of the innermost cell; two per cell outside. L_ν = 8π² ∫ I p dp; the frequencies are shared among the MPI ranks. Line wavelengths are in air above 2000 Å (row 9 of §1), so a CMFGEN observer spectrum (c/ν: vacuum) must be converted to air before profiles are compared (83 km/s at Hα). | `formalmod.f90` |
+| `in_fi`, `in_fi_wl1`, `in_fi_wl2`, `in_fi_dv`, `in_fi_npc`, `in_fi_navg`, `in_fi_doppler`, `in_fi_nes`, `in_fi_only` | Formal integral of the emergent spectrum after the last iteration, as CMFGEN's `cmf_flux`: noise-free line profiles at the spacing `in_fi_dv` [km/s] between `in_fi_wl1` and `in_fi_wl2` [cm] (`output.fi_spectrum`: λ [Å], L_λ, L_ν). The observer-frame invariant I/ν³ is integrated along rays of impact parameter p through the spherical grid, with the comoving source functions of the last iteration (first order in v/c). Continuum: absorption and thermal emission of the LTE opacities, the recombination emissivity of the NLTE levels, electron scattering of the Monte Carlo J redistributed by the thermal electrons with the angle-averaged kernel of Thomson scattering (isotropic, or dipole with `in_trn_thm_aniso`), the scattering part of the LTE expansion opacity. The Monte Carlo noise of J is that of the scattering emissivity, so of the continuum where electron scattering dominates (≈ 3 % per 100 km/s group with 2¹⁸ packets): `in_fi_navg` averages J over the last iterations of a converged model. NLTE lines: the source function of the level populations (complete redistribution) with Doppler profiles, the thermal width of the ion and the microturbulence of `in_nltex_vturb` (`in_fi_doppler`, default): opacity K/(√π v_D) e^(−x²) per unit length, which gives the Sobolev depth K/\|Q(μ)\| where the flow crosses the profile quickly and, in a slow flow, the depth along the path through the profile (the narrow P-Cygni absorption of a coasting wind, §4.4); a line whose profile a ray crosses within a tenth of the cell width is a point resonance there (fast flows: supernova ejecta, at the cost of the Sobolev integral); with `in_fi_doppler = f` Sobolev resonances wherever the comoving frequency crosses a line. With `in_nltex_vturb` also the electron scattering of the photons trapped in the lines (above), added where they are scattered first. `in_fi_nes` > 0 (with the Doppler profiles) iterates the electron scattering instead, as CMFGEN's `cmf_flux`: the comoving J of each cell on the grid of the spectrum (extended by the kernel and the flow) starts from the Monte Carlo J; each pass integrates the rays of all frequencies with the scattering emissivity of the previous J and tallies the new J along them (parallel rays sample every direction of a spherical shell: J = V⁻¹ Σ_p 2πp dp ∫ I dz, core rays also behind the inner boundary, with V the volume the rays sample, Σ_p 2πp dp times their chords in the cell, so that a uniform I gives J = I: the shell volume differs from it by 0.2–7 %, by 70 % in a thin innermost cell, an excess the scattering amplifies pass by pass). Inside a line J approaches its source function, so the trapped photons and their further scatterings through the flow (with its Doppler shifts) are in J, and the scattering emissivity has no Monte Carlo noise; the trapped-photon terms above are then left out. Each pass costs a formal integral; Ng's extrapolation every third pass; 12 passes converge the H/He IIn wind (τ_es ≈ 5) to 0.07 % of L and 0.05 % of the J of any cell per pass. `output.fi_jes`: per cell the frequency-integrated J of the last pass over the Monte Carlo J. `in_fi_only` computes only the formal integral of the saved state and Monte Carlo J of `in_nltex_init` (no transport; one iteration): a rerun with other spectrum settings, as CMFGEN's `cmf_flux` after a model. Rays through the inner boundary (`in_fi_npc`, uniform in p²) start with the Monte Carlo J of the innermost cell; two per cell outside. L_ν = 8π² ∫ I p dp; the frequencies are shared among the MPI ranks. Line wavelengths are in air above 2000 Å (row 9 of §1), so a CMFGEN observer spectrum (c/ν: vacuum) must be converted to air before profiles are compared (83 km/s at Hα). | `formalmod.f90` |
 | `in_nltex_prev`, `in_nltex_dtprev` (with `lumg`) | Time-dependent statistical equilibrium of the NLTE elements over a sequence of models (Dessart & Hillier 2008, CMFGEN's time-dependent terms). Each model writes the populations of all states per cell (`output.nltex_state`). A later model reads them, matched by exterior mass, which is Lagrangian when both models end at the same mass shell, and solves dx/dt = M x per element as a backward-Euler step over dt: (M − 1/dt) x = −x_prev/dt, with particle conservation exact. Recombination therefore lags behind a falling radiation field, and ionization behind a rising one. The change of ionization and excitation energy, Σ n_el ε_s (x_prev − x)/dt, is part of the cell's injected energy, since the hydro L(r) contains what the gas releases. The macro-atom emits it, activated in the states that empty, so the stored ionization comes out as recombination lines and continua (the Hα of SNe II on the plateau). It is added where it exceeds the injected energy, and taken from that energy where the gas ionizes; the thermal pool heats only on the rest. | `nltexmod.f90`, `nltextrmod.f90`, `SOURCE/sourceenergy.f90`, `SOURCE/interior_source.f90`, `GAS/te_update.f90` |
 
 Validation (`Tests/unit/run_tests.sh` with `SL_ATOMS` = the converted atoms):
@@ -368,8 +368,7 @@ restored at the warm start), CMFGEN: `cmf_flux` of its converged model.
 | Doppler profiles (10–20 km/s), no trapped-photon scattering | 9.0 | 62.5 | 15.2 | 87.0 |
 | Doppler profiles, trapped-photon scattering, 1 km/s | 11.7 | 65.6 | 18.1 | 95.6 |
 | Doppler profiles, trapped-photon scattering, 10–20 km/s | 14.0 | 67.4 | 20.8 | 102.3 |
-| Doppler profiles (10–20 km/s), 6 passes of the electron-scattering J (`in_fi_nes`) | 12.4 | 63.8 | 21.6 | 98.0 |
-| Doppler profiles (10–20 km/s), 12 passes with Ng's acceleration (converged to 0.1 % per pass) | 14.6 | 62.8 | 23.8 | 102.0 |
+| Doppler profiles (10–20 km/s), 12 passes of the electron-scattering J (`in_fi_nes`) with Ng's acceleration (converged to 0.07 % per pass) | 15.0 | 64.4 | 24.3 | 104.5 |
 
 EW (Å; the windows and 200 km/s smoothing of the earlier tables) of the other
 lines, CMFGEN against SuperLite's formal integral with the Monte Carlo J and
@@ -378,8 +377,9 @@ with 12 passes of the electron-scattering J:
 | | Hα | Hβ | He I 5876 | He I 6678 | He II 4686 | Pβ | He I 10830 |
 |---|---|---|---|---|---|---|---|
 | CMFGEN (VTURB 10–20 km/s) | 96.3 | 21.2 | 0.3 | −1.5 | 0.0 | 49.4 | −3.2 |
+| CMFGEN `ies` (VTURB 10–20 km/s) | 100.9 | 21.1 | −0.0 | −1.6 | −0.0 | 55.2 | −3.7 |
 | SuperLite, Monte Carlo J | 94.7 | 20.7 | −1.6 | −1.6 | 1.5 | 41.7 | −7.7 |
-| SuperLite, 12 passes | 101.7 | 20.8 | 0.3 | −1.6 | −0.0 | 42.3 | −2.6 |
+| SuperLite, 12 passes | 104.1 | 21.9 | 0.4 | −1.6 | −0.0 | 43.2 | −2.6 |
 
 * Doppler profiles: beyond 2×10¹⁵ cm the wind coasts (226–245 km/s;
   dv/dr ≈ v/r / 20), so along most directions a photon stays within the
@@ -403,24 +403,31 @@ with 12 passes of the electron-scattering J:
   Iterating the electron-scattering J in the formal integral
   (`in_fi_nes`), which contains the trapped photons and their further
   scatterings, halves the core excess. Converged (12 passes, Ng's
-  extrapolation every third pass: a pass changes L by 0.1 %) the
-  electron-scattering wings agree with CMFGEN's to 0.2 Å in every bin
-  of −2700…−300 and +300…+2700 km/s, and the weak features of the
-  Monte Carlo J (He I 5876, He II 4686, He I 10830: its noise in the
-  scattering emissivity, ±2–5 % of the continuum) are gone. The passes
-  raise L of 3500–13 500 Å by 6 % over the Monte Carlo spectrum (1.32
-  → 1.41×10⁴² erg/s): with the populations fixed they converge to the
-  transfer solution of these emissivities, which is not exactly the
-  Monte Carlo energy balance (CMFGEN's `cmf_flux` likewise keeps the
-  populations of its model).
+  extrapolation every third pass: the last pass changes L by 0.07 %)
+  the electron-scattering wings agree with CMFGEN's `ies` to 0.35 Å in
+  every bin of −2700…−300 and +300…+2700 km/s (Hβ 0.25 Å), and the weak
+  features of the Monte Carlo J (He I 5876, He II 4686, He I 10830: its
+  noise in the scattering emissivity, ±2–5 % of the continuum) are gone.
+  The first pass (the scattering emissivity of the Monte Carlo J, no
+  trapped-photon terms) gives the Monte Carlo L of 3500–13 500 Å (1.318
+  against 1.317×10⁴² erg/s); the converged passes give 1.373×10⁴²
+  (+4 %; the continuum is 3.7–4.8 % above CMFGEN's `ies` at 5000–13 300 Å
+  and 9 % at 3700 Å): with the populations fixed, the photons that
+  electrons scatter out of the line cores are not taken from the lines
+  (the trapped-photon terms add 1.8 % to the formal integral with the
+  Monte Carlo J), as in CMFGEN's `cmf_flux` of a model with coherent
+  scattering. (Normalizing J by the shell volume instead of the volume
+  the rays sample had raised L by 7 %, with the J of a cell still
+  changing by 0.5 % per pass.)
 * The Monte Carlo J of Hα varies between iterations (the line carries
   ≈ 0.5 % of the packets): with the J of two consecutive iterations the
   red wing of the formal integral is 20.8 and 25.7 Å. Average J over
   iterations (`in_fi_navg`) or iterate it (`in_fi_nes`).
 * Against CMFGEN's most complete model of this wind (comoving-frame
   lines and incoherent electron scattering in its iterations, `ies`)
-  the converged formal integral agrees within 1 Å in each part of Hα
-  (total 102.0 against 101.6 Å) and within 0.5 Å in every wing bin.
+  the converged formal integral agrees within 2.2 Å in each part of Hα
+  (blue, core, red 15.0, 64.4, 24.3 against 14.1, 62.2, 24.8 Å) and
+  within 0.35 Å in every wing bin.
   The outer-wind populations that differ from CMFGEN's Sobolev model
   (b₃ 1.3–1.9 times, b₁ 2–3 times lower beyond 4×10¹⁵ cm) are those of
   `ies` (b₁ 725 against SuperLite's 685–727 at 7.4×10¹⁵ cm, b₃ 12.8
@@ -429,6 +436,16 @@ with 12 passes of the electron-scattering J:
   (a rate breakdown of the cell at 8.2×10¹⁵ cm), and the incident J of
   the Balmer lines includes the line photons scattered by electrons,
   which `ies` has and CMFGEN's Sobolev option (continuum J only) lacks.
+  Just above the photosphere (1.05–1.10×10¹⁵ cm, v ≈ 2–30 km/s) `ies`
+  empties the ground state of H (b₁ 0.01 against b₂ 0.37 at 1.08×10¹⁵ cm),
+  where CMFGEN's Sobolev model and SuperLite have b₁ ≈ b₂ (0.22/0.34 and
+  0.36/0.34): the Lyα photons that electrons scatter out of the line bring
+  the energy of the hotter layers below (a net Lyα excitation of only
+  5×10⁻⁷ of the gross rate balances the collisional de-excitation of n = 2
+  there; CMFGEN's `HIPRRR`/`GENCOOL`). SuperLite's iterations do not
+  include that scattering (`in_nltex_esrates`), so the layer is more
+  neutral (x_HI up to 0.18 against 0.003, n_e 15 % lower), with n₂ and n₃
+  within 25 % of `ies`.
 * Remaining: Pβ 14 % weaker: b₅ is 10–30 % below CMFGEN's where it
   forms (1.1–2.2×10¹⁵ cm; b₅ < b₆ there, unlike CMFGEN's monotonic
   b_n), so its source function is 15–35 % lower; the incident J of the
@@ -449,6 +466,39 @@ with 12 passes of the electron-scattering J:
   outer-wind b₃ is also 1.3–1.9 times lower than SuperLite's, see above;
   b₂, n_e, T_e and the Hα escape probability agree, and Lyβ pumping is
   10⁻³ of the Hα escape there).
+
+### 4.5 StaNdaRT toy01: SN Ia-like ejecta at 19.5 d
+
+The metal NLTE in a supernova rather than a wind: the StaNdaRT toy01
+model (Blondin et al. 2022; `Tools/standart2superlite.py`, 100 zones,
+the energy deposition of CMFGEN's model as the `lumg` source scaled to
+its L_bol = 2.40×10⁴² erg/s), NLTE Si II–IV, S II–IV, Ca II–IV, Fe I–V,
+Co II–V and Ni II–V, T_e from the thermal balance (`in_tesolve`), DDMC
+for the thick continua with local detailed balance, 12 iterations.
+
+| v [km/s] | 2000 | 4000 | 6000 | 8000 | 10 000 | 15 000 | 20 000 | 25 000 |
+|---|---|---|---|---|---|---|---|---|
+| T_e SuperLite [K] | 18 962 | 11 145 | 7477 | 6111 | 5169 | 4194 | 4303 | 4895 |
+| T_e CMFGEN [K] | 18 683 | 10 734 | 7466 | 6223 | 5423 | 4335 | 5156 | 6027 |
+| Fe II SuperLite | 1.5e-10 | 4.4e-4 | 1.1e-4 | 0.010 | 0.33 | 1.00 | 0.094 | 7.6e-5 |
+| Fe II CMFGEN | 6.7e-11 | 1.6e-4 | 0.16 | 0.83 | 0.97 | 0.99 | 0.97 | 0.97 |
+
+n_e agrees within 6 %. Band luminosities of the last iteration against
+CMFGEN's (Sedona and SuperNu, LTE, in brackets): 2500–3500 Å 0.73 (0.88,
+0.44), 3500–4500 Å 0.79 (0.99, 0.67), 4500–5500 Å 0.83 (1.05, 1.09),
+5500–6500 Å 0.84 (1.48, 1.38), 6500–8000 Å 0.96 (1.18, 1.30), 8000–10 000 Å
+1.03 (1.89, 1.75).
+* Fe, Co and Ni stay doubly ionized out to 8000–10 000 km/s, where CMFGEN
+  has them singly ionized from 6000 km/s on, and beyond 20 000 km/s, where
+  SuperLite's T_e is 15–20 % below CMFGEN's, they are doubly ionized again.
+  Not yet traced (the same direction as the Fe II deficit of the inner IIn
+  wind, ×2–3, §4.4, where H I and O I are low by the same factor: there
+  CMFGEN's ground state of H is 1.5–4 times SuperLite's near the
+  photosphere while n₂ and n₃ agree within 10 %).
+* CMFGEN's higher stages (Ca IV, Co IV, Ni IV) have floors of 10⁻⁶–10⁻³
+  in the outer ejecta from the non-thermal ionization by the γ-ray
+  deposition, which SuperLite does not have for the metals (§3, items 2b
+  and 4).
 
 ## 5. Running
 

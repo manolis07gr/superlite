@@ -70,7 +70,7 @@ subroutine fi_spectrum(ncell,xarr,vxarr,tempinv,wl1,wl2,dvkms,npc,impi,nmpi,lmpi
   integer :: nnu,i,j,ic,ig,ng,np,k,jg,nt,nesp,nj,mx,ipass,jj
   real*8 :: dln,t,x,bnu,se,sig2,wsum,lnu0,dl,lt0,dlt,lext,lj0,wdep,dmax,lprev,nga
   real*8,allocatable :: wl(:),lnu(:),chi(:,:),eta(:,:),p(:),wp(:),lng(:),etes(:,:),jgx(:,:)
-  real*8,allocatable :: vdc(:,:),vdmax(:),jfi(:,:),jnw(:,:),etj(:,:),vol(:),jold(:,:)
+  real*8,allocatable :: vdc(:,:),vdmax(:),jfi(:,:),jnw(:,:),etj(:,:),vol(:),jold(:,:),jmc0(:,:)
   real*4,allocatable :: etr(:,:)
   logical :: ldop,lj,ldep
 !
@@ -210,10 +210,20 @@ subroutine fi_spectrum(ncell,xarr,vxarr,tempinv,wl1,wl2,dvkms,npc,impi,nmpi,lmpi
      nj = nnu + 2*mx
      lj0 = log(cc/wl(nnu)) - mx*dln
      allocate(jfi(nj,ncell),jnw(nj,ncell),etj(nj,ncell),vol(ncell),jold(nj,ncell))
+!-- the volume of a cell as the rays sample it (sum_p 2 pi p dp of their
+!-- chords on both sides), so that a uniform I gives J = I: the shell volume
+!-- differs by 0.2-7 % (70 % in a thin innermost cell), an excess that a
+!-- scattering wind amplifies pass by pass
      do ic=1,ncell
-        vol(ic) = 4d0*pi/3d0*(xarr(ic+1)**3 - xarr(ic)**3)
+        vol(ic) = 0d0
+        do j=1,np
+           vol(ic) = vol(ic) + 4d0*pi*wp(j)*(sqrt(max(xarr(ic+1)**2-p(j)**2,0d0)) - &
+                sqrt(max(xarr(ic)**2-p(j)**2,0d0)))
+        enddo
      enddo
      call jinit
+     allocate(jmc0(nj,ncell))
+     jmc0 = jfi
      lprev = 0d0
      do ipass=1,nesp
         call jemis
@@ -251,7 +261,19 @@ subroutine fi_spectrum(ncell,xarr,vxarr,tempinv,wl1,wl2,dvkms,npc,impi,nmpi,lmpi
         lprev = x
         if(ipass < nesp) lnu = 0d0
      enddo
-     deallocate(jfi,jnw,etj,vol,jold)
+!-- J of the last pass against the Monte Carlo J per cell, Int J dnu over
+!-- the comoving frequencies of the spectrum and its thirds
+     if(lmpi0) then
+        open(4,file='output.fi_jes',status='replace')
+        write(4,'(a)') '# formal integral (in_fi_nes): Int J dnu of the last pass / Monte Carlo, per cell'
+        write(4,'(a)') '# cell  r_centre[cm]  all  blue third  middle third  red third'
+        do ic=1,ncell
+           write(4,'(i5,es13.5,4f9.4)') ic,0.5d0*(xarr(ic)+xarr(ic+1)),jratio(ic,mx+1,mx+nnu), &
+                jratio(ic,mx+2*nnu/3+1,mx+nnu),jratio(ic,mx+nnu/3+1,mx+2*nnu/3),jratio(ic,mx+1,mx+nnu/3)
+        enddo
+        close(4)
+     endif
+     deallocate(jfi,jnw,etj,vol,jold,jmc0)
   endif
   if(.not.lj) call allreduce_sum(nnu,lnu)
 !-- L_lambda [erg/s/A]
@@ -270,6 +292,22 @@ subroutine fi_spectrum(ncell,xarr,vxarr,tempinv,wl1,wl2,dvkms,npc,impi,nmpi,lmpi
   if(allocated(etr)) deallocate(etr)
 !
 contains
+!
+  real*8 function jratio(c,ja,jb)
+!-- Int J dnu of the passes over Int of the Monte Carlo J, J grid points ja..jb
+    integer,intent(in) :: c,ja,jb
+    real*8 :: s1,s2,w
+    integer :: jl
+    s1 = 0d0
+    s2 = 0d0
+    do jl=ja,jb
+       w = exp(lj0 + (jl-1)*dln)
+       s1 = s1 + w*jfi(jl,c)
+       s2 = s2 + w*jmc0(jl,c)
+    enddo
+    jratio = 0d0
+    if(s2 > 0d0) jratio = s1/s2
+  end function jratio
 !
   subroutine trapped_es(et)
 !-- emissivity of the line photons scattered by electrons in the resonance
