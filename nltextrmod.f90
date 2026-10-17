@@ -212,6 +212,35 @@ module nltextrmod
 !-- scattering)
   logical,public :: nxt_esrates = .false.
   logical,public :: nxt_esdamp = .true.   !Lorentz-wing escape factor (nx_wq)
+!-- Doppler-profile lines in the Monte Carlo transport of slow cells
+!-- (in_nltex_dopmc > 0): where the velocity changes across a cell by less
+!-- than nxt_dopmc Doppler widths, a Sobolev resonance would lie further
+!-- away than the cell; there a packet sees the active lines within
+!-- nxt_dopx Doppler widths of its comoving frequency as static profiles,
+!-- K/(sqrt(pi) v_D) exp(-x^2) per unit length (the overlapping line
+!-- forest of a slow inner wind), except the line it was emitted in, whose
+!-- trapping stays with the Sobolev escape of the macro-atom; their
+!-- incident intensity is the path-length estimator over a window of
+!-- nxt_dopw Doppler widths outside the profile, on the side the comoving
+!-- frequency drifts in from (nxt_static_tally).  Only the lines of the
+!-- elements from Z = nxt_dopz (nxt_lstat): the H and He lines keep their
+!-- Sobolev resonances there.  (In a dense wind an electron scatters a
+!-- photon about as often as it drifts across a Doppler width, and a static
+!-- profile absorbs every photon scattered into the core of a thick line,
+!-- while the macro-atom's Sobolev escape treats each absorption as a
+!-- whole trapping episode without escape by electron scattering: the
+!-- H/He benchmark lost a fifth of Halpha and two thirds of Hbeta.)
+  real*8,public :: nxt_dopmc = 0d0
+  real*8,parameter,public :: nxt_dopx = 4d0, nxt_dopw = 2d0
+  integer,public :: nxt_dopz = 3
+  logical,allocatable,public :: nxt_lstat(:)  !(nlin) static profile in slow cells
+  logical,public :: nxt_anystat = .false.     !an active line with a static profile
+!-- nearest active line at or below (nxt_sjlo) and at or above (nxt_sjhi)
+!-- an active index that keeps its Sobolev resonance in slow cells (0: none)
+  integer,allocatable :: nxt_sjlo(:),nxt_sjhi(:) !(0:nlin+1)
+  logical,allocatable,public :: nxt_slow(:)   !(ncell)
+  real*8,allocatable,public :: nxt_vdl(:,:)   !(nel,ncell) Doppler widths [cm/s]
+  real*8,allocatable,public :: nxt_vdlmax(:),nxt_vdlmin(:) !(ncell)
 !-- emission kinds returned by the macro-atom (em_lines: a line photon
 !-- scattered by an electron in the resonance zone, nxemitmod)
   integer,parameter,public :: em_line = 1, em_bf = 2, em_thermal = 3, em_2ph = 4, em_lines = 5
@@ -222,6 +251,7 @@ module nltextrmod
   public :: nxt_shares,nxt_dealloc,nxt_emcode,nxt_emloc
   public :: nxt_write_state,nxt_read_prev,nxt_read_init,nxt_release,nxt_activate_rel
   public :: nxt_ali_cell,nxt_ali_off,nxt_ldb,nxt_lsldb,nxt_vtb,nxt_vturbv
+  public :: nxt_static_line,nxt_static_tally,nxt_sobolev_neighbors,nxt_act_lookup
 !
 contains
 !
@@ -301,7 +331,7 @@ subroutine nxt_init(ncell,gncell,ng,wlg,nfile,files,hnlev)
      nxt_wlact(j) = nxa_lwl(nxa_lsrt(j))
      nxt_isrt(nxa_lsrt(j)) = j
   enddo
-  call act_lookup
+  call nxt_act_lookup
 !
 !-- exit tables
   allocate(nxt_ecoff(nxa_nel))
@@ -482,6 +512,7 @@ subroutine nxt_dealloc
   if(allocated(nxt_fcl)) deallocate(nxt_fcl)
   if(allocated(nxt_bfl)) deallocate(nxt_bfl,nxt_bfn,nxt_bfm,nxt_bfr,nxt_bfs,nxt_smaxb)
   if(allocated(nxt_wcnt)) deallocate(nxt_wcnt)
+  if(allocated(nxt_lstat)) deallocate(nxt_lstat,nxt_sjlo,nxt_sjhi)
   if(allocated(nxt_erel)) deallocate(nxt_erel,nxt_prel,nxt_rcum)
   if(allocated(nxt_xinit)) deallocate(nxt_xinit,nxt_tinit,nxt_neinit)
   nxt_warm = .false.
@@ -919,6 +950,18 @@ subroutine nxt_tables(ncell,tempinv,radtemp,capemitgrey,xarr,vxarr)
      ne = nxt_ne(ic)
      qb = (vxarr(ic+1) - vxarr(ic))/(xarr(ic+1) - xarr(ic))
      qv = (vxarr(ic+1) + vxarr(ic))/(xarr(ic+1) + xarr(ic))
+     if(nxt_dopmc > 0d0) then
+        if(.not.allocated(nxt_slow)) allocate(nxt_slow(ncell),nxt_vdl(nxa_nel,ncell), &
+             nxt_vdlmax(ncell),nxt_vdlmin(ncell))
+        vt = nxt_vturbv(0.5d0*(vxarr(ic)+vxarr(ic+1)))
+        do iel=1,nxa_nel
+           nxt_vdl(iel,ic) = nx_vdop(iel,t,vt)
+        enddo
+        nxt_vdlmax(ic) = maxval(nxt_vdl(:,ic))
+        nxt_vdlmin(ic) = minval(nxt_vdl(:,ic))
+        nxt_slow(ic) = max(abs(vxarr(ic+1)-vxarr(ic)),abs(qv)*(xarr(ic+1)-xarr(ic))) < &
+             nxt_dopmc*nxt_vdlmin(ic)
+     endif
      if(nxt_have_mc) then
         jg = nxt_jg(:,ic)
         jb = nxt_jb(:,ic)
@@ -1151,14 +1194,28 @@ subroutine nxt_tables(ncell,tempinv,radtemp,capemitgrey,xarr,vxarr)
         nxt_isrt(k) = nxt_nact
      endif
   enddo
-  call act_lookup
+  call nxt_act_lookup
 end subroutine nxt_tables
 !
 !
-subroutine act_lookup
-!-- lookup of the active-line list by ln(wavelength) (nxt_neighbors)
+subroutine nxt_act_lookup
+!-- lookup of the active-line list by ln(wavelength) (nxt_neighbors), and
+!-- the lines with static profiles in slow cells (nxt_dopz)
   integer :: k,j
   real*8 :: e
+  if(.not.allocated(nxt_lstat)) allocate(nxt_lstat(nxa_nlin),nxt_sjlo(0:nxa_nlin+1),nxt_sjhi(0:nxa_nlin+1))
+  do k=1,nxa_nlin
+     nxt_lstat(k) = nxa_el(nxa_lel(k))%z >= nxt_dopz
+  enddo
+  nxt_sjlo(0) = 0
+  do j=1,nxt_nact
+     nxt_sjlo(j) = merge(nxt_sjlo(j-1),j,nxt_lstat(nxt_act(j)))
+  enddo
+  nxt_sjhi(nxt_nact+1) = 0
+  do j=nxt_nact,1,-1
+     nxt_sjhi(j) = merge(nxt_sjhi(j+1),j,nxt_lstat(nxt_act(j)))
+  enddo
+  nxt_anystat = any(nxt_lstat(nxt_act(1:nxt_nact)))
   if(.not.allocated(nxt_wcnt)) allocate(nxt_wcnt(0:nxt_nwt))
   nxt_wcnt = 0
   if(nxt_nact<1) return
@@ -1173,7 +1230,7 @@ subroutine act_lookup
      enddo
      nxt_wcnt(k) = j
   enddo
-end subroutine act_lookup
+end subroutine nxt_act_lookup
 !
 !
 subroutine el_chain(iel,ne,nel,x,r,jl,beta,q,tot,emt,kex,kin,chw,ch0)
@@ -1312,6 +1369,135 @@ contains
     stop 'el_chain: two-photon transition not found'
   end function two_index
 end subroutine el_chain
+!
+!
+pure subroutine nxt_static_line(ic,wlc,kown,r,kap,kpick)
+!-----------------------------------------------------------------------
+! Opacity [1/cm] of the active lines within nxt_dopx Doppler widths of the
+! comoving wavelength wlc in slow cell ic, static Doppler profiles
+! K/(sqrt(pi) v_D) exp(-x^2), of the lines with static profiles
+! (nxt_lstat) without the line kown (global index; the packet's own line,
+! 0 if none).  With r in [0,1) also the line that
+! absorbs (kpick, global index; chosen by its share of the opacity).
+!-----------------------------------------------------------------------
+  integer,intent(in) :: ic,kown
+  real*8,intent(in) :: wlc,r
+  real*8,intent(out) :: kap
+  integer,intent(out) :: kpick
+  real*8,parameter :: c = 2.99792458d10, spi = 1.7724538509055159d0
+  integer :: jlo,jhi,j,k,pass
+  real*8 :: wmin,wmax,x,kl,cum,target
+  kap = 0d0
+  kpick = 0
+  if(nxt_nact <= 0) return
+  wmin = wlc/(1d0 + nxt_dopx*nxt_vdlmax(ic)/c)
+  wmax = wlc/(1d0 - nxt_dopx*nxt_vdlmax(ic)/c)
+  call nxt_neighbors(wlc,0,0,jlo,jhi)
+!-- (jlo, jhi: the lines just below and above, 0 if none)
+!-- the sum, then (r >= 0) the line where the cumulative sum passes r*kap
+  target = -1d0
+  cum = 0d0
+  do pass=1,2
+     if(pass == 2) then
+        if(r < 0d0 .or. kap <= 0d0) return
+        target = r*kap
+     endif
+     do j=jlo,1,-1
+        if(nxt_wlact(j) < wmin) exit
+        k = nxt_act(j)
+        if(k == kown .or. .not.nxt_lstat(k)) cycle
+        x = (wlc/nxt_wlact(j) - 1d0)*c/nxt_vdl(nxa_lel(k),ic)
+        if(abs(x) > nxt_dopx) cycle
+        kl = max(nxt_kq(k,ic),0d0)*exp(-x*x)/(spi*nxt_vdl(nxa_lel(k),ic))
+        if(pass == 1) then
+           kap = kap + kl
+        else
+           cum = cum + kl
+           kpick = k
+           if(cum >= target) return
+        endif
+     enddo
+     do j=merge(jhi,nxt_nact+1,jhi>0),nxt_nact
+        if(nxt_wlact(j) > wmax) exit
+        k = nxt_act(j)
+        if(k == kown .or. .not.nxt_lstat(k)) cycle
+        x = (wlc/nxt_wlact(j) - 1d0)*c/nxt_vdl(nxa_lel(k),ic)
+        if(abs(x) > nxt_dopx) cycle
+        kl = max(nxt_kq(k,ic),0d0)*exp(-x*x)/(spi*nxt_vdl(nxa_lel(k),ic))
+        if(pass == 1) then
+           kap = kap + kl
+        else
+           cum = cum + kl
+           kpick = k
+           if(cum >= target) return
+        endif
+     enddo
+  enddo
+end subroutine nxt_static_line
+!
+!
+pure subroutine nxt_static_tally(ic,wlc,ed,kown,q,jbsum,jbcnt)
+!-----------------------------------------------------------------------
+! Incident intensity of the lines of slow cell ic, taken where the Sobolev
+! theory takes it: outside the profile, on the side the comoving frequency
+! of the flight drifts in from (blue for a positive projected velocity
+! gradient q of the flight, red for a negative one).  A flight at comoving
+! wavelength wlc with energy times length ed (comoving) between nxt_dopx
+! and nxt_dopx+nxt_dopw Doppler widths from a line on that side adds
+! ed c/(nu v_D nxt_dopw), the path-length estimator of J_nu over the
+! window; a drift through it adds the Sobolev crossing e c/(nu |q|).
+! (Inside the profile of a thick line the photons drifting in are absorbed
+! in the wing, so the intensity there is about 1/tau of the incident one,
+! and the rate equations apply the Sobolev escape to J_b themselves.)
+! The packet's own line (kown) is left out.  The tallies (jbsum, jbcnt:
+! nxt_jbsum, nxt_jbcnt) are arguments, so that a threaded caller passes
+! its reduction copies.
+!-----------------------------------------------------------------------
+  integer,intent(in) :: ic,kown
+  real*8,intent(in) :: wlc,ed,q
+  real*8,intent(inout) :: jbsum(:,:),jbcnt(:,:)
+  real*8,parameter :: c = 2.99792458d10
+  integer :: jlo,jhi,j,k
+  real*8 :: wlim,x,vd
+  if(nxt_nact <= 0) return
+  call nxt_neighbors(wlc,0,0,jlo,jhi)
+  if(q >= 0d0) then
+!-- the lines to the red of the flight
+     wlim = wlc/(1d0 - (nxt_dopx+nxt_dopw)*nxt_vdlmax(ic)/c)
+     do j=merge(jhi,nxt_nact+1,jhi>0),nxt_nact
+        if(nxt_wlact(j) > wlim) exit
+        k = nxt_act(j)
+        if(k == kown .or. .not.nxt_lstat(k)) cycle
+        vd = nxt_vdl(nxa_lel(k),ic)
+        x = (wlc/nxt_wlact(j) - 1d0)*c/vd
+        if(x >= -nxt_dopx .or. x < -nxt_dopx-nxt_dopw) cycle
+        jbsum(k,ic) = jbsum(k,ic) + ed*c/(nxa_lnu(k)*vd*nxt_dopw)
+        jbcnt(k,ic) = jbcnt(k,ic) + 1d0
+     enddo
+  else
+!-- the lines to the blue of the flight
+     wlim = wlc/(1d0 + (nxt_dopx+nxt_dopw)*nxt_vdlmax(ic)/c)
+     do j=jlo,1,-1
+        if(nxt_wlact(j) < wlim) exit
+        k = nxt_act(j)
+        if(k == kown .or. .not.nxt_lstat(k)) cycle
+        vd = nxt_vdl(nxa_lel(k),ic)
+        x = (wlc/nxt_wlact(j) - 1d0)*c/vd
+        if(x <= nxt_dopx .or. x > nxt_dopx+nxt_dopw) cycle
+        jbsum(k,ic) = jbsum(k,ic) + ed*c/(nxa_lnu(k)*vd*nxt_dopw)
+        jbcnt(k,ic) = jbcnt(k,ic) + 1d0
+     enddo
+  endif
+end subroutine nxt_static_tally
+!
+!
+pure subroutine nxt_sobolev_neighbors(jlo,jhi)
+!-- in a slow cell: from the neighbors jlo, jhi of nxt_neighbors, the
+!-- nearest lines that keep their Sobolev resonances there (0: none)
+  integer,intent(inout) :: jlo,jhi
+  if(jlo>0) jlo = nxt_sjlo(jlo)
+  if(jhi>0) jhi = nxt_sjhi(jhi)
+end subroutine nxt_sobolev_neighbors
 !
 !
 pure subroutine nxt_neighbors(wlc,iline,ilside,jlo,jhi)

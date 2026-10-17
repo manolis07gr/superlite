@@ -231,6 +231,12 @@ program superlite
      endif
      nxt_ldbone = .not.in_puretran .and. in_trn_tauddmc<=in_nltex_ldb
      nxt_alion = in_nltex_ali
+!-- Doppler-profile lines in the transport of slow cells
+     nxt_dopmc = max(in_nltex_dopmc,0d0)
+     nxt_dopz = max(in_nltex_dopz,1)
+     if(nxt_dopmc>0d0 .and. lmpi0) write(6,'(1x,a,i3,a,f6.2,a)') 'NLTE lines: static Doppler profiles of the '// &
+          'lines from Z =',nxt_dopz,' in the transport of the cells whose velocity changes by less than', &
+          nxt_dopmc,' Doppler widths'
      if(lclump) then
         allocate(nxt_fcl(grd_ncell))
         nxt_fcl = grd_fcl
@@ -346,6 +352,10 @@ program superlite
 !-- NLTE elements: Sobolev strengths, macro-atom and k-packet tables
      if(in_nltex) call nxt_tables(grd_ncell,grd_tempinv,grd_radtemp, &
           grd_capemitgrey,grd_xarr,grd_vxarr)
+     if(in_nltex .and. nxt_dopmc>0d0 .and. lmpi0) then
+        if(allocated(nxt_slow)) write(6,'(1x,a,i5,a,i5,a)') 'NLTE lines: static Doppler profiles in', &
+             count(nxt_slow),' of',grd_ncell,' cells'
+     endif
      if(in_nltex .and. lmpi0 .and. nxt_bfstat(1)>0d0) write(6,'(1x,a,f7.4,a,f7.4)') &
           'NLTE bound-free sampling: mean share of full walks',nxt_bfstat(2)/nxt_bfstat(1), &
           ', groups above 0.1:',nxt_bfstat(3)/nxt_bfstat(1)

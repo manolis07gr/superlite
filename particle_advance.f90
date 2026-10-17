@@ -18,7 +18,7 @@ subroutine particle_advance
   use countersmod
   use fluxmod
   use sourcemod
-  use nltextrmod, only:nxt_on,nxt_jbsum,nxt_jbcnt,nxt_jxsum,nxt_jlsum,nxt_jlosum,nxt_lgrp
+  use nltextrmod, only:nxt_on,nxt_jbsum,nxt_jbcnt,nxt_jxsum,nxt_jlsum,nxt_jlosum,nxt_lgrp,nxt_static_tally
   implicit none
 !
 !##################################################
@@ -45,6 +45,8 @@ subroutine particle_advance
   real*8 :: jrad
   integer :: jbk
   real*8 :: jbval
+  integer :: stk
+  real*8 :: stl(3)
 !-- specint cache
   integer :: nstepmax, ndist(-3:7)
 !
@@ -95,13 +97,13 @@ subroutine particle_advance
 !$omp    grp_ng,grp_wl,grd_igeom,grd_sig,grd_cap,grd_capsc,grd_eamp, &
 !$omp    trn_tauddmc,trn_taulump,trn_noampfact,trn_errorfatal, &
 !$omp    grd_vxarr,grd_methodswap,t_pckt_stat,transport,diffusion, &
-!$omp    in_puretran,in_io_dogrdtally,in_nomp,nxt_on) &
+!$omp    in_puretran,in_io_dogrdtally,in_nomp,nxt_on,nxt_lgrp) &
 !$omp private(ptcl,ptcl2,cache, &
 !$omp    specarr,glumps,llumps, &
 !$omp    x,y,z,mu,om,wl,e,e0,ix,iy,iz,ic,ig,icold,igold,ixold,limc, &
 !$omp    vx,vy,vz,help1,help2,vhelp1,vhelp2, &
 !$omp    i,t0,t1,help,tau,labfact,jrad, &
-!$omp    rndstate,eraddens,eamp,ierr,iomp,jbk,jbval) &
+!$omp    rndstate,eraddens,eamp,ierr,iomp,jbk,jbval,stl,stk) &
 !$omp reduction(+:grd_tally,grd_jrad,nxt_jbsum,nxt_jbcnt,nxt_jxsum,nxt_jlsum,nxt_jlosum, &
 !$omp    tot_evelo,tot_eout,tot_sflux, &
 !$omp    npckt,nflux, &
@@ -217,12 +219,14 @@ subroutine particle_advance
         if(limc) then
            nstepimc = nstepimc + 1
            call transport(ptcl,ptcl2,vx,vy,vz,rndstate, &
-                eraddens,eamp,jrad,tot_evelo,ierr,jbk,jbval)
+                eraddens,eamp,jrad,tot_evelo,ierr,jbk,jbval,stl,stk)
 !-- NLTE line resonance estimator
            if(jbk>0) then
               nxt_jbsum(jbk,icold) = nxt_jbsum(jbk,icold) + jbval
               nxt_jbcnt(jbk,icold) = nxt_jbcnt(jbk,icold) + 1d0
            endif
+!-- (the static profiles of the lines of a slow cell, in_nltex_dopmc)
+           if(stl(2)>0d0) call nxt_static_tally(icold,stl(1),stl(2),stk,stl(3),nxt_jbsum,nxt_jbcnt)
            if(ptcl2%itype/=1) then
               nmethodswap = nmethodswap + 1
               if(in_io_dogrdtally) grd_methodswap(icold) = grd_methodswap(icold) + 1

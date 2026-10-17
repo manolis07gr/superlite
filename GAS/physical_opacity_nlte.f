@@ -427,7 +427,7 @@ c$omp& shared(ngsub,gas_mass,gas_temp,grndlev,hckt,hckti,wlsub,bb_xs,
 c$omp&   bb_nline,gas_ncell,nlte_nelem,nlte_ndens,nlte_data,
 c$omp&   cap,capemit,emiss,capsc,qarr,warr,qavg,qmin,qmax,nearr,
 c$omp&   bbs_on,bbs_sobolev,bbs_eps,nxt_isel,nxt_ionzs,nxt_etop,
-c$omp&   nxa_ion,nxa_el,nxt_xloc,nxt_nelloc,wlv)
+c$omp&   nxa_ion,nxa_el,nxt_xloc,nxt_nelloc,wlv,nxt_elz)
        iigs = 0
        dirty = .true.
        phi = 0d0

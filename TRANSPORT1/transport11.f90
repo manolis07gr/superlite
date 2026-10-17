@@ -1,7 +1,7 @@
 !This file is part of SuperLite. SuperLite is released under the terms of the GNU GPLv3, see COPYING.
 !Copyright (c) 2023 Gururaj A. Wagle.  All rights reserved.
 pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
-  eraddens,eamp,jrad,totevelo,ierr,jbk,jbval)
+  eraddens,eamp,jrad,totevelo,ierr,jbk,jbval,stl,stk)
 
   use randommod
   use miscmod
@@ -29,6 +29,8 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
   integer,intent(out) :: ierr
   integer,intent(out) :: jbk      !NLTE line crossed (resonance estimator), 0 if none
   real*8,intent(out) :: jbval     !its contribution e*c/(nu*|Q|)
+  real*8,intent(out) :: stl(3)    !flight in a slow cell (nxt_dopmc): comoving wavelength, comoving energy times length (0: none), projected velocity gradient
+  integer,intent(out) :: stk      !the packet's own line on that flight (nxt_static_tally)
 !##################################################
 !This subroutine passes particle parameters as input and modifies
 !them through one IMC transport event (Fleck&Cummings, 1971).  If
@@ -40,8 +42,9 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
   logical :: lout
   integer :: ixnext
   real*8 :: r1, r2
-  real*8 :: db, dcol, dthm, ddop, dsc
-  real*8 :: darr(5)
+  real*8 :: db, dcol, dthm, ddop, dsc, dlin, ddrift
+  real*8 :: qsl, mus
+  real*8 :: darr(7)
   real*8 :: elabfact,elabfactold
   real*8 :: xold, muold
   real*8 :: help
@@ -69,6 +72,9 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
   integer :: jlo,jhi,jres,kres,kind,idx,ilin0,ilsd0
   real*8 :: wlo_e,whi_e,qmu,tau,qmin
   logical :: lremit
+!-- Doppler-profile lines in slow cells
+  logical :: lslow
+  real*8 :: kapl,wlc0,qmx
 
 !-- statement function
   integer :: l
@@ -99,6 +105,8 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
   jrad = 0d0
   jbk = 0
   jbval = 0d0
+  stl = 0d0
+  stk = 0
   lremit = .false.
 !-- the packet sits on an NLTE line only right after a resonance event
   ilin0 = ptcl2%iline
@@ -159,6 +167,31 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
      endif
   endif
 !
+!-- Doppler-profile NLTE lines in a slow cell (nxt_dopmc): static opacity
+!-- of the lines near the comoving wavelength (from Z = nxt_dopz) but the
+!-- packet's own, and the flight ends after a drift of half a Doppler width
+!-- to evaluate it again
+  lslow = .false.
+  dlin = far
+  ddrift = far
+  wlc0 = wl/elabfact
+  if(nxt_on .and. nxt_dopmc>0d0) then
+     if(nxt_slow(ic) .and. nxt_anystat) then
+        lslow = .true.
+        call nxt_static_line(ic,wlc0,ptcl%ilem,-1d0,kapl,kres)
+        if(kapl>0d0) then
+           call rnd_r(r1,rndstate)
+           dlin = -log(r1)/(elabfact*kapl)
+        endif
+        qmx = max(abs(dvdr(ix)),abs(vx/max(x,1d-300)))
+        if(qmx>0d0) ddrift = 0.5d0*nxt_vdlmin(ic)/qmx
+!-- projected velocity gradient of the flight: the side of a line its
+!-- comoving frequency drifts in from (nxt_static_tally)
+        mus = (mu-vx*cinv)/(1d0-mu*vx*cinv)
+        qsl = mus**2*dvdr(ix) + (1d0-mus**2)*vx/max(x,1d-300)
+     endif
+  endif
+!
 !-- Doppler shift distance
   if(trn_dopexact) then
 !-- exact distance to the first comoving group boundary or NLTE line along the
@@ -168,6 +201,8 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
      whi_e = grp_wl(ig+1)
      if(nxt_on) then
         call nxt_neighbors(wl/elabfact,ilin0,ilsd0,jlo,jhi)
+!-- (a slow cell keeps the resonances of the lines without static profiles)
+        if(lslow) call nxt_sobolev_neighbors(jlo,jhi)
         if(jlo>0) then
            if(nxt_wlact(jlo)>wlo_e) then
               wlo_e = nxt_wlact(jlo)
@@ -266,7 +301,7 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
 66 continue
 !
 !--finding minimum distance
-  darr = [dcol,dthm,ddop,db,dsc]
+  darr = [dcol,dthm,ddop,db,dsc,dlin,ddrift]
   ptcl2%idist = minloc(darr,dim=1)
   d = minval(darr)
   if(any(darr/=darr)) then
@@ -278,6 +313,14 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
      return
   endif
 
+!-- the flight for the incident intensity of the lines of a slow cell
+  if(lslow) then
+     stl(1) = wlc0
+     stl(2) = e*elabfact*d
+     stl(3) = qsl
+     stk = ptcl%ilem
+  endif
+!
 !-- updating position, angle
   xold = x
   x = sqrt(x**2 + d**2 + 2d0*d*x*mu)
@@ -597,6 +640,42 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
         endif
      endif
 
+!
+!-- absorbed in the static profile of a line (slow cell): the line by its
+!-- share of the opacity at the comoving wavelength of the flight, the
+!-- macro-atom in its upper level; a line photon leaves along the
+!-- directions of its Sobolev escape, as from a resonance
+  elseif(d == dlin) then
+     call rnd_r(r1,rndstate)
+     call nxt_static_line(ic,wlc0,ptcl%ilem,r1,kapl,kres)
+     mucmf = (mu-vx*cinv)/(1d0-mu*vx*cinv)
+     if(kres>0) then
+        call nxt_activate_line(ic,kres,rndstate,kind,idx,wlcmf)
+     else
+        call nxt_kpacket(ic,rndstate,kind,idx,wlcmf)
+     endif
+     if(kind==em_line) call nx_linees(kind,idx,ic,rndstate,mucmf,wlcmf)
+     if(kind==em_line) then
+        call line_mu(nxt_kq(idx,ic),dvdr(ix),vx/x,rndstate,mucmf)
+     elseif(kind/=em_lines) then
+        call rnd_r(r1,rndstate)
+        mucmf = 1d0-2d0*r1
+     endif
+     mu = (mucmf+vx*cinv)/(1d0+vx*mucmf*cinv)
+     help = elabfact/(1d0-mu*vx*cinv)
+     totevelo = totevelo+e*(1d0-help)
+     e = e*help
+     e0 = e0*help
+     call nx_reemit(kind,idx,wlcmf,ig,wl,e,e0,mu,vx,x,ix,ic,ptcl2,totevelo,rndstate)
+     ptcl%em = nxt_emcode(kind,idx)
+     ptcl%icem = 0
+     if(nxt_emloc(ptcl%em)) ptcl%icem = ic
+     ptcl%ilem = nx_ilem(kind,idx,wlcmf)
+!
+!-- (end of a drift in a slow cell: the static line opacity is evaluated
+!-- again on the next flight)
+  elseif(d == ddrift) then
+     continue
 !
 !-- Doppler shift
   elseif(d == ddop .and. jres>0) then
