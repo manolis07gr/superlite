@@ -1436,7 +1436,7 @@ pure subroutine nxt_static_line(ic,wlc,kown,r,kap,kpick)
 end subroutine nxt_static_line
 !
 !
-pure subroutine nxt_static_tally(ic,wlc,ed,kown,q,jbsum,jbcnt)
+pure subroutine nxt_static_tally(ic,wlc,ed,kown,q,dl,jbsum,jbcnt)
 !-----------------------------------------------------------------------
 ! Incident intensity of the lines of slow cell ic, taken where the Sobolev
 ! theory takes it: outside the profile, on the side the comoving frequency
@@ -1449,12 +1449,16 @@ pure subroutine nxt_static_tally(ic,wlc,ed,kown,q,jbsum,jbcnt)
 ! (Inside the profile of a thick line the photons drifting in are absorbed
 ! in the wing, so the intensity there is about 1/tau of the incident one,
 ! and the rate equations apply the Sobolev escape to J_b themselves.)
-! The packet's own line (kown) is left out.  The tallies (jbsum, jbcnt:
-! nxt_jbsum, nxt_jbcnt) are arguments, so that a threaded caller passes
-! its reduction copies.
+! The packet's own line (kown) is left out.  The count of a line (jbcnt,
+! for nxt_njbmin) grows by the share of the window the flight of comoving
+! length dl drifts across, |q| dl/(v_D nxt_dopw) (at most 1), as a
+! Sobolev crossing counts 1: the flights of a slow cell are short, and
+! counted one each they let a few packets pass the threshold.  The
+! tallies (jbsum, jbcnt: nxt_jbsum, nxt_jbcnt) are arguments, so that a
+! threaded caller passes its reduction copies.
 !-----------------------------------------------------------------------
   integer,intent(in) :: ic,kown
-  real*8,intent(in) :: wlc,ed,q
+  real*8,intent(in) :: wlc,ed,q,dl
   real*8,intent(inout) :: jbsum(:,:),jbcnt(:,:)
   real*8,parameter :: c = 2.99792458d10
   integer :: jlo,jhi,j,k
@@ -1472,7 +1476,7 @@ pure subroutine nxt_static_tally(ic,wlc,ed,kown,q,jbsum,jbcnt)
         x = (wlc/nxt_wlact(j) - 1d0)*c/vd
         if(x >= -nxt_dopx .or. x < -nxt_dopx-nxt_dopw) cycle
         jbsum(k,ic) = jbsum(k,ic) + ed*c/(nxa_lnu(k)*vd*nxt_dopw)
-        jbcnt(k,ic) = jbcnt(k,ic) + 1d0
+        jbcnt(k,ic) = jbcnt(k,ic) + min(1d0,abs(q)*dl/(vd*nxt_dopw))
      enddo
   else
 !-- the lines to the blue of the flight
@@ -1485,7 +1489,7 @@ pure subroutine nxt_static_tally(ic,wlc,ed,kown,q,jbsum,jbcnt)
         x = (wlc/nxt_wlact(j) - 1d0)*c/vd
         if(x <= nxt_dopx .or. x > nxt_dopx+nxt_dopw) cycle
         jbsum(k,ic) = jbsum(k,ic) + ed*c/(nxa_lnu(k)*vd*nxt_dopw)
-        jbcnt(k,ic) = jbcnt(k,ic) + 1d0
+        jbcnt(k,ic) = jbcnt(k,ic) + min(1d0,abs(q)*dl/(vd*nxt_dopw))
      enddo
   endif
 end subroutine nxt_static_tally

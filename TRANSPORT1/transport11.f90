@@ -29,7 +29,7 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
   integer,intent(out) :: ierr
   integer,intent(out) :: jbk      !NLTE line crossed (resonance estimator), 0 if none
   real*8,intent(out) :: jbval     !its contribution e*c/(nu*|Q|)
-  real*8,intent(out) :: stl(3)    !flight in a slow cell (nxt_dopmc): comoving wavelength, comoving energy times length (0: none), projected velocity gradient
+  real*8,intent(out) :: stl(4)    !flight in a slow cell (nxt_dopmc): comoving wavelength, comoving energy times length (0: none), projected velocity gradient, comoving length
   integer,intent(out) :: stk      !the packet's own line on that flight (nxt_static_tally)
 !##################################################
 !This subroutine passes particle parameters as input and modifies
@@ -318,6 +318,7 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
      stl(1) = wlc0
      stl(2) = e*elabfact*d
      stl(3) = qsl
+     stl(4) = elabfact*d
      stk = ptcl%ilem
   endif
 !

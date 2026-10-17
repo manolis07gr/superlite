@@ -46,7 +46,7 @@ subroutine particle_advance
   integer :: jbk
   real*8 :: jbval
   integer :: stk
-  real*8 :: stl(3)
+  real*8 :: stl(4)
 !-- specint cache
   integer :: nstepmax, ndist(-3:7)
 !
@@ -226,7 +226,7 @@ subroutine particle_advance
               nxt_jbcnt(jbk,icold) = nxt_jbcnt(jbk,icold) + 1d0
            endif
 !-- (the static profiles of the lines of a slow cell, in_nltex_dopmc)
-           if(stl(2)>0d0) call nxt_static_tally(icold,stl(1),stl(2),stk,stl(3),nxt_jbsum,nxt_jbcnt)
+           if(stl(2)>0d0) call nxt_static_tally(icold,stl(1),stl(2),stk,stl(3),stl(4),nxt_jbsum,nxt_jbcnt)
            if(ptcl2%itype/=1) then
               nmethodswap = nmethodswap + 1
               if(in_io_dogrdtally) grd_methodswap(icold) = grd_methodswap(icold) + 1

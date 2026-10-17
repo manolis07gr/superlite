@@ -110,6 +110,7 @@ program test_dopmc
 !-- through the blue windows of both lines
   call drift(-8d0,0d0,0,q)
   call check('blue window of line 1 against Sobolev',nxt_jbsum(1,1),e*c/(nxa_lnu(1)*q))
+  call check('one crossing counted once',nxt_jbcnt(1,1),1d0)
   call check('blue window of line 2 against Sobolev',nxt_jbsum(2,1),e*c/(nxa_lnu(2)*q))
   call check('no static tally for the H line',nxt_jbsum(3,1)+1d-300,1d-300)
 !-- the same with line 2 the packet's own
@@ -145,7 +146,7 @@ contains
     nxt_jbcnt = 0d0
     xx = xa + 0.5d0*dx
     do while(xx < xb)
-       call nxt_static_tally(1,wl1*(1d0+xx*vd/c),e*s,kown,qq,nxt_jbsum,nxt_jbcnt)
+       call nxt_static_tally(1,wl1*(1d0+xx*vd/c),e*s,kown,qq,s,nxt_jbsum,nxt_jbcnt)
        xx = xx + dx
     enddo
   end subroutine drift

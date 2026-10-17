@@ -37,7 +37,7 @@ c-- transport
       integer,intent(out) :: ierr
       integer,intent(out) :: jbk
       real*8,intent(out) :: jbval
-      real*8,intent(out) :: stl(3)
+      real*8,intent(out) :: stl(4)
       integer,intent(out) :: stk
       end subroutine transport11
 c
@@ -84,7 +84,7 @@ c
       integer,intent(out) :: ierr
       integer,intent(out) :: jbk
       real*8,intent(out) :: jbval
-      real*8,intent(out) :: stl(3)
+      real*8,intent(out) :: stl(4)
       integer,intent(out) :: stk
       end subroutine transport_
 c

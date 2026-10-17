@@ -279,6 +279,32 @@ neutral (H I 0.8–0.97). There is no independent reference for this flow:
 its velocity falls outward from the cold dense shell (4800 → 630 →
 240 km/s), while CMFGEN's comoving-frame transfer assumes a monotonic flow.
 
+Most of that He I emission was an artefact of the thick groups. DDMC
+gives a packet absorbed in a cell's lump of thick groups to a group by
+its rate κ S (`grd_spk`), and S held only the cell's own emission: at
+T_e ≈ 2×10⁴ K the H and He I continua, not the He II continuum and the
+EUV where the cooling flow of a shock cell emits. The shock's EUV
+therefore cascaded through He I while the rate equations, whose J in
+these groups is S, saw no extra ionizing radiation: He I at 10⁻³ of He
+re-emitted 1.5×10⁴¹ erg/s in 5000–7000 Å (He I 5876, 6678) and
+1.2×10⁴¹ erg/s at 1–2.5 µm, 17 % of the escaping luminosity in He
+lines. With the emission of the shock cells in S (`s10_A4`, 6
+iterations from `s9_A4_c2`) the shocked gas is 50–86 % He²⁺ between
+1.52 and 1.65×10¹⁵ cm (T_e up to 3.7×10⁴ K), the edge of the cold
+dense shell and the CSM out to 1.9×10¹⁵ cm are He⁺ (0.54–0.99; before
+He⁰ with 0.09–0.17 He⁺ in the CSM), the He I lines vanish (8×10³⁹ erg/s
+in 5000–7000 Å), He II 4686 grows, and the UV lines of C, N and O carry
+4.6×10⁴¹ instead of 1.3×10⁴¹ erg/s, so that the optical luminosity
+(3500–10 000 Å) falls from 1.05 to 0.88×10⁴² erg/s. EW5(Hα) is 190–200 Å
+(Monte Carlo, formal integral), twice the observed median; part of the
+340–390 Å before was the blueshifted He I 6678 within 5000 km/s of Hα.
+He II 4686, blueshifted to −5000 km/s, fills the blue sideband of Hβ
+(−16 000 to −12 000 km/s), so that the sideband continuum puts Hβ into
+net absorption (EW5 −3 to −7 Å); against the red sideband alone Hβ is
+67–80 Å in emission and R5 = 2.0–2.4 (`s9_A4_c2` on the same continuum:
+2.7–2.8). The single-pass formal integral follows the Monte Carlo
+spectrum within 2 % in every band of 3500–10 000 Å.
+
 Open: the formal integral of A4 against its own Monte Carlo spectrum. With
 the Monte Carlo J for the electron scattering, the formal integral of
 `s9_A4_c2` follows the Monte Carlo spectrum within 1–9 % in every band but
@@ -441,16 +467,37 @@ iterations, and of the formal integral):
   overlapping lines absorb and fluoresce the line photons in place.
   Static Doppler profiles of the metal lines in the slow cells
   (`in_nltex_dopmc` 2, `in_nltex_dopz` 3; six iterations from the
-  Sobolev state, not yet converged) take SuperLite's J to 1.0–2.9 times
-  CMFGEN's at 912–1100 Å, 0.5–0.7 times at 1100–1500 Å and 0.8–1.3 times
-  at 1500–3000 Å, the Lyman continuum beyond 2.5×10¹⁵ cm to 7–16 times,
-  b₁ there up by 2.2 and Fe II to 0.28 and 0.58 of Fe at 3.5 and
-  6×10¹⁵ cm. Against CMFGEN's comoving-frame spectrum (`cmf_flux`, VTURB
-  10–20 km/s) Hα is 81.6 Å against 82.3 Å (Sobolev: 108.6), Hβ 14.3 against
-  18.0 (18.2), Pβ 53.3 against 45.1 (58.4); the narrow Fe II absorptions
-  1.2–1.4 Å, O I 7774 1.9 Å (CMFGEN 3.0 Å). Static profiles of all
-  lines, H and He included, give nearly the same far-UV J but take Hβ to
-  8 Å and Pβ to 30 Å (the H/He benchmark, below).
+  Sobolev state, microturbulence 10–20 km/s) take SuperLite's J to
+  1.0–2.9 times CMFGEN's at 912–1100 Å, 0.5–0.7 times at 1100–1500 Å and
+  0.8–1.3 times at 1500–3000 Å, the Lyman continuum beyond 2.5×10¹⁵ cm to
+  7–16 times, b₁ there up by 2.2 and Fe II to 0.28 and 0.58 of Fe at 3.5
+  and 6×10¹⁵ cm. With CMFGEN's iteration microturbulence (VTURB 20 km/s
+  everywhere: wider profiles, more overlap; eight more iterations) H I
+  is 3.0×10⁻³, 1.1×10⁻², 5.2×10⁻², 0.19 of H at 2, 3.5, 6, 9.5×10¹⁵ cm
+  against CMFGEN's 3.7×10⁻³, 7.2×10⁻², 0.17, 0.19 (Sobolev:
+  8.5×10⁻⁴…4.1×10⁻²), Fe II 0.15, 0.39, 0.77, 0.95 against 0.19, 0.83,
+  0.93, 0.95, b₁ 4.8, 14, 72, 836 at 2, 2.5, 3.6, 5.9×10¹⁵ cm against
+  4.0, 59, 666, 3033; the J at 912–1100 Å is 0.4–1.0 times CMFGEN's,
+  but 1100–1500 Å falls to 0.2–0.6 times and the Lyα band to 0.1–0.9.
+  Against CMFGEN's comoving-frame spectrum (`cmf_flux`, VTURB 10–20 km/s;
+  EW within ±2700 km/s against the continuum at 4000–6000 km/s) Hα is
+  82.9 Å (10–20 km/s) and 71.8 Å (20 km/s, formal integral at 10–20 km/s)
+  against 80.4 Å (Sobolev: 98.1; CMFGEN's Sobolev model 91.5), Hβ 13.6
+  and 17.3 against 17.4, Pβ 51.0 and 53.2 against 45.7; the narrow Fe II
+  absorptions 1.2–1.4 Å, O I 7774 1.9 Å (CMFGEN 3.0 Å). The iterations
+  with static profiles still change the populations by 4.5–6 % per
+  iteration after 14 (largest change per cell, median; 0.6 % with
+  resonances). Four more, counting the window crossings instead of the
+  short flights of the slow cells for the incident-intensity threshold
+  (`cmf_m002re_dm7`), change them by 4.8, 4.6 and 3.5 % and carry the
+  outer wind further towards CMFGEN (b₁ 6.1, 18, 90, 883; H I 3.8×10⁻³,
+  1.4×10⁻², 5.4×10⁻², 0.24; Fe II 0.19, 0.44, 0.78, 0.96), while Hα
+  falls to 63.3 Å (core 45 Å against 53, wings 7 and 11 Å against 10
+  and 18; Hβ 18.1, Pβ 52.8 Å): b₃ of the inner wind stays at 0.75–0.8 of
+  CMFGEN's (1.23 against 1.62 at 1.1×10¹⁵ cm, 4.9 against 6.1 at
+  1.65×10¹⁵ cm). The hybrid is not converged and stays experimental. Static
+  profiles of all lines, H and He included, give nearly the same far-UV
+  J but take Hβ to 8 Å and Pβ to 30 Å (the H/He benchmark, below).
   With DDMC only from τ = 30 the iterations are 2.5 times faster (fewer
   DDMC–IMC swaps) with the same populations.
 
