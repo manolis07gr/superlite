@@ -166,6 +166,12 @@ c-- (only the lines of the elements from Z = in_nltex_dopz: the H and He
 c-- lines keep their Sobolev resonances, whose point absorption and
 c-- macro-atom escape are consistent with each other in a dense wind)
       integer :: in_nltex_dopz = 3
+c-- (the static lines escape their trapping also by the electron
+c-- scattering of the trapped photons and absorb the photons scattered
+c-- into their cores, in the rates and the macro-atom: the transport
+c-- scatters photons into the static cores explicitly; needs
+c-- in_nltex_vturb >= 0 and in_thm_thermal)
+      logical :: in_nltex_dopes = .true.
 c-- formal integral of the emergent spectrum after the last iteration
 c-- (formalmod): range [cm], spacing [km/s], rays through the inner
 c-- boundary
@@ -285,7 +291,7 @@ c-- runtime parameter namelist
      & in_srctype,in_shock_dvmin,in_shock_tmax,in_shock_cie,
      & in_nltex_prev,in_nltex_dtprev,in_nltex_init,in_nltex_ali,
      & in_nltex_ldb,in_nltex_vturb,in_nltex_vturbmax,in_nltex_esrates,
-     & in_nltex_esdamp,in_nltex_dopmc,in_nltex_dopz,
+     & in_nltex_esdamp,in_nltex_dopmc,in_nltex_dopz,in_nltex_dopes,
      & in_fi,in_fi_wl1,in_fi_wl2,in_fi_dv,in_fi_npc,in_fi_navg,
      & in_fi_doppler,in_fi_only,in_fi_nes,in_fi_nesdv,
      & in_xray_table,in_xray_ff1,in_xray_ff2,in_xray_t1,in_xray_t2,
@@ -430,6 +436,7 @@ c
       call insertl(in_nltex_esdamp,in_l,il)
       call insertr(in_nltex_dopmc,in_r,ir)
       call inserti(in_nltex_dopz,in_i,ii)
+      call insertl(in_nltex_dopes,in_l,il)
       call insertl(in_fi,in_l,il)
       call insertr(in_fi_wl1,in_r,ir)
       call insertr(in_fi_wl2,in_r,ir)

@@ -235,6 +235,14 @@ module nltextrmod
   integer,public :: nxt_dopz = 3
   logical,allocatable,public :: nxt_lstat(:)  !(nlin) static profile in slow cells
   logical,public :: nxt_anystat = .false.     !an active line with a static profile
+!-- (nxt_dopes: the static lines of the slow cells escape their trapping
+!-- also by the electron scattering of the trapped photons, and absorb the
+!-- photons scattered into their cores, in the rates and the macro-atom,
+!-- as with nxt_esrates for all lines: beta + bes, (beta Jb + bes Jes)/
+!-- (beta + bes), and the scattered emission em_lines.  The transport
+!-- scatters photons into the static cores explicitly, so without it the
+!-- macro-atom converts every one of them as a whole trapping episode.)
+  logical,public :: nxt_dopes = .false.
 !-- nearest active line at or below (nxt_sjlo) and at or above (nxt_sjhi)
 !-- an active index that keeps its Sobolev resonance in slow cells (0: none)
   integer,allocatable :: nxt_sjlo(:),nxt_sjhi(:) !(0:nlin+1)
@@ -252,6 +260,7 @@ module nltextrmod
   public :: nxt_write_state,nxt_read_prev,nxt_read_init,nxt_release,nxt_activate_rel
   public :: nxt_ali_cell,nxt_ali_off,nxt_ldb,nxt_lsldb,nxt_vtb,nxt_vturbv
   public :: nxt_static_line,nxt_static_tally,nxt_sobolev_neighbors,nxt_act_lookup
+  public :: nxt_useb,nxt_es_cell
 !
 contains
 !
@@ -652,7 +661,7 @@ subroutine nxt_gas_solve(it,gncell,temp,trad,nelv,neoth,qb,qv,icell1,edep,kap,fc
      xold = x
      call nxt_ntrates(nelv(:,i),x,edep(i),nti,ntx)
      nx_vtb = -1d0
-     if(present(vel) .and. nxt_esrates) nx_vtb = nxt_vtb(vel(i))
+     if(present(vel)) call nxt_es_cell(l,vel(i))
      if(present(kap) .and. present(fcl) .and. present(dr) .and. it>1 .and. nxt_have_mc) &
           call nxt_ali_cell(nxt_ng,kap(:,i),fcl(i),dr(i),lali=nxt_alion)
      if(nxt_dtinv>0d0) then
@@ -937,7 +946,7 @@ subroutine nxt_tables(ncell,tempinv,radtemp,capemitgrey,xarr,vxarr)
   real*8 :: t,ne,qb,qv,ww,wth
   real*8 :: bnd(nxa_nlv),bnb(nxa_nlv) !bound-free weights and their bounds in a block of groups
   integer :: ixb(nxa_nlv)
-  real*8 :: jg(nxt_ng),jb(nxa_nlin),jl(nxa_nlin),btab(0:nx_nbt),etab(0:nx_nbt),sig,vt
+  real*8 :: jg(nxt_ng),jb(nxa_nlin),jl(nxa_nlin),btab(0:nx_nbt),etab(0:nx_nbt),sig,vt,bu(nxa_nlin)
   logical :: ljb(nxa_nlin)
   real*8 :: kw(nxt_nko)            !k-packet: non-returning flows
   type(nxrt) :: r
@@ -986,8 +995,8 @@ subroutine nxt_tables(ncell,tempinv,radtemp,capemitgrey,xarr,vxarr)
         nxt_beta(k,ic) = nx_beta(nxt_kq(k,ic),qb,qv,btab)
      enddo
 !-- electron scattering of the trapped line photons (volume-mean Thomson
-!-- opacity with the volume-mean K); with nxt_esrates the macro-atom emits
-!-- with beta + bes and absorbs (beta Jb + bes Jes)
+!-- opacity with the volume-mean K); in the lines of nxt_useb the macro-atom
+!-- emits with beta + bes and absorbs (beta Jb + bes Jes)
      nxt_bes(:,ic) = 0d0
      if(nxt_estrap .and. nxt_tau0<=0d0) then
         call nx_es_table(qb,qv,etab)
@@ -997,7 +1006,7 @@ subroutine nxt_tables(ncell,tempinv,radtemp,capemitgrey,xarr,vxarr)
         do k=1,nxa_nlin
            nxt_bes(k,ic) = nx_bes(nxt_kq(k,ic),sig*nx_vdop(nxa_lel(k),t,vt), &
                 merge(nx_wq(k,t),0d0,nxt_esdamp),nxt_beta(k,ic),qb,qv,etab)
-           if(nxt_bes(k,ic) <= 0d0 .or. .not.nxt_esrates) cycle
+           if(nxt_bes(k,ic) <= 0d0 .or. .not.nxt_useb(k,ic)) cycle
            jl(k) = (nxt_beta(k,ic)*jl(k) + nxt_bes(k,ic)*nx_jes(k,t,nxt_ng,nxt_nug,nxt_dnug,jg))/ &
                 (nxt_beta(k,ic) + nxt_bes(k,ic))
         enddo
@@ -1007,6 +1016,11 @@ subroutine nxt_tables(ncell,tempinv,radtemp,capemitgrey,xarr,vxarr)
         nxt_kq(:,ic) = 0d0
         nxt_kq(nxt_kha,ic) = nxt_tau0*qv
      endif
+!-- escape probability of the macro-atom
+     do k=1,nxa_nlin
+        bu(k) = nxt_beta(k,ic)
+        if(nxt_useb(k,ic)) bu(k) = bu(k) + nxt_bes(k,ic)
+     enddo
 !
      kw = 0d0
 !-- thermal emission of the other opacities
@@ -1025,7 +1039,7 @@ subroutine nxt_tables(ncell,tempinv,radtemp,capemitgrey,xarr,vxarr)
         ch1 = nxt_chst(o+ns+1) - 1
         allocate(chw(ch0:ch1))
         call el_chain(iel,ne,nxt_nel(iel,ic),nxt_x(o+1:o+ns,ic),r, &
-             jl(l0:l1),nxt_beta(l0:l1,ic)+merge(nxt_bes(l0:l1,ic),0d0,nxt_esrates),q,tot,emt,kex,kin,chw,ch0)
+             jl(l0:l1),bu(l0:l1),q,tot,emt,kex,kin,chw,ch0)
 !-- recombination cooling per level of this element (from level 1 of the next ion)
         do k=1,nxa_el(iel)%nlv
            lv = lo + k
@@ -1092,7 +1106,7 @@ subroutine nxt_tables(ncell,tempinv,radtemp,capemitgrey,xarr,vxarr)
         k = nxt_inl(m)
         iel = nxa_lel(k)
         kw(ko+m) = nxt_nel(iel,ic)*nxt_x(nxa_el(iel)%xoff+nxa_lsu(k),ic)*nxt_w(nxa_luv(k),ic)* &
-             nxa_la(k)*(nxt_beta(k,ic)+merge(nxt_bes(k,ic),0d0,nxt_esrates))*hh*nxa_lnu(k)
+             nxa_la(k)*bu(k)*hh*nxa_lnu(k)
      enddo
 !-- k-packet outcome distribution
      ww = 0d0
@@ -1502,6 +1516,41 @@ pure subroutine nxt_sobolev_neighbors(jlo,jhi)
   if(jlo>0) jlo = nxt_sjlo(jlo)
   if(jhi>0) jhi = nxt_sjhi(jhi)
 end subroutine nxt_sobolev_neighbors
+!
+!
+pure logical function nxt_useb(k,ic)
+!-- the electron scattering of the photons trapped in line k is in the
+!-- rates and the macro-atom of cell ic: all lines with nxt_esrates, the
+!-- static lines of the slow cells with nxt_dopes
+  integer,intent(in) :: k,ic
+  nxt_useb = nxt_esrates
+  if(nxt_useb .or. .not.nxt_dopes) return
+  if(.not.allocated(nxt_slow) .or. .not.allocated(nxt_lstat)) return
+  nxt_useb = nxt_slow(ic) .and. nxt_lstat(k)
+end function nxt_useb
+!
+!
+subroutine nxt_es_cell(l,vel)
+!-- the electron scattering of trapped line photons in the statistical
+!-- equilibrium of cell l (flow velocity vel): nltexmod's nx_vtb and the
+!-- lines that have it, nx_esm (nxt_useb)
+  integer,intent(in) :: l
+  real*8,intent(in) :: vel
+  integer :: k
+  nx_vtb = -1d0
+  if(nxt_esrates) then
+     nx_vtb = nxt_vtb(vel)
+     if(allocated(nx_esm)) nx_esm = .true.
+  elseif(nxt_dopes) then
+     if(.not.allocated(nxt_slow)) return
+     if(.not.nxt_slow(l)) return
+     nx_vtb = nxt_vtb(vel)
+     if(.not.allocated(nx_esm)) allocate(nx_esm(nxa_nlin))
+     do k=1,nxa_nlin
+        nx_esm(k) = nxt_useb(k,l)
+     enddo
+  endif
+end subroutine nxt_es_cell
 !
 !
 pure subroutine nxt_neighbors(wlc,iline,ilside,jlo,jhi)

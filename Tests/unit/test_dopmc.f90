@@ -11,11 +11,15 @@
 !    the side the comoving frequency drifts in from (blue for Q > 0, red
 !    for Q < 0): a packet drifting through it in short flights adds what
 !    one Sobolev crossing adds, e c/(nu |Q|); nothing from inside the
-!    profile (attenuated by the line) or for the packet's own line.
+!    profile (attenuated by the line) or for the packet's own line;
+!  - the electron scattering of the trapped photons in the rates and the
+!    macro-atom (nxt_useb, nxt_es_cell): the static lines of a slow cell
+!    with nxt_dopes, every line with nxt_esrates, none otherwise.
 !-----------------------------------------------------------------------
 program test_dopmc
   use nlteatommod
   use nltextrmod
+  use nltexmod, only:nx_esm,nx_vtb
   implicit none
   real*8,parameter :: c = 2.99792458d10, spi = 1.7724538509055159d0
   real*8 :: wl1,wl2,wl3,vd,kq,kap,expect,q,e,dx,x,s,cnt(3)
@@ -128,6 +132,26 @@ program test_dopmc
   call drift(-8d0,0d0,2,-q)
   call check('blue window, negative gradient',nxt_jbsum(1,1)+1d-300,1d-300)
 !
+!-- trapped-photon electron scattering in the rates: the static lines
+  nxt_estrap = .true.
+  nxt_vturb = 20d5
+  nxt_esrates = .false.
+  nxt_dopes = .false.
+  call logs('off: no line',[(nxt_useb(k,1),k=1,3)],[.false.,.false.,.false.])
+  nxt_dopes = .true.
+  call logs('nxt_dopes, slow cell: the Fe lines',[(nxt_useb(k,1),k=1,3)],[.true.,.true.,.false.])
+  call nxt_es_cell(1,1d7)
+  call logs('nxt_es_cell: the rates of the Fe lines',nx_esm,[.true.,.true.,.false.])
+  call check('nxt_es_cell: microturbulence',nx_vtb,20d5)
+  nxt_slow = .false.
+  call logs('nxt_dopes, fast cell: no line',[(nxt_useb(k,1),k=1,3)],[.false.,.false.,.false.])
+  call nxt_es_cell(1,1d7)
+  call check('nxt_es_cell, fast cell: off',nx_vtb,-1d0)
+  nxt_esrates = .true.
+  call logs('nxt_esrates: every line',[(nxt_useb(k,1),k=1,3)],[.true.,.true.,.true.])
+  call nxt_es_cell(1,1d7)
+  call logs('nxt_es_cell with nxt_esrates: every line',nx_esm,[.true.,.true.,.true.])
+!
   if(nfail == 0) then
      write(6,*) 'test_dopmc: PASS'
   else
@@ -136,6 +160,17 @@ program test_dopmc
   endif
 !
 contains
+!
+  subroutine logs(what,got,want)
+    character(*),intent(in) :: what
+    logical,intent(in) :: got(:),want(:)
+    if(all(got .eqv. want)) then
+       write(6,'(1x,a,t53,a)') what,'ok'
+    else
+       write(6,'(1x,a,t53,a,99l2)') what,'FAILED',got
+       nfail = nfail + 1
+    endif
+  end subroutine logs
 !
   subroutine drift(xa,xb,kown,qq)
 !-- flights at the midpoints of dx steps from xa to xb, fresh tallies

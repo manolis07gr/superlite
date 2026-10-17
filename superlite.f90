@@ -234,9 +234,10 @@ program superlite
 !-- Doppler-profile lines in the transport of slow cells
      nxt_dopmc = max(in_nltex_dopmc,0d0)
      nxt_dopz = max(in_nltex_dopz,1)
-     if(nxt_dopmc>0d0 .and. lmpi0) write(6,'(1x,a,i3,a,f6.2,a)') 'NLTE lines: static Doppler profiles of the '// &
+     nxt_dopes = nxt_dopmc>0d0 .and. nxt_estrap .and. in_nltex_dopes
+     if(nxt_dopmc>0d0 .and. lmpi0) write(6,'(1x,a,i3,a,f6.2,a,l2)') 'NLTE lines: static Doppler profiles of the '// &
           'lines from Z =',nxt_dopz,' in the transport of the cells whose velocity changes by less than', &
-          nxt_dopmc,' Doppler widths'
+          nxt_dopmc,' Doppler widths; their trapped-photon electron scattering in the rates:',nxt_dopes
      if(lclump) then
         allocate(nxt_fcl(grd_ncell))
         nxt_fcl = grd_fcl

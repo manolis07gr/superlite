@@ -69,9 +69,11 @@ module nltexmod
 !-- zones (nx_bes), set by the caller per cell: the microturbulent velocity
 !-- [cm/s] added in quadrature to the thermal velocity for the Doppler width
 !-- of the lines (< 0: off, point resonances), and whether the scattered
-!-- photons must escape the Lorentz wings (nx_wq)
+!-- photons must escape the Lorentz wings (nx_wq); nx_esm (when allocated)
+!-- the lines that have it (the others keep beta alone)
   real*8,public :: nx_vtb = -1d0
   logical,public :: nx_esdamp = .true.
+  logical,allocatable,public :: nx_esm(:)    !(nlin)
 !-- y(tau) = tau G(tau) of nx_ytrap at log10(tau) = -2, -1.75, ..., 10
   integer,parameter :: nx_nyt = 49
   real*8,parameter :: nx_yt(nx_nyt) = [ &
@@ -627,7 +629,8 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
 ! Lorentz-wing parameters wqe (nx_wq) and the intensities jes (nx_jes) of
 ! the element's lines add the electron scattering of the trapped photons
 ! (nx_bes): escape probability beta + bes, incident intensity
-! (beta Jb + bes Jes)/(beta + bes).
+! (beta Jb + bes Jes)/(beta + bes); only to the lines of nx_esm when it
+! is allocated.
 !-----------------------------------------------------------------------
   integer,intent(in) :: iel,it
   real*8,intent(in) :: nel,ne,qb,qv,btab(0:nx_nbt),jl(:)
@@ -640,7 +643,7 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
   real*8,intent(in),optional :: cxr(:),xp(:),dti,sv,etab(0:nx_nbt),wqe(:),jes(:)
   integer :: ns,nl,k,kg,k0,info,ir
   real*8 :: kq,bes,jle(size(jl))
-  logical :: les
+  logical :: les,lesk
   real*8 :: m(nxa_el(iel)%ns,nxa_el(iel)%ns),xn(nxa_el(iel)%ns)
   integer :: ipiv(nxa_el(iel)%ns)
   logical :: ltd
@@ -657,7 +660,9 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
      kq = nx_kq(kg,nel,x,r%w)
      beta(k) = nx_beta(kq,qb,qv,btab)
      jle(k) = jl(k)
-     if(les) then
+     lesk = les
+     if(lesk .and. allocated(nx_esm)) lesk = nx_esm(kg)
+     if(lesk) then
         bes = nx_bes(kq,sv,wqe(k),beta(k),qb,qv,etab)
         if(bes > 0d0) jle(k) = (beta(k)*jl(k) + bes*jes(k))/(beta(k) + bes)
         beta(k) = beta(k) + bes

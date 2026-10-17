@@ -124,8 +124,8 @@ contains
 !
   pure subroutine nx_linees(kind,idx,ic,rndstate,mucmf,wlcmf)
 !-----------------------------------------------------------------------
-! With nxt_esrates (the trapped-photon electron scattering in the rates
-! and the macro-atom; otherwise only in the formal integral): a photon of
+! Where the trapped-photon electron scattering is in the rates and the
+! macro-atom (nxt_useb; otherwise only in the formal integral): a photon of
 ! line idx leaving the macro-atom in cell ic was scattered by a thermal
 ! electron while trapped in the resonance zone with probability
 ! bes/(beta+bes) (nxt_bes).  It then leaves the line centre with the
@@ -139,7 +139,8 @@ contains
     type(rnd_t),intent(inout) :: rndstate
     real*8,intent(inout) :: mucmf,wlcmf
     real*8 :: r,b,ratio
-    if(kind/=em_line .or. .not.nxt_esrates) return
+    if(kind/=em_line) return
+    if(.not.nxt_useb(idx,ic)) return
     b = nxt_bes(idx,ic)
     if(b <= 0d0) return
     call rnd_r(r,rndstate)

@@ -79,8 +79,7 @@ subroutine te_update(it)
      if(in_nltex_ali .or. in_nltex_ldb>0d0) call nxt_ali_cell(nxt_ng,gas_cap(:,i),gas_fcl(i), &
           grd_xarr(l+1)-grd_xarr(l),lali=in_nltex_ali)
 !-- (electron scattering of trapped line photons in the rates)
-     nx_vtb = -1d0
-     if(nxt_esrates) nx_vtb = nxt_vtb(0.5d0*(grd_vxarr(l)+grd_vxarr(l+1)))
+     call nxt_es_cell(l,0.5d0*(grd_vxarr(l)+grd_vxarr(l+1)))
      if(nxt_dtinv>0d0) then
         call te_balance(gas_temp(i),gas_radtemp(i),nel,neoth,qb,qv,nxt_ng,nxt_nug,nxt_dnug, &
              nxt_jg(:,l),nxt_jb(:,l),nxt_ljb(:,l),nti,ntx,capabs,gas_capemit(:,i),gext, &
