@@ -132,6 +132,13 @@ c-- the time since that model [s]
 c-- accelerated lambda iteration of the NLTE bound-free transitions (local
 c-- operator of each cell and group; nltexmod)
       logical :: in_nltex_ali = .false.
+c-- formal integral of the emergent spectrum after the last iteration
+c-- (formalmod): range [cm], spacing [km/s], rays through the inner
+c-- boundary
+      logical :: in_fi = .false.
+      real*8 :: in_fi_wl1 = 1000d-8, in_fi_wl2 = 10000d-8
+      real*8 :: in_fi_dv = 20d0
+      integer :: in_fi_npc = 20
 c-- X-ray emission of wind shocks as CMFGEN's INC_XRAYS (xraysrcmod):
 c-- plasma table in CMFGEN's RS_XRAY_FLUXES format ('none': off); two
 c-- components: filling factor, shock temperature [K], onset velocity
@@ -221,6 +228,7 @@ c-- runtime parameter namelist
      & in_nlteh_tau0,in_nltex_atoms,in_nltex_dir,in_nltex_chgexch,
      & in_srctype,in_shock_dvmin,in_shock_tmax,in_shock_cie,
      & in_nltex_prev,in_nltex_dtprev,in_nltex_ali,
+     & in_fi,in_fi_wl1,in_fi_wl2,in_fi_dv,in_fi_npc,
      & in_xray_table,in_xray_ff1,in_xray_ff2,in_xray_t1,in_xray_t2,
      & in_xray_v1,in_xray_v2,in_xray_smooth,
      & in_bbsobolev,in_bbeps,in_tesolve,in_te_damp,in_te_zsolve,
@@ -356,6 +364,11 @@ c
       call insertr(in_xray_v2,in_r,ir)
       call insertl(in_xray_smooth,in_l,il)
       call insertl(in_nltex_ali,in_l,il)
+      call insertl(in_fi,in_l,il)
+      call insertr(in_fi_wl1,in_r,ir)
+      call insertr(in_fi_wl2,in_r,ir)
+      call insertr(in_fi_dv,in_r,ir)
+      call inserti(in_fi_npc,in_i,ii)
       call insertl(in_bbsobolev,in_l,il)
       call insertr(in_bbeps,in_r,ir)
       call insertl(in_tesolve,in_l,il)

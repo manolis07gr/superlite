@@ -28,6 +28,7 @@ program superlite
   use nlteatommod, only:nxa_nel,nxa_nion,nxa_ion,nxa_nlin,nxa_nst,nxa_read_cx
   use nltextrmod
   use xraysrcmod
+  use formalmod, only:fi_spectrum
   use bbsobmod
   use tebalmod, only:te_damp,te_ntemin,te_zsolve
   use shockciemod, only:shc_read,shc_setup,shc_nel,shc_elz
@@ -361,6 +362,9 @@ program superlite
         call allreduce_nlteh !MPI
         call nxt_store_jg(grd_ncell,grp_ng,grd_jrad,grd_vol)
         call nxt_tally_finish(grd_ncell,grd_vol)
+!-- formal integral of the emergent spectrum with the last radiation field
+        if(in_fi .and. it==in_niter) call fi_spectrum(grd_ncell,grd_xarr,grd_vxarr, &
+             grd_tempinv,in_fi_wl1,in_fi_wl2,in_fi_dv,in_fi_npc,impi,nmpi,lmpi0)
      endif
      call scatter_jrad !MPI
 
