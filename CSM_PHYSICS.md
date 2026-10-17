@@ -157,7 +157,7 @@ for H, He and the abundant metals), charge exchange, core-shell X-ray opacity.
 8. Time-dependent radiation transport (SuperNu's IMC with census) with light-travel time, for interaction phases where t_diff ≈ t_dyn.
 9. 2D/3D CSM (disks, clumps, asymmetric shells) with the SuperNu 2D/3D transport.
 9a. Continuum absorption of trapped line photons (Hummer & Rybicki 1985 line-photon destruction: the same trapped path as `in_nltex_vturb`, with the absorption opacity at the line, to the bound-free macro-atom or the thermal pool, and the photoionization it drives in the rates). In the H/He benchmark it matters only below 1.07×10¹⁵ cm, in the near-LTE layer above the photosphere (trapped Lyα photoionizing n = 2: β_abs/β > 1), and is below 0.2 % of β in the wind. Partial redistribution and pressure broadening of the Lorentz wings (only radiative damping now blocks the escape of scattered photons, as for Lyα).
-9b. Formal integral as CMFGEN's `cmf_flux`: ~~Doppler line profiles~~ (`in_fi_doppler`), ~~electron scattering with the J of the formal solution~~ (`in_fi_nes`, Ng's extrapolation every third pass). Still: an accelerated lambda operator for the scattering passes (the inner wind of a IIn, τ_es ≈ 5, converges slowly), the same scattering J in the statistical equilibrium (CMFGEN's incoherent scattering in its iterations), and the depth of the narrow P-Cygni trough of the H/He benchmark (0.7 of the continuum against CMFGEN's 0.25, with the outer-wind populations of CMFGEN's `ies` model: a difference of the transfer, §4.4).
+9b. Formal integral as CMFGEN's `cmf_flux`: ~~Doppler line profiles~~ (`in_fi_doppler`), ~~electron scattering with the J of the formal solution~~ (`in_fi_nes`, Ng's extrapolation every third pass). Still: an accelerated lambda operator for the scattering passes (the inner wind of a IIn, τ_es ≈ 5, converges slowly), the same scattering J in the statistical equilibrium (CMFGEN's incoherent scattering in its iterations), and the depth of the narrow P-Cygni trough of the H/He benchmark (0.7 of the continuum against CMFGEN's 0.25: CMFGEN's intensities on those rays fall below its own outer-wind source function, §4.4).
 
 **Stage 4 — validation and production**
 10. The observed-line-metric harness (EW, decrement, absorption share, peak velocity on a common ±5000 km/s window; `balmer_validation`) as regression tests; grids for the A/B/C model series; comparison with CMFGEN/ARTIS spectra of the same hydro snapshots.
@@ -436,13 +436,19 @@ with 12 passes of the electron-scattering J:
   grid (the n = 4 edge inside a group, see `Tools/make_wlgrid.py` in §2:
   with the edge as a boundary b₅ agrees within 5 %). The P-Cygni trough
   is shallower than both CMFGEN models' (0.7 of the continuum against
-  0.25, ≈ 2 Å) although `ies` has SuperLite's outer-wind populations: a
-  difference of the transfer, not yet found. At −220 km/s the line is optically thick on every ray
-  out to p ≈ 6×10¹⁵ cm, so the rays beyond the photosphere show the
-  source function of the outermost wind, where SuperLite's b₃ (and the
-  b_n of all higher levels) is 1.3–1.9 times CMFGEN's (b₂, n_e, T_e and
-  the Hα escape probability agree; Lyβ pumping is 10⁻³ of the Hα escape
-  there).
+  0.25, ≈ 2 Å). At −220 km/s the line is thick on every ray out to
+  p ≈ 6×10¹⁵ cm and ends at the outer edge, so a formal solution gives
+  the source function of the outermost wind there: SuperLite's, and an
+  independent one (Python, with either code's populations), give I ≈ S_L.
+  CMFGEN's own intensities on those rays (its `IP_DATA`, which integrate
+  to its spectrum within 0.5 %) are 10⁻⁹–2×10⁻⁷, up to 100 times below the
+  Hα source function of its own outermost populations (5.7×10⁻⁷ erg/s/
+  cm²/Hz/sr), although its observer-frame emissivity and opacity are the
+  usual ones; the difference is in CMFGEN's treatment at the outer
+  boundary and was not traced further (with CMFGEN's Sobolev model the
+  outer-wind b₃ is also 1.3–1.9 times lower than SuperLite's, see above;
+  b₂, n_e, T_e and the Hα escape probability agree, and Lyβ pumping is
+  10⁻³ of the Hα escape there).
 
 ## 5. Running
 
