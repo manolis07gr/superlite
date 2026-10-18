@@ -424,7 +424,7 @@ subroutine nx_el_rates(iel,temp,trad,ng,nug,dnug,jg,r,xo,nelo,neo)
   real*8 :: sm,sst,nu,phit,numin,jred,dlt,xr,sig,hkt
   real*8 :: dal,gsf,nlo,arg,wo,nuc,dm,dh,dhs,dsp,sdis
   real*8 :: wocc(nxa_el(iel)%nlv),ws(nxa_el(iel)%ns)
-  logical :: lali,ldis
+  logical :: lali,ldis,lgo
 !
   ns = nxa_el(iel)%ns
   nl = nxa_el(iel)%nlv
@@ -517,7 +517,9 @@ subroutine nx_el_rates(iel,temp,trad,ng,nug,dnug,jg,r,xo,nelo,neo)
         phit = nxa_lvphi(lv)*nxa_sahac*temp**(-1.5d0)
 !-- dissolved continuum below the edge
         sdis = 0d0
-        if(ldis .and. nxd_ga(lv) > 0) then
+        lgo = ldis
+        if(lgo) lgo = nxd_ga(lv) > 0
+        if(lgo) then
            nuc = nxd_numin(nxa_lvnu0(lv),nxd_z(lv),nx_dis)
            if(nuc < nxa_lvnu0(lv)) then
               do ig=nxd_ga(lv),min(nxd_gb(lv),ng)

@@ -303,6 +303,22 @@ subroutine fi_spectrum(ncell,xarr,vxarr,tempinv,wl1,wl2,dvkms,npc,impi,nmpi,lmpi
                 jratio(ic,mx+2*k/3+1,mx+k),jratio(ic,mx+k/3+1,mx+2*k/3),jratio(ic,mx+1,mx+k/3)
         enddo
         close(4)
+!-- (diagnostics, with the environment variable SL_FIJCELL set: the
+!-- comoving J of the last pass per cell, output.fi_jcell)
+        call get_environment_variable('SL_FIJCELL',length=k)
+        if(k > 0) then
+           open(4,file='output.fi_jcell',status='replace')
+           write(4,'(a)') '# formal integral (in_fi_nes): comoving J of the last pass '// &
+                '[erg/s/cm^2/Hz/sr] per cell'
+           write(4,'(a,2i8)') 'nj ncell',nj,ncell
+           write(4,'(a)') '# comoving wavelengths [A] (decreasing); per cell: r_centre [cm], J'
+           write(4,'(1p,8es15.7)') (cc/exp(lj0 + (jj-1)*dlj)*1d8,jj=1,nj)
+           do ic=1,ncell
+              write(4,'(1p,es13.5)') 0.5d0*(xarr(ic)+xarr(ic+1))
+              write(4,'(1p,8es12.4)') jfi(:,ic)
+           enddo
+           close(4)
+        endif
      endif
      deallocate(jfi,jnw,etj,vol,jold,jmc0,lnj)
   endif

@@ -128,6 +128,7 @@ subroutine te_terms(temp,ng,nug,dnug,jg,capabs,capem,nel,x,ne,gam_ext,terms,pa,p
   real*8 :: hkt,bg,sm,xs,fh,jh,nu,sh,sst,chi
   real*8 :: qa(nxa_nlv),qb(nxa_nlv),wg(nxa_nlv),wc
   real*8 :: pd(3),wo,nuc,dm,dh,dhs,dsp,ph,ps,pr
+  logical :: lgo
   real*8,allocatable :: cq(:,:),eup(:,:),edn(:,:),cil(:),c3l(:)
 !
   hkt = hh/(kb*temp)
@@ -189,7 +190,9 @@ subroutine te_terms(temp,ng,nug,dnug,jg,capabs,capem,nel,x,ne,gam_ext,terms,pa,p
      ph = 0d0
      ps = 0d0
      pr = 0d0
-     if(pd(1) > 0d0 .and. nxd_ga(lv) > 0) then
+     lgo = pd(1) > 0d0
+     if(lgo) lgo = nxd_ga(lv) > 0
+     if(lgo) then
         nuc = nxd_numin(nxa_lvnu0(lv),nxd_z(lv),pd)
         do ig=nxd_ga(lv),min(nxd_gb(lv),ng)
            if(nug(ig) + 0.5d0*dnug(ig) <= nuc) exit
