@@ -133,6 +133,11 @@ c-- warm start of the NLTE elements: output.nltex_state of a run on the
 c-- same structure and model atoms ('none': start from J = B(T_R)); its
 c-- populations (and T_e with in_tesolve) are kept in the first iteration
       character(256) :: in_nltex_init = 'none'
+c-- (diagnostic) the populations of in_nltex_init in every iteration, no
+c-- statistical equilibrium: the transport and the formal integral on
+c-- given populations, e.g. those of a CMFGEN model
+c-- (Tools/cmfgen2superlite_state.py)
+      logical :: in_nltex_hold = .false.
 c-- accelerated lambda iteration of the NLTE bound-free transitions (local
 c-- operator of each cell and group; nltexmod)
       logical :: in_nltex_ali = .false.
@@ -289,7 +294,8 @@ c-- runtime parameter namelist
      & in_nlte,in_nlte_nelem,in_nlteh,in_nlteh_nlev,in_nlteh_damp,
      & in_nlteh_tau0,in_nltex_atoms,in_nltex_dir,in_nltex_chgexch,
      & in_srctype,in_shock_dvmin,in_shock_tmax,in_shock_cie,
-     & in_nltex_prev,in_nltex_dtprev,in_nltex_init,in_nltex_ali,
+     & in_nltex_prev,in_nltex_dtprev,in_nltex_init,in_nltex_hold,
+     & in_nltex_ali,
      & in_nltex_ldb,in_nltex_vturb,in_nltex_vturbmax,in_nltex_esrates,
      & in_nltex_esdamp,in_nltex_dopmc,in_nltex_dopz,in_nltex_dopes,
      & in_fi,in_fi_wl1,in_fi_wl2,in_fi_dv,in_fi_npc,in_fi_navg,
@@ -433,6 +439,7 @@ c
       call insertr(in_nltex_vturb,in_r,ir)
       call insertr(in_nltex_vturbmax,in_r,ir)
       call insertl(in_nltex_esrates,in_l,il)
+      call insertl(in_nltex_hold,in_l,il)
       call insertl(in_nltex_esdamp,in_l,il)
       call insertr(in_nltex_dopmc,in_r,ir)
       call inserti(in_nltex_dopz,in_i,ii)
@@ -652,6 +659,8 @@ c
        if(in_nltex_dtprev<=0d0) stop 'in_nltex_dtprev: must be > 0'
       endif
       if(in_nt_emin>0d0.and..not.in_nltex) stop 'in_nt_emin: NLTE'
+      if(in_nltex_hold.and.trim(in_nltex_init)=='none')
+     &  stop 'in_nltex_hold: needs in_nltex_init'
 c
       if(in_nlte.and.in_nlte_nelem.ne.1) stop 'in_nlte_nelem!=1'
 c

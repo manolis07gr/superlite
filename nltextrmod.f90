@@ -169,6 +169,8 @@ module nltextrmod
 !-- them instead of solving with J = B(T_R), and makes its tables with the
 !-- saved Monte Carlo estimators (output.nltex_jmc) when there are any
   logical,public :: nxt_warm = .false.
+!-- (in_nltex_hold) the saved populations in every iteration (diagnostic)
+  logical,public :: nxt_hold = .false.
   real*8,allocatable,public :: nxt_xinit(:,:) !(nst,ncell)
   real*8,allocatable,public :: nxt_tinit(:),nxt_neinit(:) !(ncell)
 !-- microclumping: volume filling factor per cell (not allocated: smooth).
@@ -525,6 +527,7 @@ subroutine nxt_dealloc
   if(allocated(nxt_erel)) deallocate(nxt_erel,nxt_prel,nxt_rcum)
   if(allocated(nxt_xinit)) deallocate(nxt_xinit,nxt_tinit,nxt_neinit)
   nxt_warm = .false.
+  nxt_hold = .false.
   nxt_dtinv = 0d0
   nxt_elh = 0; nxt_elhe = 0; nxt_kha = 0
   if(allocated(nxt_ldbd)) deallocate(nxt_ldbd)
@@ -640,8 +643,9 @@ subroutine nxt_gas_solve(it,gncell,temp,trad,nelv,neoth,qb,qv,icell1,edep,kap,fc
         nxt_neloc(i) = neoth(i)
         cycle
      endif
-!-- (warm start: the saved state, kept in the first iteration)
-     if(nxt_warm .and. (it==1 .or. .not.nxt_have_mc)) then
+!-- (warm start: the saved state, kept in the first iteration, or in all
+!-- with nxt_hold)
+     if(nxt_warm .and. (it==1 .or. .not.nxt_have_mc .or. nxt_hold)) then
         nxt_neloc(i) = neoth(i) + free_el(nelv(:,i),nxt_xloc(:,i))
         cycle
      endif

@@ -202,6 +202,9 @@ program superlite
         call allreduce_sum(grd_ncell,mcell)
         call nxt_read_init(in_nltex_init,grd_ncell,mcell,lmpi0)
         if(in_fi_only .and. .not.nxt_have_mc) stop 'in_fi_only: needs the output.nltex_jmc of in_nltex_init'
+        nxt_hold = in_nltex_hold
+        if(lmpi0 .and. nxt_hold) write(6,'(1x,a)') &
+             'NLTE populations held at the warm start in every iteration (in_nltex_hold)'
         deallocate(mcell)
         do i=1,ncell
            nxt_xloc(:,i) = nxt_xinit(:,icell1+i-1)
