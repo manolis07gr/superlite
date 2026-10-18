@@ -46,7 +46,7 @@ module tebalmod
 !-----------------------------------------------------------------------
   use nlteatommod
   use nltedismod
-  use nltexmod, only:nx_solve_cell,nx_cx_heat,nx_jline
+  use nltexmod, only:nx_solve_cell,nx_cx_heat,nx_jline,nx_ovl_cell,nx_ovl_keep,nxo_npair,nx_dis
   use nltextrmod, only:nxt_shares,nxt_elh,nxt_elhe
   implicit none
   private
@@ -290,13 +290,20 @@ subroutine te_balance(told,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx,ca
   real*8 :: nelast,xhlast
   real*8 :: a,b,c,fa,fb,fc,tsol,lo,hi,step,elc(nxa_nel),scale
   logical :: lsol(nxa_nel),lfirst
-  real*8 :: pa(nxa_nlv),pb(nxa_nlv),jl(nxa_nlin)
+  real*8 :: pa(nxa_nlv),pb(nxa_nlv),jl(nxa_nlin),wg(nxa_nlv)
 !
   ierr = 0
   call te_pisums(ng,nug,dnug,jg,pa,pb)
   do it=1,nxa_nlin
      jl(it) = nx_jline(it,ng,nug,jg,jb(it),ljb(it))
   enddo
+!-- (overlapping lines: the zones of the cell at the old temperature, kept
+!-- by the solves at the trial temperatures)
+  if(nxo_npair > 0) then
+     call nxd_weights(told,nx_dis,wg)
+     call nx_ovl_cell(told,nel,x,wg,qb,qv)
+     nx_ovl_keep = .true.
+  endif
 !-- first evaluation with every element (Z <= te_zsolve) re-solved; then
 !-- only the elements with at least 1 % of the summed magnitudes of the
 !-- NLTE heating and cooling terms (and of the other terms) are re-solved
@@ -365,6 +372,7 @@ subroutine te_balance(told,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx,ca
         enddo
      endif
   endif
+  nx_ovl_keep = .false.
 contains
   real*8 function fval(lt)
     real*8,intent(in) :: lt

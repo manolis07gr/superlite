@@ -40,6 +40,7 @@ module nltexmod
   public :: nx_el_rates,nx_el_matrix,nx_el_step,nx_solve_cell,nx_lte,nx_kq,nx_jline
   public :: nx_beta_table,nx_beta,nx_cx_rates,nx_cx_heat
   public :: nx_ytrap,nx_es_table,nx_bes,nx_vdop,nx_jes,nx_wq
+  public :: nx_ovl_init,nx_ovl_zone,nx_ovl_cell,nx_ovl_terms,nx_ks
 !-- rates of one element at a temperature (nx_el_rates); s: element-local
 !-- state, k: element-local level
   type,public :: nxrt
@@ -91,6 +92,35 @@ module nltexmod
 !-- parameters (nxd_cell; nx_dis(1) = 0: none)
   real*8,public :: nx_dis(3) = 0d0
   logical,allocatable,public :: nx_esm(:)    !(nlin)
+!-- overlapping lines (nx_ovl_init, nx_ovl_cell): a photon trapped in the
+!-- resonance zone of a line is absorbed also by the lines whose Doppler
+!-- profiles overlap its own (O I 1025.76 in Lyman beta: Bowen
+!-- fluorescence).  Partners of a line: the lines within nx_ovl_dv [cm/s]
+!-- (0: off), listed per line (pairs nxo_ptr(k) .. nxo_ptr(k+1)-1: partner
+!-- nxo_par, reverse pair nxo_rev, the partner's centre nxo_du [cm/s] to
+!-- the blue of the line's).  Per cell (nx_ovl_cell; Doppler widths with
+!-- the microturbulence nx_ovl_vtb [cm/s], set by the caller): the escape
+!-- probability from the zone of the line and its partners relative to the
+!-- line's own (nxo_rho; 1 without overlap), the probability per emission
+!-- that the partner absorbs the photon (nxo_p), and the bluest line of the
+!-- zone (nxo_jcl), whose incident intensity is the zone's.
+  real*8,public :: nx_ovl_dv = 0d0, nx_ovl_vtb = 0d0
+  integer,public :: nxo_npair = 0
+  integer,allocatable,public :: nxo_ptr(:)            !(nlin+1)
+  integer,allocatable,public :: nxo_par(:),nxo_rev(:) !(npair)
+  real*8,allocatable,public :: nxo_du(:)              !(npair)
+  real*8,allocatable,public :: nxo_rho(:)             !(nlin)
+  real*8,allocatable,public :: nxo_p(:)               !(npair)
+  integer,allocatable,public :: nxo_jcl(:)            !(nlin)
+!-- (nx_ovl_terms, per line with the current populations: the probability
+!-- that a partner absorbs its photon, sum_j P(k,j); the partners' photons
+!-- it absorbs, sum_j K_j S_j P(j,k), and sum_j K_j P(j,k); the incident
+!-- intensity of its zone.  nxo_use: in the rates of nx_el_step)
+  real*8,allocatable,public :: nxo_out(:),nxo_ins(:),nxo_inw(:),nxo_jz(:) !(nlin)
+  logical,public :: nxo_use = .false.
+!-- (nx_ovl_keep: nx_solve_cell keeps the zones the caller made for the
+!-- cell, as the thermal balance's solves at trial temperatures)
+  logical,public :: nx_ovl_keep = .false.
 !-- y(tau) = tau G(tau) of nx_ytrap at log10(tau) = -2, -1.75, ..., 10
   integer,parameter :: nx_nyt = 49
   real*8,parameter :: nx_yt(nx_nyt) = [ &
@@ -329,6 +359,306 @@ pure function nx_jes(k,temp,ng,nug,dnug,jg) result(je)
      je = jg(g0)
   endif
 end function nx_jes
+!
+!
+subroutine nx_ovl_init(dv)
+!-----------------------------------------------------------------------
+! Partners of each NLTE line for the overlap of resonance zones: the
+! lines whose centres lie within dv [cm/s] (nx_ovl_dv; 0: off), nearest
+! first.
+!-----------------------------------------------------------------------
+  real*8,intent(in) :: dv
+  integer :: i,j,k,l,m,n,mm
+  integer,allocatable :: cnt(:)
+  real*8 :: du
+  if(allocated(nxo_ptr)) deallocate(nxo_ptr,nxo_par,nxo_rev,nxo_du)
+  if(allocated(nxo_rho)) deallocate(nxo_rho,nxo_p,nxo_jcl,nxo_out,nxo_ins,nxo_inw,nxo_jz)
+  nx_ovl_dv = max(dv,0d0)
+  nxo_npair = 0
+  nxo_use = .false.
+  if(nx_ovl_dv <= 0d0 .or. nxa_nlin < 2) return
+  allocate(cnt(nxa_nlin),nxo_ptr(nxa_nlin+1))
+!-- (nxa_lsrt: by wavelength, so the separation grows along the list)
+  cnt = 0
+  do i=1,nxa_nlin
+     k = nxa_lsrt(i)
+     do j=i+1,nxa_nlin
+        l = nxa_lsrt(j)
+        if(abs(1d0 - nxa_lnu(l)/nxa_lnu(k))*cc > nx_ovl_dv) exit
+        cnt(k) = cnt(k) + 1
+        cnt(l) = cnt(l) + 1
+     enddo
+  enddo
+  nxo_ptr(1) = 1
+  do k=1,nxa_nlin
+     nxo_ptr(k+1) = nxo_ptr(k) + cnt(k)
+  enddo
+  nxo_npair = nxo_ptr(nxa_nlin+1) - 1
+  allocate(nxo_par(max(nxo_npair,1)),nxo_rev(max(nxo_npair,1)),nxo_du(max(nxo_npair,1)))
+  cnt = 0
+  do i=1,nxa_nlin
+     k = nxa_lsrt(i)
+     do j=i+1,nxa_nlin
+        l = nxa_lsrt(j)
+        if(abs(1d0 - nxa_lnu(l)/nxa_lnu(k))*cc > nx_ovl_dv) exit
+        m = nxo_ptr(k) + cnt(k)
+        nxo_par(m) = l
+        nxo_du(m) = (nxa_lnu(l)/nxa_lnu(k) - 1d0)*cc
+        cnt(k) = cnt(k) + 1
+        m = nxo_ptr(l) + cnt(l)
+        nxo_par(m) = k
+        nxo_du(m) = (nxa_lnu(k)/nxa_lnu(l) - 1d0)*cc
+        cnt(l) = cnt(l) + 1
+     enddo
+  enddo
+!-- nearest first (insertion sort of each list), then the reverse pairs
+  do k=1,nxa_nlin
+     do m=nxo_ptr(k)+1,nxo_ptr(k+1)-1
+        n = nxo_par(m)
+        du = nxo_du(m)
+        mm = m - 1
+        do while(mm >= nxo_ptr(k))
+           if(abs(nxo_du(mm)) <= abs(du)) exit
+           nxo_par(mm+1) = nxo_par(mm)
+           nxo_du(mm+1) = nxo_du(mm)
+           mm = mm - 1
+        enddo
+        nxo_par(mm+1) = n
+        nxo_du(mm+1) = du
+     enddo
+  enddo
+  do k=1,nxa_nlin
+     do m=nxo_ptr(k),nxo_ptr(k+1)-1
+        l = nxo_par(m)
+        nxo_rev(m) = 0
+        do mm=nxo_ptr(l),nxo_ptr(l+1)-1
+           if(nxo_par(mm)==k) then
+              nxo_rev(m) = mm
+              exit
+           endif
+        enddo
+        if(nxo_rev(m)==0) stop 'nx_ovl_init: pair without its reverse'
+     enddo
+  enddo
+  allocate(nxo_rho(nxa_nlin),nxo_p(max(nxo_npair,1)),nxo_jcl(nxa_nlin))
+  allocate(nxo_out(nxa_nlin),nxo_ins(nxa_nlin),nxo_inw(nxa_nlin),nxo_jz(nxa_nlin))
+  nxo_rho = 1d0
+  nxo_p = 0d0
+  nxo_jcl = [(k,k=1,nxa_nlin)]
+  nxo_out = 0d0
+  nxo_ins = 0d0
+  nxo_inw = 0d0
+  nxo_jz = 0d0
+end subroutine nx_ovl_init
+!
+!
+pure subroutine nx_ovl_zone(nl,u,vd,kq,k,qb,qv,esc,bet1,p,aext)
+!-----------------------------------------------------------------------
+! Resonance zone of nl overlapping lines in the Sobolev approximation with
+! complete redistribution over Doppler profiles: centres u [cm/s] (to the
+! blue), Doppler velocities vd [cm/s], Sobolev strengths kq [1/s] (>= 0).
+! Along a ray the comoving frequency drifts to the red by |Q(mu)| per unit
+! length.  On a grid of cells (a quarter of the narrowest Doppler width)
+! each line has the depth tau phi du of its normalized profile.  A photon
+! of line k emitted at a uniform place in a cell is absorbed in that cell
+! or in the cells to its red, by each line in proportion to its depth
+! there, or escapes beyond the reddest cell.  Per emission, averaged over
+! the directions (|Q| floored at 1e-3 of the larger gradient, as
+! nx_es_table): the escape probability esc, the escape probability of the
+! line alone bet1 = <(1 - exp(-tau_k))/tau_k>, and the probability p(j)
+! that line j absorbs the photon (p(k): the line itself).  esc + sum(p) =
+! 1, and with A_k the absorption by line k of photons incident from the
+! blue, tau_k (esc + sum_{j/=k} p(j)) = A_k + sum_{j/=k} tau_j p_j(k) per
+! direction (detailed balance; test_overlap).  aext (optional): A_j
+! averaged over the directions.
+!-----------------------------------------------------------------------
+  integer,intent(in) :: nl,k
+  real*8,intent(in) :: u(nl),vd(nl),kq(nl),qb,qv
+  real*8,intent(out) :: esc,bet1,p(nl)
+  real*8,intent(out),optional :: aext(nl)
+  integer,parameter :: nmu = 8, nmax = 4000
+  integer :: n,i,j,im
+  real*8 :: umin,umax,du,qs,mu,q,dd,t,s,e1,es,wk,em,tk
+  real*8 :: tau(nl),pm(nl),a(nl),d(nl)
+  real*8,allocatable :: phi(:,:)
+  umin = minval(u - 5d0*vd)
+  umax = maxval(u + 5d0*vd)
+  du = 0.25d0*minval(vd)
+  n = max(ceiling((umax - umin)/du),1)
+  if(n > nmax) n = nmax
+  du = (umax - umin)/n
+  allocate(phi(nl,n))
+  do i=1,n
+     phi(:,i) = exp(-((umin + (i-0.5d0)*du - u)/vd)**2)
+  enddo
+  do j=1,nl
+     phi(j,:) = phi(j,:)/max(sum(phi(j,:)),1d-300)
+  enddo
+  qs = max(abs(qb),abs(qv),1d-30)
+  esc = 0d0
+  bet1 = 0d0
+  p = 0d0
+  if(present(aext)) aext = 0d0
+  do im=1,nmu
+     mu = (im-0.5d0)/nmu
+     q = max(abs(mu*mu*qb + (1d0-mu*mu)*qv),1d-3*qs)
+     tau = max(kq,0d0)/q
+!-- from the red end: a(j) the absorption by j of a photon entering the
+!-- current cell from its blue side, es its escape
+     a = 0d0
+     es = 1d0
+     em = 0d0
+     pm = 0d0
+     do i=1,n
+        d = tau*phi(:,i)
+        dd = sum(d)
+        e1 = exp(-dd)
+        if(dd > 1d-4) then
+           t = (1d0 - e1)/dd
+           s = (1d0 - t)/dd
+        else
+           t = 1d0 - dd*(0.5d0 - dd/6d0)
+           s = 0.5d0 - dd/6d0
+        endif
+        wk = phi(k,i)
+        if(wk > 0d0) then
+           em = em + wk*t*es
+           pm = pm + wk*(s*d + t*a)
+        endif
+        a = t*d + e1*a
+        es = e1*es
+     enddo
+     esc = esc + em
+     p = p + pm
+     if(present(aext)) aext = aext + a
+     tk = tau(k)
+     if(tk > 1d-6) then
+        bet1 = bet1 + (1d0 - exp(-tk))/tk
+     else
+        bet1 = bet1 + 1d0 - 0.5d0*tk
+     endif
+  enddo
+  esc = esc/nmu
+  bet1 = bet1/nmu
+  p = p/nmu
+  if(present(aext)) aext = aext/nmu
+end subroutine nx_ovl_zone
+!
+!
+subroutine nx_ovl_cell(temp,nel,x,wg,qb,qv)
+!-----------------------------------------------------------------------
+! The overlapping resonance zones of a cell (nx_ovl_zone): electron
+! temperature temp, element densities nel, populations x (fractions of
+! each element), level shares wg, gradients qb = dv/dr, qv = v/r.  For
+! each line, its partners whose profiles reach its own (centres within 6
+! times the sum of the Doppler widths, at most 64, nearest first) and that
+! absorb noticeably somewhere (depth 1e-6 for the smallest projected
+! gradient): nxo_rho, nxo_p and nxo_jcl.
+!-----------------------------------------------------------------------
+  real*8,intent(in) :: temp,nel(nxa_nel),x(nxa_nst),wg(nxa_nlv),qb,qv
+  integer,parameter :: mz = 64
+  integer :: k,m,j,iel,nl,ii,o,ns,lo,nv,mm(mz)
+  real*8 :: kq(nxa_nlin),vdl(nxa_nel),qmin,tp,esc,bet1
+  real*8 :: uu(mz),vv(mz),kk(mz),pp(mz)
+  if(nxo_npair <= 0) return
+  qmin = 1d-3*max(abs(qb),abs(qv),1d-30)
+  do iel=1,nxa_nel
+     vdl(iel) = nx_vdop(iel,temp,nx_ovl_vtb)
+  enddo
+  do k=1,nxa_nlin
+     iel = nxa_lel(k)
+     o = nxa_el(iel)%xoff
+     ns = nxa_el(iel)%ns
+     lo = nxa_el(iel)%lvoff
+     nv = nxa_el(iel)%nlv
+     kq(k) = max(nx_kq(k,nel(iel),x(o+1:o+ns),wg(lo+1:lo+nv)),0d0)
+  enddo
+  do k=1,nxa_nlin
+     nxo_rho(k) = 1d0
+     nxo_jcl(k) = k
+     if(nxo_ptr(k+1) <= nxo_ptr(k)) cycle
+     nxo_p(nxo_ptr(k):nxo_ptr(k+1)-1) = 0d0
+     nl = 1
+     uu(1) = 0d0
+     vv(1) = vdl(nxa_lel(k))
+     kk(1) = kq(k)
+     tp = 0d0
+     do m=nxo_ptr(k),nxo_ptr(k+1)-1
+        j = nxo_par(m)
+        if(kq(j) <= 0d0) cycle
+        if(abs(nxo_du(m)) > 6d0*(vv(1) + vdl(nxa_lel(j)))) cycle
+        if(nl >= mz) exit
+        nl = nl + 1
+        uu(nl) = nxo_du(m)
+        vv(nl) = vdl(nxa_lel(j))
+        kk(nl) = kq(j)
+        mm(nl) = m
+        tp = max(tp,kq(j))
+     enddo
+     if(nl < 2 .or. tp < 1d-6*qmin) cycle
+     call nx_ovl_zone(nl,uu(1:nl),vv(1:nl),kk(1:nl),1,qb,qv,esc,bet1,pp(1:nl))
+     if(bet1 > 0d0) nxo_rho(k) = esc/bet1
+     ii = 1
+     do j=2,nl
+        nxo_p(mm(j)) = pp(j)
+        if(uu(j) > uu(ii)) ii = j
+     enddo
+     if(ii > 1) nxo_jcl(k) = nxo_par(mm(ii))
+  enddo
+end subroutine nx_ovl_cell
+!
+!
+subroutine nx_ovl_terms(iel,nel,x,wg,jl)
+!-----------------------------------------------------------------------
+! The overlap terms of the lines of element iel for the rates (nx_el_step)
+! with the current populations x of all elements (level shares wg,
+! element densities nel) and the incident intensities jl of all lines:
+! nxo_out, nxo_ins, nxo_inw, nxo_jz (zones of nx_ovl_cell).
+!-----------------------------------------------------------------------
+  integer,intent(in) :: iel
+  real*8,intent(in) :: nel(nxa_nel),x(nxa_nst),wg(nxa_nlv),jl(nxa_nlin)
+  integer :: k,m,j,je,l0,l1,o,ns,lo,nv
+  real*8 :: pjk
+  l0 = nxa_ion(nxa_el(iel)%ion(1))%loff + 1
+  l1 = nxa_ion(nxa_el(iel)%ion(nxa_el(iel)%nion))%loff + &
+       nxa_ion(nxa_el(iel)%ion(nxa_el(iel)%nion))%nlin
+  do k=l0,l1
+     nxo_out(k) = 0d0
+     nxo_ins(k) = 0d0
+     nxo_inw(k) = 0d0
+     nxo_jz(k) = jl(nxo_jcl(k))
+     do m=nxo_ptr(k),nxo_ptr(k+1)-1
+        nxo_out(k) = nxo_out(k) + nxo_p(m)
+        pjk = nxo_p(nxo_rev(m))
+        if(pjk <= 0d0) cycle
+        j = nxo_par(m)
+        je = nxa_lel(j)
+        o = nxa_el(je)%xoff
+        ns = nxa_el(je)%ns
+        lo = nxa_el(je)%lvoff
+        nv = nxa_el(je)%nlv
+        nxo_inw(k) = nxo_inw(k) + pjk*max(nx_kq(j,nel(je),x(o+1:o+ns),wg(lo+1:lo+nv)),0d0)
+        nxo_ins(k) = nxo_ins(k) + pjk*nx_ks(j,nel(je),x(o+1:o+ns),wg(lo+1:lo+nv))
+     enddo
+  enddo
+end subroutine nx_ovl_terms
+!
+!
+pure function nx_ks(k,nel,x,w) result(ks)
+!-- Sobolev strength times source function of global line k (populations
+!-- as nx_kq): fsob f lambda (g_l/g_u) n_u 2 h nu^3/c^2, finite for any
+!-- populations; the photons the line emits per unit volume are 4 pi/(h c)
+!-- times it
+  integer,intent(in) :: k
+  real*8,intent(in) :: nel,x(:),w(:)
+  real*8 :: ks
+  integer :: i,lo
+  i = nxa_lion(k)
+  lo = nxa_el(nxa_lel(k))%lvoff
+  ks = nxa_fsob*nxa_lf(k)*(cc/nxa_lnu(k))*nel*nxa_ion(i)%g(nxa_ion(i)%ll(nxa_lloc(k)))/ &
+       nxa_ion(i)%g(nxa_ion(i)%lu(nxa_lloc(k)))*x(nxa_lsu(k))*w(nxa_luv(k)-lo)* &
+       2d0*hh*nxa_lnu(k)**3/cc**2
+end function nx_ks
 !
 !
 pure function nx_vdop(iel,temp,vtb) result(vd)
@@ -711,7 +1041,8 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
 ! (beta Jb + bes Jes)/(beta + bes); only to the lines of nx_esm when it
 ! is allocated.  efar (optional, >= 0 for a line): the absorption of the
 ! photons scattered into its core in the transport (nxt_esfar), as a
-! beta-weighted intensity in place of bes Jes.
+! beta-weighted intensity in place of bes Jes.  With nxo_use the
+! overlapping lines' terms of nx_ovl_terms (set by nx_solve_cell).
 !-----------------------------------------------------------------------
   integer,intent(in) :: iel,it
   real*8,intent(in) :: nel,ne,qb,qv,btab(0:nx_nbt),jl(:)
@@ -723,8 +1054,8 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
   integer,intent(in),optional :: ncx,cxf(:),cxt(:)
   real*8,intent(in),optional :: cxr(:),xp(:),dti,sv,etab(0:nx_nbt),wqe(:),jes(:),efar(:)
   integer :: ns,nl,k,kg,k0,info,ir
-  real*8 :: kq,bes,jle(size(jl))
-  logical :: les,lesk,lfar,lfark
+  real*8 :: kq,bes,jle(size(jl)),b0,pin,pw,bjl
+  logical :: les,lesk,lfar,lfark,lovl
   real*8 :: m(nxa_el(iel)%ns,nxa_el(iel)%ns),xn(nxa_el(iel)%ns)
   real*8 :: msv(nxa_el(iel)%ns,nxa_el(iel)%ns)
   integer :: ipiv(nxa_el(iel)%ns),i1
@@ -741,22 +1072,41 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
   do k=1,nl
      kg = k0 + k
      kq = nx_kq(kg,nel,x,r%w)
-     beta(k) = nx_beta(kq,qb,qv,btab)
-     jle(k) = jl(k)
+     b0 = nx_beta(kq,qb,qv,btab)
+!-- overlapping lines (nxo_use; nx_ovl_terms): escape from the zone
+!-- rho beta, absorption by the partners sum_j P(k,j), the partners'
+!-- photons absorbed, and the zone's incident intensity with the factor of
+!-- detailed balance (LTE gives J = S); beta and beta*J of the rates
+     lovl = nxo_use
+     if(lovl) lovl = nxo_out(kg) > 0d0 .or. nxo_inw(kg) > 0d0
+     if(lovl) then
+        pin = 0d0
+        pw = 0d0
+        if(kq > 0d0) then
+           pin = nxo_ins(kg)/kq
+           pw = nxo_inw(kg)/kq
+        endif
+        beta(k) = nxo_rho(kg)*b0 + nxo_out(kg)
+        bjl = max(beta(k) - pw,0d0)*nxo_jz(kg) + pin
+     else
+        beta(k) = b0
+        bjl = b0*jl(k)
+     endif
      lesk = les
      if(lesk .and. allocated(nx_esm)) lesk = nx_esm(kg)
      if(lesk) then
-        bes = nx_bes(kq,sv,wqe(k),beta(k),qb,qv,etab)
+        bes = nx_bes(kq,sv,wqe(k),b0,qb,qv,etab)
 !-- (efar is read only when present: no short-circuit evaluation)
         lfark = lfar
         if(lfark) lfark = efar(k) >= 0d0
         if(lfark) then
-           jle(k) = (beta(k)*jl(k) + efar(k))/(beta(k) + bes)
-        elseif(bes > 0d0) then
-           jle(k) = (beta(k)*jl(k) + bes*jes(k))/(beta(k) + bes)
+           bjl = bjl + efar(k)
+        else
+           bjl = bjl + bes*jes(k)
         endif
         beta(k) = beta(k) + bes
      endif
+     jle(k) = bjl/max(beta(k),1d-300)
   enddo
   call nx_el_matrix(iel,ne,r,jle,beta,nti,ntx,m)
   ldump = nx_dump
@@ -898,6 +1248,7 @@ subroutine nx_solve_cell(temp,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx
   real*8,intent(in),optional :: xprev(nxa_nst),dtinv
   real*8,intent(in),optional :: efar(nxa_nlin) !absorption in the line cores (nx_el_step)
   integer :: iel,ns,o,l0,l1,it,ie,k,ncx,mit
+  logical :: lovl
   real*8 :: dtol
   real*8 :: neold,nenew,d,dmax,dne,dold,jl(nxa_nlin),btab(0:nx_nbt),wg(nxa_nlv)
   real*8 :: etab(0:nx_nbt),sv,wq(nxa_nlin),jes(nxa_nlin)
@@ -944,8 +1295,15 @@ subroutine nx_solve_cell(temp,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx
      jes = 0d0
   endif
   dold = 0d0
+  lovl = nxo_npair > 0
   do it=1,mit
      dmax = 0d0
+!-- overlapping lines: the zones at the first two iterations and every
+!-- tenth (unless the caller keeps its own), the terms of each element
+!-- with the populations of the moment
+     if(lovl .and. .not.nx_ovl_keep .and. (it<=2 .or. mod(it,10)==0)) &
+          call nx_ovl_cell(temp,nel,x,wg,qb,qv)
+     nxo_use = lovl
      do iel=1,nxa_nel
         if(nel(iel) <= 0d0 .or. .not.lsol(iel)) cycle
         o = nxa_el(iel)%xoff
@@ -953,6 +1311,7 @@ subroutine nx_solve_cell(temp,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx
         l0 = nxa_ion(nxa_el(iel)%ion(1))%loff + 1
         l1 = nxa_ion(nxa_el(iel)%ion(nxa_el(iel)%nion))%loff + &
              nxa_ion(nxa_el(iel)%ion(nxa_el(iel)%nion))%nlin
+        if(lovl) call nx_ovl_terms(iel,nel,x,wg,jl)
         ncx = 0
         if(nxa_ncx>0) call nx_cx_rates(iel,temp,nel,x,wg,ncx,cxf,cxt,cxr)
         sv = 0d0
@@ -979,6 +1338,7 @@ subroutine nx_solve_cell(temp,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx
         endif
         if(ie/=0) then
            ierr = ie
+           nxo_use = .false.
            return
         endif
         dmax = max(dmax,d)
@@ -995,6 +1355,7 @@ subroutine nx_solve_cell(temp,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx
      dold = dne
      if(dmax < dtol .and. abs(dne) < 1d-2*dtol) exit
   enddo
+  nxo_use = .false.
   if(it>mit) ierr = 2
 contains
   real*8 function chg(xx)

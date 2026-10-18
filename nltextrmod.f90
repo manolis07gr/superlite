@@ -285,6 +285,10 @@ module nltextrmod
 !-- emission kinds returned by the macro-atom (em_lines: a line photon
 !-- scattered by an electron in the resonance zone, nxemitmod)
   integer,parameter,public :: em_line = 1, em_bf = 2, em_thermal = 3, em_2ph = 4, em_lines = 5
+!-- (macro-atom channel of overlapping lines: the photon of a line absorbed
+!-- by a partner, whose macro-atom it activates; nltexmod's nxo_*)
+  integer,parameter :: em_ovl = 6
+  integer,allocatable :: nxt_och(:)          !(npair) channel of each pair (0: none)
 !
   public :: nxt_init,nxt_gas_solve,nxt_store_jg,nxt_tally_reset,nxt_tally_finish
   public :: nxt_tables,nxt_neighbors,nxt_activate,nxt_activate_line,nxt_kpacket
@@ -307,7 +311,7 @@ subroutine nxt_init(ncell,gncell,ng,wlg,nfile,files,hnlev)
   real*8,intent(in) :: wlg(ng+1)       !group boundaries [cm]
   character(*),intent(in) :: files(nfile)
   type(nxion),allocatable :: ions(:)
-  integer :: nion,i,k,ig,j,iel,s,lv,n,nst,ic,is
+  integer :: nion,i,k,ig,j,iel,s,lv,n,nst,ic,is,m
   integer,allocatable :: cnt(:)
 !
   call nxt_dealloc
@@ -325,6 +329,8 @@ subroutine nxt_init(ncell,gncell,ng,wlg,nfile,files,hnlev)
   call nxa_setup(nion,ions)
   deallocate(ions)
   call nxa_groups(ng,wlg)
+!-- overlapping lines (partners within nx_ovl_dv, set by the caller)
+  call nx_ovl_init(nx_ovl_dv)
 !
   nxt_on = .true.
   nxt_ncell = ncell
@@ -405,6 +411,8 @@ subroutine nxt_init(ncell,gncell,ng,wlg,nfile,files,hnlev)
 !-- within a super-level), two-photon (upper state), recombination
 !-- (continuum state)
   allocate(cnt(nst+1),nxt_lch(nxa_nlin),nxt_bch(nxa_nlv),nxt_2pch(nxt_n2p))
+  allocate(nxt_och(max(nxo_npair,1)))
+  nxt_och = 0
   cnt = 0
   nxt_nin = 0
   do k=1,nxa_nlin
@@ -414,6 +422,8 @@ subroutine nxt_init(ncell,gncell,ng,wlg,nfile,files,hnlev)
      endif
      is = nxa_el(nxa_lel(k))%xoff + nxa_lsu(k)
      cnt(is) = cnt(is) + 1
+!-- (overlapping lines: a channel per partner)
+     if(nxo_npair > 0) cnt(is) = cnt(is) + nxo_ptr(k+1) - nxo_ptr(k)
   enddo
   do n=1,nxt_n2p
      i = nxt_2pion(n)
@@ -449,6 +459,14 @@ subroutine nxt_init(ncell,gncell,ng,wlg,nfile,files,hnlev)
      nxt_chk(j) = em_line
      nxt_chi(j) = k
      nxt_lch(k) = j
+     if(nxo_npair <= 0) cycle
+     do m=nxo_ptr(k),nxo_ptr(k+1)-1
+        j = nxt_chst(is) + cnt(is)
+        cnt(is) = cnt(is) + 1
+        nxt_chk(j) = em_ovl
+        nxt_chi(j) = m
+        nxt_och(m) = j
+     enddo
   enddo
   do n=1,nxt_n2p
      i = nxt_2pion(n)
@@ -547,6 +565,7 @@ subroutine nxt_dealloc
        grd_emnbf,gas_emnbf,nxt_jwsum,nxt_jwsq,nxt_haem,nxt_haab,nxt_efsum, &
        nxt_lgrp,nxt_isrt,nxt_nug,nxt_dnug,nxt_act,nxt_wlact,nxt_w,nxt_tmact)
   if(allocated(nxt_lch)) deallocate(nxt_lch,nxt_bch,nxt_2pch)
+  if(allocated(nxt_och)) deallocate(nxt_och)
   if(allocated(nxt_inl)) deallocate(nxt_inl)
   nxt_nin = 0
   if(allocated(nxt_ecoff)) deallocate(nxt_ecoff,nxt_ecum)
@@ -735,6 +754,7 @@ subroutine nxt_gas_solve(it,gncell,temp,trad,nelv,neoth,qb,qv,icell1,edep,kap,fc
      nx_dis = 0d0
      if(nxd_on) call nxd_cellx(neoth(i)+free_el(nelv(:,i),x),nelv(:,i),x,temp(i),nx_dis)
      nx_vtb = -1d0
+     nx_ovl_vtb = nxt_vturb(1)
      if(present(vel)) call nxt_es_cell(l,vel(i))
      nx_dump = any(idump == l)
      if(present(kap) .and. present(fcl) .and. present(dr) .and. it>1 .and. nxt_have_mc) &
@@ -1081,6 +1101,7 @@ subroutine nxt_tables(ncell,tempinv,radtemp,capemitgrey,xarr,vxarr)
   real*8 :: bnd(nxa_nlv),bnb(nxa_nlv) !bound-free weights and their bounds in a block of groups
   integer :: ixb(nxa_nlv)
   real*8 :: jg(nxt_ng),jb(nxa_nlin),jl(nxa_nlin),btab(0:nx_nbt),etab(0:nx_nbt),sig,vt,bu(nxa_nlin)
+  real*8 :: bj(nxa_nlin),besp(nxa_nlin),ovw(max(nxo_npair,1))
   logical :: ljb(nxa_nlin),lst
   real*8 :: kw(nxt_nko)            !k-packet: non-returning flows
   type(nxrt) :: r
@@ -1145,6 +1166,7 @@ subroutine nxt_tables(ncell,tempinv,radtemp,capemitgrey,xarr,vxarr)
 !-- opacity with the volume-mean K); in the lines of nxt_useb the macro-atom
 !-- emits with beta + bes and absorbs (beta Jb + bes Jes)
      nxt_bes(:,ic) = 0d0
+     besp = 0d0
      if(nxt_estrap .and. nxt_tau0<=0d0) then
         call nx_es_table(qb,qv,etab)
         sig = 6.6524587d-25*nxt_ne(ic)
@@ -1159,12 +1181,10 @@ subroutine nxt_tables(ncell,tempinv,radtemp,capemitgrey,xarr,vxarr)
            lst = .false.
            if(nxt_dopmc>0d0 .and. nxt_anystat) lst = nxt_slow(ic) .and. nxt_lstat(k)
            if(nxt_esrates .and. nxt_have_mc .and. .not.lst) then
-              jl(k) = (nxt_beta(k,ic)*jl(k) + nxt_efsum(k,ic))/(nxt_beta(k,ic) + nxt_bes(k,ic))
-              cycle
+              besp(k) = nxt_efsum(k,ic)
+           elseif(nxt_bes(k,ic) > 0d0) then
+              besp(k) = nxt_bes(k,ic)*nx_jes(k,t,nxt_ng,nxt_nug,nxt_dnug,jg)
            endif
-           if(nxt_bes(k,ic) <= 0d0) cycle
-           jl(k) = (nxt_beta(k,ic)*jl(k) + nxt_bes(k,ic)*nx_jes(k,t,nxt_ng,nxt_nug,nxt_dnug,jg))/ &
-                (nxt_beta(k,ic) + nxt_bes(k,ic))
         enddo
      endif
      if(nxt_tau0>0d0 .and. nxt_kha>0) then
@@ -1172,10 +1192,19 @@ subroutine nxt_tables(ncell,tempinv,radtemp,capemitgrey,xarr,vxarr)
         nxt_kq(:,ic) = 0d0
         nxt_kq(nxt_kha,ic) = nxt_tau0*qv
      endif
-!-- escape probability of the macro-atom
+!-- escape probability of the macro-atom, and beta J of its absorption
      do k=1,nxa_nlin
         bu(k) = nxt_beta(k,ic)
-        if(nxt_useb(k,ic)) bu(k) = bu(k) + nxt_bes(k,ic)
+        bj(k) = nxt_beta(k,ic)*jl(k)
+        if(nxt_useb(k,ic)) then
+           bu(k) = bu(k) + nxt_bes(k,ic)
+           bj(k) = bj(k) + besp(k)
+        endif
+     enddo
+     ovw = 0d0
+     if(nxo_npair > 0 .and. nxt_tau0<=0d0) call ovl_tables
+     do k=1,nxa_nlin
+        jl(k) = bj(k)/max(bu(k),1d-300)
      enddo
 !
      kw = 0d0
@@ -1195,7 +1224,7 @@ subroutine nxt_tables(ncell,tempinv,radtemp,capemitgrey,xarr,vxarr)
         ch1 = nxt_chst(o+ns+1) - 1
         allocate(chw(ch0:ch1))
         call el_chain(iel,ne,nxt_nel(iel,ic),nxt_x(o+1:o+ns,ic),r, &
-             jl(l0:l1),bu(l0:l1),q,tot,emt,kex,kin,chw,ch0)
+             jl(l0:l1),bu(l0:l1),q,tot,emt,kex,kin,chw,ch0,ovw)
 !-- recombination cooling per level of this element (from level 1 of the next ion)
         do k=1,nxa_el(iel)%nlv
            lv = lo + k
@@ -1380,6 +1409,54 @@ subroutine nxt_tables(ncell,tempinv,radtemp,capemitgrey,xarr,vxarr)
      endif
   enddo
   call nxt_act_lookup
+contains
+  subroutine ovl_tables
+!-- overlapping lines in cell ic (nltexmod's zones, nx_ovl_cell, with the
+!-- volume-mean depths: clump K, gradients over the filling factor): the
+!-- macro-atom escapes the zone (rho beta), absorbs the zone's incident
+!-- intensity with the factor of detailed balance and the partners' net
+!-- photons (bj), and gives its net photons to the partners (ovw, per
+!-- particle of the upper state; em_ovl)
+    integer :: kk,mm,jj,ie,oo
+    real*8 :: fc,kc,bc,bx,fkj,fjk,nuj,nlk,xu
+    fc = 1d0
+    if(allocated(nxt_fcl)) fc = nxt_fcl(ic)
+    nx_ovl_vtb = nxt_vturbv(0.5d0*(vxarr(ic)+vxarr(ic+1)))
+    call nx_ovl_cell(t,nxt_nel(:,ic),nxt_x(:,ic),nxt_w(:,ic),qb/fc,qv/fc)
+    do ie=1,nxa_nel
+       call nx_ovl_terms(ie,nxt_nel(:,ic),nxt_x(:,ic),nxt_w(:,ic),jl)
+    enddo
+    do kk=1,nxa_nlin
+       if(nxo_out(kk) <= 0d0 .and. nxo_inw(kk) <= 0d0) cycle
+       kc = nxt_kq(kk,ic)/fc
+       bc = nxo_rho(kk)*nxt_beta(kk,ic)
+       bx = bc + nxo_out(kk)
+       if(kc > 0d0) bx = bx - nxo_inw(kk)/kc
+       bx = max(bx,0d0)
+       bu(kk) = bu(kk) - nxt_beta(kk,ic) + bc
+       bj(kk) = bj(kk) - nxt_beta(kk,ic)*jl(kk) + bx*nxo_jz(kk)
+       nxt_beta(kk,ic) = bc
+    enddo
+!-- net photons between the partners
+    do kk=1,nxa_nlin
+       if(nxt_lch(kk)==0) cycle
+       ie = nxa_lel(kk)
+       oo = nxa_el(ie)%xoff
+       xu = nxt_nel(ie,ic)*nxt_x(oo+nxa_lsu(kk),ic)
+       nlk = nxt_nel(ie,ic)*nxt_x(oo+nxa_lsl(kk),ic)*nxt_w(nxa_llv(kk),ic)
+       do mm=nxo_ptr(kk),nxo_ptr(kk+1)-1
+          jj = nxo_par(mm)
+          fkj = xu*nxt_w(nxa_luv(kk),ic)*nxa_la(kk)*nxo_p(mm)
+          nuj = nxt_nel(nxa_lel(jj),ic)*nxt_x(nxa_el(nxa_lel(jj))%xoff+nxa_lsu(jj),ic)*nxt_w(nxa_luv(jj),ic)
+          fjk = nuj*nxa_la(jj)*nxo_p(nxo_rev(mm))
+          if(fkj > fjk) then
+             if(xu > 0d0) ovw(mm) = (fkj - fjk)/xu
+          elseif(fjk > fkj .and. nlk > 0d0) then
+             bj(kk) = bj(kk) + (fjk - fkj)/(nlk*nxa_lblu(kk))
+          endif
+       enddo
+    enddo
+  end subroutine ovl_tables
 end subroutine nxt_tables
 !
 !
@@ -1437,7 +1514,7 @@ subroutine nxt_act_lookup
 end subroutine nxt_act_lookup
 !
 !
-subroutine el_chain(iel,ne,nel,x,r,jl,beta,q,tot,emt,kex,kin,chw,ch0)
+subroutine el_chain(iel,ne,nel,x,r,jl,beta,q,tot,emt,kex,kin,chw,ch0,ovw)
 !-----------------------------------------------------------------------
 ! Macro-atom transition probabilities of element iel in cell ic, from the
 ! energy-weighted rates (Lucy 2002), per state s with energy eps_s (r%eps):
@@ -1450,13 +1527,17 @@ subroutine el_chain(iel,ne,nel,x,r,jl,beta,q,tot,emt,kex,kin,chw,ch0)
 ! kex(s) total emission and k-packet probabilities of s, chw (channels of
 ! the element, from ch0) emission probabilities, kin(s) the k-packet
 ! entries into s (collisional cooling rates per volume), tot (scratch).
-! Lines within a super-level are not part of the macro-atom.
+! Lines within a super-level are not part of the macro-atom.  ovw
+! (optional, per pair of overlapping lines): the photons of the line
+! absorbed by the partner per particle of the upper state, a channel of
+! energy h nu (em_ovl) as an emission.
 !-----------------------------------------------------------------------
   integer,intent(in) :: iel,ch0
   real*8,intent(in) :: ne,nel,x(:),jl(:),beta(:)
   type(nxrt),intent(in) :: r
   real*8,intent(out) :: q(:,:),tot(:),emt(:),kex(:),kin(:),chw(ch0:)
-  integer :: ns,j,i,o,k,kg,kl,l,u,s,sc,lv,ch,lv0,k0,lo,sl
+  real*8,intent(in),optional :: ovw(:)
+  integer :: ns,j,i,o,k,kg,kl,l,u,s,sc,lv,ch,lv0,k0,lo,sl,m
   real*8 :: eps(nxa_el(iel)%ns),rr,cor,hnu,chi,nl,nu_
 !
   ns = nxa_el(iel)%ns
@@ -1494,6 +1575,15 @@ subroutine el_chain(iel,ne,nel,x,r,jl,beta,q,tot,emt,kex,kin,chw,ch0)
         q(u,l) = q(u,l) + max(rr*(eps(u) - hnu),0d0)
         ch = nxt_lch(kg)
         chw(ch) = chw(ch) + rr*hnu
+        if(present(ovw) .and. nxo_npair > 0) then
+           do m=nxo_ptr(kg),nxo_ptr(kg+1)-1
+              rr = ovw(m)
+              if(rr <= 0d0) cycle
+              q(u,l) = q(u,l) + max(rr*(eps(u) - hnu),0d0)
+              ch = nxt_och(m)
+              chw(ch) = chw(ch) + rr*hnu
+           enddo
+        endif
         nl = x(l)*r%w(nxa_llv(kg)-lv0)
         cor = 1d0
         if(nl > 0d0) cor = max(0d0,1d0 - nxa_ion(i)%g(nxa_ion(i)%ll(k))*x(u)*r%w(nxa_luv(kg)-lv0)/ &
@@ -1901,10 +1991,12 @@ end function nxt_useb
 subroutine nxt_es_cell(l,vel)
 !-- the electron scattering of trapped line photons in the statistical
 !-- equilibrium of cell l (flow velocity vel): nltexmod's nx_vtb and the
-!-- lines that have it, nx_esm (nxt_useb)
+!-- lines that have it, nx_esm (nxt_useb); and the microturbulence of the
+!-- overlapping lines' profiles, nx_ovl_vtb
   integer,intent(in) :: l
   real*8,intent(in) :: vel
   integer :: k
+  nx_ovl_vtb = nxt_vturbv(vel)
   nx_vtb = -1d0
   if(nxt_esrates) then
      nx_vtb = nxt_vtb(vel)
@@ -2055,8 +2147,9 @@ pure subroutine nxt_bffreq(lv,t,state,nu,ic)
 end subroutine nxt_bffreq
 !
 !
-pure subroutine emit_state(ic,gs,state,kind,idx,wlc)
-!-- emission channel of the de-activating global state gs
+pure recursive subroutine emit_state(ic,gs,state,kind,idx,wlc)
+!-- emission channel of the de-activating global state gs (an overlapping
+!-- line's channel: the partner's macro-atom, activated by the photon)
   use gridmod, only:grd_tempinv
   integer,intent(in) :: ic,gs
   type(rnd_t),intent(inout) :: state
@@ -2077,6 +2170,9 @@ pure subroutine emit_state(ic,gs,state,kind,idx,wlc)
   kind = nxt_chk(c)
   idx = nxt_chi(c)
   select case(kind)
+  case(em_ovl)
+     c = nxo_par(idx)
+     call nxt_activate_line(ic,c,state,kind,idx,wlc)
   case(em_line)
      wlc = nxa_lwl(idx)
   case(em_bf)
@@ -2116,7 +2212,7 @@ pure function nxt_emcode(kind,idx) result(code)
 end function nxt_emcode
 !
 !
-pure subroutine nxt_kpacket(ic,state,kind,idx,wlc)
+pure recursive subroutine nxt_kpacket(ic,state,kind,idx,wlc)
 !-- a k-packet (thermal energy) in cell ic
   use gridmod, only:grd_tempinv
   integer,intent(in) :: ic
@@ -2147,7 +2243,7 @@ pure subroutine nxt_kpacket(ic,state,kind,idx,wlc)
 end subroutine nxt_kpacket
 !
 !
-pure subroutine nxt_activate(ic,iel,s,state,kind,idx,wlc)
+pure recursive subroutine nxt_activate(ic,iel,s,state,kind,idx,wlc)
 !-- macro-atom of element iel activated in its state s
   integer,intent(in) :: ic,iel,s
   type(rnd_t),intent(inout) :: state
@@ -2167,7 +2263,7 @@ pure subroutine nxt_activate(ic,iel,s,state,kind,idx,wlc)
 end subroutine nxt_activate
 !
 !
-pure subroutine nxt_activate_line(ic,k,state,kind,idx,wlc)
+pure recursive subroutine nxt_activate_line(ic,k,state,kind,idx,wlc)
 !-- packet absorbed in global line k: macro-atom in the upper level (its
 !-- state); a line within a super-level is thermal (k-packet)
   integer,intent(in) :: ic,k

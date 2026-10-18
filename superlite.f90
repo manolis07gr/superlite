@@ -29,7 +29,7 @@ program superlite
   use nltextrmod
   use xraysrcmod
   use formalmod, only:fi_spectrum
-  use nltexmod, only:nx_esdamp
+  use nltexmod, only:nx_esdamp,nx_ovl_dv,nxo_npair
   use nltedismod, only:nxd_on,nxd_setup
   use bbsobmod
   use tebalmod, only:te_damp,te_ntemin,te_zsolve
@@ -179,7 +179,11 @@ program superlite
            if(fatom(i)(1:1)/='/') fatom(i) = trim(in_nltex_dir)//'/'//trim(fatom(i))
         enddo
      endif
+!-- (overlapping lines: the partners within in_nltex_overlap, nxt_init)
+     nx_ovl_dv = in_nltex_overlap*1d5
      call nxt_init(grd_ncell,gas_ncell,grp_ng,grp_wl,nfatom,fatom(:nfatom),merge(in_nlteh_nlev,0,in_nlteh))
+     if(lmpi0 .and. nxo_npair>0) write(6,'(1x,a,f7.1,a,i8,a)') 'NLTE lines: overlapping resonance zones '// &
+          'within',in_nltex_overlap,' km/s (',nxo_npair/2,' pairs)'
 !-- charge exchange among the NLTE elements
      if(trim(in_nltex_chgexch)/='none' .and. len_trim(in_nltex_chgexch)>0) then
         fatom(1) = in_nltex_chgexch

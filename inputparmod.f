@@ -195,6 +195,14 @@ c-- into their cores, in the rates and the macro-atom: the transport
 c-- scatters photons into the static cores explicitly; needs
 c-- in_nltex_vturb >= 0 and in_thm_thermal)
       logical :: in_nltex_dopes = .true.
+c-- overlapping NLTE lines: a photon trapped in the resonance zone of a
+c-- line is absorbed also by the lines whose Doppler profiles (thermal
+c-- and in_nltex_vturb) overlap its own, within this separation [km/s]
+c-- (0: off).  Sobolev zone of the overlapping lines in the rates
+c-- (escape, absorption by the partners, the partners' photons) and in
+c-- the macro-atom (net photons to the partners activate their macro-
+c-- atoms): O I 1025.76 in Lyman beta (Bowen fluorescence; nltexmod)
+      real*8 :: in_nltex_overlap = 0d0
 c-- formal integral of the emergent spectrum after the last iteration
 c-- (formalmod): range [cm], spacing [km/s], rays through the inner
 c-- boundary
@@ -326,6 +334,7 @@ c-- runtime parameter namelist
      & in_nltex_ali,
      & in_nltex_ldb,in_nltex_vturb,in_nltex_vturbmax,in_nltex_esrates,
      & in_nltex_esdamp,in_nltex_dopmc,in_nltex_dopz,in_nltex_dopes,
+     & in_nltex_overlap,
      & in_fi,in_fi_wl1,in_fi_wl2,in_fi_dv,in_fi_npc,in_fi_navg,
      & in_fi_doppler,in_fi_only,in_fi_nes,in_fi_nesdv,
      & in_xray_table,in_xray_ff1,in_xray_ff2,in_xray_t1,in_xray_t2,
@@ -476,6 +485,7 @@ c
       call insertr(in_nltex_dopmc,in_r,ir)
       call inserti(in_nltex_dopz,in_i,ii)
       call insertl(in_nltex_dopes,in_l,il)
+      call insertr(in_nltex_overlap,in_r,ir)
       call insertl(in_fi,in_l,il)
       call insertr(in_fi_wl1,in_r,ir)
       call insertr(in_fi_wl2,in_r,ir)
@@ -699,6 +709,7 @@ c
       if(in_nltex_hold.and.trim(in_nltex_init)=='none')
      &  stop 'in_nltex_hold: needs in_nltex_init'
       if(in_nltex_jbwin<0d0) stop 'in_nltex_jbwin < 0'
+      if(in_nltex_overlap<0d0) stop 'in_nltex_overlap < 0'
 c
       if(in_nlte.and.in_nlte_nelem.ne.1) stop 'in_nlte_nelem!=1'
 c
