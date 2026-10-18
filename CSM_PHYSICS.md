@@ -344,10 +344,16 @@ does not follow the Monte Carlo: on the same populations (two more
 iterations, `s10_A7c`) the formal integral's Hα has 3–4.5 times the
 Monte Carlo flux within ±500 km/s (EW5 248 against 97 Å; with 12
 electron-scattering passes alike, `fi_A7c_c60`), where A4's agree within
-7 %. The Hα incident intensity of the CSM cells comes from the continuum
-(no resonance estimate there: the CSM decelerates outward, so the photons
-of the faster gas inside reach it blueshifted and drift further to the
-blue). A7's line strengths are not reliable yet.
+7 %. With Sobolev resonances in the formal integral (`fi_A7c_sob`) the
+core is 0.75 of the Doppler one's and the line (8.1×10⁴⁰ erg/s within
+±5000 km/s) matches the Sobolev escape of the populations (net
+7.5×10⁴⁰ erg/s, 5.3×10⁴⁰ of it from the CSM), while the Monte Carlo
+emits 0.5–0.7 of that: the populations of the CSM are not those of the
+Monte Carlo's energy flow through H. Their Hα incident intensity is the
+continuum fallback (no resonance estimate in the CSM cells: the CSM
+decelerates outward, so the photons of the faster gas inside reach it
+blueshifted and drift further to the blue). A7's line strengths are not
+reliable yet.
 
 ### 4.4 Benchmark against CMFGEN: IIn-like dense wind
 
