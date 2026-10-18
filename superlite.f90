@@ -204,6 +204,11 @@ program superlite
         call nxt_read_init(in_nltex_init,grd_ncell,mcell,lmpi0)
         if(in_fi_only .and. .not.nxt_have_mc) stop 'in_fi_only: needs the output.nltex_jmc of in_nltex_init'
         nxt_hold = in_nltex_hold
+!-- (in_niter_early is meant for runs from scratch: in a warm start it
+!-- reduces the packets of the first iterations all the same)
+        if(lmpi0 .and. in_niter_early>0) write(6,'(1x,a,i0,a,i0,a)') &
+             'warning: warm start with in_niter_early = ',in_niter_early, &
+             ': these first iterations have 2^',in_src_n2s_early,' source particles (in_src_n2s_early)'
         if(lmpi0 .and. nxt_hold) write(6,'(1x,a)') &
              'NLTE populations held at the warm start in every iteration (in_nltex_hold)'
         deallocate(mcell)
@@ -347,16 +352,16 @@ program superlite
   do it=1,in_niter ! iterations
      t_timelin(1) = t_time() !timeline
 
-!-- write timestep
-     if(lmpi0) then !NLTE
-      write(6,*)
-      write(6,'(1x,a4,1x,i2)') 'it: ',it
-     endif
 !-- source particles of this iteration
      if(it<=in_niter_early) then
         src_ns = int(int(2,8)**in_src_n2s_early/nmpi)
      else
         src_ns = int(max(int(2,8)**in_src_n2s/nmpi,int(in_src_ns/nmpi,8)))
+     endif
+!-- write timestep
+     if(lmpi0) then !NLTE
+      write(6,*)
+      write(6,'(1x,a4,1x,i2,a,i11)') 'it: ',it,'  source particles:',int(src_ns,8)*nmpi
      endif
 !-- update all non-permanent variables
      call gas_update(it)
