@@ -367,9 +367,9 @@ about one Doppler width across a cell, and electrons scatter a photon
 many times while it drifts through a line: a photon that an electron
 scatters into the core of Hα is absorbed there, which a Sobolev point
 resonance, met only by a photon whose comoving frequency drifts through
-it, does not do. Two treatments of the slow CSM that absorb those photons
-agree with each other and make the Monte Carlo and the formal integral
-consistent (EW5 of Hα in Å; single-pass formal integral with the Monte
+it, does not do. Static Doppler profiles of all lines in the slow cells
+absorb those photons, and the Monte Carlo and the formal integral agree
+(EW5 of Hα in Å; single-pass formal integral with the Monte
 Carlo J and its trapped-photon term, and with 12 scattering passes as
 `cmf_flux`; the runs from `s10_A7p` on had 2¹⁶ packets per iteration,
 `s10_A7y2` 2¹⁸):
@@ -379,18 +379,21 @@ Carlo J and its trapped-photon term, and with 12 scattering passes as
 | Sobolev lines (`s10_A7p`) | 104 | 254 | | 0.95 |
 | Sobolev lines, level dissolution (`s10_A7d`, four more iterations) | 121 | 248 | | 1.40 |
 | `in_nltex_esrates` (`s10_A7y`, four more iterations) | 187 | 209 | | 1.47 |
-| `in_nltex_esrates`, four more (`s10_A7y2`) | 176 | 216 | | 1.62 |
+| `in_nltex_esrates`, four more (`s10_A7y2`) | 176 | 216 | 253.6 | 1.62, 1.71 |
 | static Doppler profiles of all lines in the slow cells (`in_nltex_dopmc` 2, `in_nltex_dopz` 1, with `in_nltex_dopes`; `s10_A7s`, six more iterations) | 209 | 300 | 222.5 | 1.45, 1.73 |
 
 With static profiles the single-pass formal integral adds the
 trapped-photon scattering of the Sobolev escape on top of the profiles'
 own (300 Å); the 12 passes, which take the scattering from the J of the
-formal solution, follow the Monte Carlo within 6 %. A7's Hα is thus
-175–225 Å with a flat decrement (R5 1.5–1.7; the observed median is
+formal solution, follow the Monte Carlo within 6 %. With
+`in_nltex_esrates` (Sobolev resonances that absorb the scattered photons
+in their profiles) the single pass came close to the Monte Carlo, but the
+12 passes give 1.44 times its Hα. A7's Hα is thus 210–225 Å with a flat
+decrement (R5 1.45–1.75; the observed median is
 ≈ 100 Å and 3.6), and the populations still change by 15–17 % per
-iteration (median over the cells). For dense, slow CSM either treatment is
-needed; the default Sobolev lines are consistent where the flow is fast
-(A4's formal integral follows its Monte Carlo within 3 %).
+iteration (median over the cells). For dense, slow CSM the static profiles
+of all lines are needed; the default Sobolev lines are consistent where
+the flow is fast (A4's formal integral follows its Monte Carlo within 3 %).
 
 ### 4.4 Benchmark against CMFGEN: IIn-like dense wind
 
@@ -1044,9 +1047,9 @@ IIn models with the physics of the benchmarks (§4.4) and the A4/A7 runs
 ```
 In a dense, slow CSM (a velocity change of about a Doppler width per cell
 where electron scattering dominates, as A7's) also `in_nltex_dopz = 1`
-(static H and He lines there) or `in_nltex_esrates = t`; with Sobolev H
-lines the Monte Carlo and the formal integral then differ by a factor of
-two in Hα (§4.3). The emergent spectrum is the formal integral of the
+(static H and He lines there): with Sobolev H lines the Monte Carlo and
+the formal integral differ by a factor of two in Hα, with
+`in_nltex_esrates` by 1.44 (§4.3). The emergent spectrum is the formal integral of the
 last state with 12 scattering passes, as CMFGEN's `cmf_flux`:
 `in_fi_only = t, in_fi_nes = 12, in_fi_nesdv = 60d0, in_nltex_init =
 '<run>/output.nltex_state'` (it reads `output.nltex_jmc` next to it).
