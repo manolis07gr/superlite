@@ -162,7 +162,7 @@ for H, He and the abundant metals), charge exchange, core-shell X-ray opacity.
 9. 2D/3D CSM (disks, clumps, asymmetric shells) with the SuperNu 2D/3D transport.
 9a. Continuum absorption of trapped line photons (Hummer & Rybicki 1985 line-photon destruction: the same trapped path as `in_nltex_vturb`, with the absorption opacity at the line, to the bound-free macro-atom or the thermal pool, and the photoionization it drives in the rates). In the H/He benchmark it matters only below 1.07×10¹⁵ cm, in the near-LTE layer above the photosphere (trapped Lyα photoionizing n = 2: β_abs/β > 1), and is below 0.2 % of β in the wind. Partial redistribution and pressure broadening of the Lorentz wings (only radiative damping now blocks the escape of scattered photons, as for Lyα).
 9b. Formal integral as CMFGEN's `cmf_flux`: ~~Doppler line profiles~~ (`in_fi_doppler`), ~~electron scattering with the J of the formal solution~~ (`in_fi_nes`, Ng's extrapolation every third pass). Still: an accelerated lambda operator for the scattering passes (the inner wind of a IIn, τ_es ≈ 5, converges slowly), the same scattering J in the statistical equilibrium (CMFGEN's incoherent scattering in its iterations), and the depth of the narrow P-Cygni trough of the H/He benchmark (0.7 of the continuum against CMFGEN's 0.25: CMFGEN's intensities on those rays fall below its own outer-wind source function, §4.4). Stark profiles of the H and He lines (CMFGEN's `LIST_VGT`) and the dissolution of the high levels of H and hydrogenic ions (Hummer & Mihalas 1988 occupation probabilities, bound-free opacity redward of the edges; CMFGEN's `DO_DIS`), in the rates as well: they merge the high Balmer lines near 3646 Å, where SuperLite is 4–7 % faint at 3650–4000 Å in both benchmarks (§4.4).
-9c. Comoving-frame line transfer in slow flows: static Doppler profiles of the metal lines in the Monte Carlo (`in_nltex_dopmc`, experimental) with ~~the electron scattering of their trapped photons~~ (`in_nltex_dopes`: without it the photons scattered into the static cores were all converted, §4.4). Still: the noise of the static incident intensities (2–5 % per iteration against 0.6 % with resonances), static H and He lines (b₁ of the outer H/He wind 2.5–4 times CMFGEN's), and the outer wind of the full-metal benchmark, where CMFGEN's comoving-frame lines make H fourteen times more neutral than its Sobolev lines at 3.5×10¹⁵ cm and the hybrid four times: CMFGEN's J between Fe III 1214.56 Å and Lyα, which pumps n = 2, lies 4–13 times below the neighbouring continuum and below SuperLite's incident intensity of Lyα. CMFGEN's own incoherent scattering in its iterations makes H three times more neutral at 2×10¹⁵ cm (b₁ 13 against 4.0) and less neutral further out; the trapped-photon scattering of all lines in SuperLite's rates (`in_nltex_esrates`, four iterations from the hybrid) moves b₁ the other way (4.5 → 3.8).
+9c. Comoving-frame line transfer in slow flows: static Doppler profiles of the metal lines in the Monte Carlo (`in_nltex_dopmc`, experimental) with ~~the electron scattering of their trapped photons~~ (`in_nltex_dopes`: without it the photons scattered into the static cores were all converted, §4.4). Still: the noise of the static incident intensities (2–5 % per iteration against 0.6 % with resonances), static H and He lines (b₁ of the outer H/He wind 2.5–4 times CMFGEN's), and the outer wind of the full-metal benchmark, where CMFGEN's comoving-frame lines make H fourteen times more neutral than its Sobolev lines at 3.5×10¹⁵ cm and the hybrid four times: CMFGEN's J between Fe III 1214.56 Å and Lyα, which pumps n = 2, lies 4–13 times below the neighbouring continuum and below SuperLite's incident intensity of Lyα. CMFGEN's own incoherent scattering in its iterations makes H three times more neutral at 2×10¹⁵ cm (b₁ 13 against 4.0) and less neutral further out; the trapped-photon scattering of all lines in SuperLite's rates (`in_nltex_esrates`, four iterations from the hybrid) moves b₁ the other way (4.5 → 3.8). On CMFGEN's own populations SuperLite's J follows CMFGEN's in every band but the Lyα region (1200–1240 Å: 1.3–9 times CMFGEN's at 1.05–1.13×10¹⁵ cm), and leaving out the line-list lines beyond the model atoms (`in_nltex_bbext`) leaves the outer wind as it was (§4.4): the Lyα transport in the line forest (where CMFGEN's Fe III 1214.56 Å shadows Lyα) is what remains.
 
 **Stage 4 — validation and production**
 10. The observed-line-metric harness (EW, decrement, absorption share, peak velocity on a common ±5000 km/s window; `balmer_validation`) as regression tests; grids for the A/B/C model series; comparison with CMFGEN/ARTIS spectra of the same hydro snapshots.
@@ -330,6 +330,24 @@ against the red sideband 48–54 Å, R5 2.7–2.8; He II 4686 a little
 stronger and bluer), but the populations of the CSM still change by
 22–29 % per iteration after six: for A4 the Sobolev lines stay the
 default.
+
+A7 with the stage-3 physics (`s10_A7`, 16 iterations from scratch, the
+default reflecting inner boundary where the stage-2 A7 runs had the
+thermalizing one): the CSM is fully ionized (x(H II) ≥ 0.995) at
+T_e = 6000–9700 K with b₂ = 1.4–5 and b₃ = 1.7–12 (Hα thick: Sobolev depth
+400–1600), and the photosphere lies in it (4.3×10¹⁵ cm). The Monte Carlo
+spectrum has a narrow Hα core on weak wings, EW5(Hα) 97 Å, Hβ 47 Å,
+R5 1.1 (observed median ≈ 100, 25 and 3.6): the decrement is far too
+flat. It is not converged (the largest change of a state per cell,
+median, 27–43 % per iteration in the last five), and its formal integral
+does not follow the Monte Carlo: on the same populations (two more
+iterations, `s10_A7c`) the formal integral's Hα has 3–4.5 times the
+Monte Carlo flux within ±500 km/s (EW5 248 against 97 Å; with 12
+electron-scattering passes alike, `fi_A7c_c60`), where A4's agree within
+7 %. The Hα incident intensity of the CSM cells comes from the continuum
+(no resonance estimate there: the CSM decelerates outward, so the photons
+of the faster gas inside reach it blueshifted and drift further to the
+blue). A7's line strengths are not reliable yet.
 
 ### 4.4 Benchmark against CMFGEN: IIn-like dense wind
 
@@ -601,9 +619,12 @@ iterations, and of the formal integral):
   inside 1.11×10¹⁵ cm: in both codes the Balmer continuum ionizes n = 2,
   and the brighter continuum and the smaller b₂ (S ∝ 1/b₂) hold each
   other up. In the H/He wind the emergent Balmer continuum agrees within
-  6 % and b₂ within 3 %, so the metals start it: Fe II and Fe III shield
-  the far UV and Lyα, which feed n = 1 and 2, differently in the two
-  codes (above). Two causes are ruled out. The inner boundary
+  6 % and b₂ within 3 %, so the metals start it: on CMFGEN's own
+  populations (below) SuperLite's Balmer continuum agrees with CMFGEN's
+  within 4 %, and its J of the Balmer continuum in the wind is 15–21 %
+  above CMFGEN's with the line-list lines of the NLTE ions beyond the
+  model atoms (SuperLite's default, not in CMFGEN's model), 0–7 % without
+  them. Two causes are ruled out. The inner boundary
   (SuperLite: a reflecting surface, the injected luminosity with a Planck
   spectrum; CMFGEN: the diffusion approximation): a thermalizing boundary
   at CMFGEN's core temperature (`in_innerbc = 'thrm'`, 17 027 K;
@@ -626,7 +647,66 @@ iterations, and of the formal integral):
   band and b₁ = 1.00: its diffusion boundary sets J = B(T) at the core,
   while SuperLite carries the luminosity with its own opacities (J/H at
   τ_es = 15–30 is 4–9 % below that of CMFGEN's Sobolev model). These
-  layers lie below the photosphere of every band.
+  layers lie below the photosphere of every band. On CMFGEN's LTE
+  populations there (below) J at 1500 Å stays 0.7–0.8 of B, with dips to
+  0.3–0.6 in the strongest line regions of 1700–2300 Å: a group's Monte
+  Carlo J holds the photons between the lines and those drifting into
+  the thick line cores, not the photons trapped in them, which the
+  macro-atom's escape probability carries.
+* SuperLite's transport on CMFGEN's populations (`in_nltex_hold`,
+  `Tools/cmfgen2superlite_state.py`: the populations of `ies` held in
+  every iteration, the hybrid's transport, three or four iterations).
+  With the line-list lines of the NLTE ions beyond the model atoms
+  (default, `cmf_m002re_hold`) the Lyman and He continua (228–912 Å)
+  have CMFGEN's J within 4 % in every cell (with SuperLite's own
+  populations 0.6–13 times: there the rates differ) and the optical
+  continuum CMFGEN's J within its 8 % lower luminosity, but J is 1.2–1.7
+  times CMFGEN's at 912–2000 Å and 1.05–1.25 times at 2000–4000 Å from
+  the photosphere outward, with Sobolev resonances for all lines as well
+  (`cmf_m002re_holds`: 1.15–1.6), so not the static profiles, and the
+  emergent 2000–2600 Å is 22 % faint (relative to the total). Without them
+  (`cmf_m002re_holdnb`: `in_nobbopac`, all elements being NLTE; in general
+  `in_nltex_bbext = f`), as in CMFGEN's model with the same atoms, the
+  emergent spectrum agrees with CMFGEN's within 5 % from 1500 Å to
+  2.5 µm (1000–1500 Å 7 % bright, 3650–4000 Å 5.5 % faint; normalized to
+  CMFGEN's 9 % lower total), J within 0–4 % of the optical's ratio at
+  2000–4000 Å and 3–12 % above it at 912–2000 Å in the photosphere and
+  wind, the Balmer continuum's J within 7 %, and Hα has EW5 83–87 Å
+  against CMFGEN's 86 Å (EW5 against the continuum at 12 000–16 000 km/s;
+  Hβ 9.8 against 14.5 Å: the line itself as CMFGEN's, its sidebands 10 %
+  brighter with SuperLite's stronger emission of Fe II 4924 and 5018 Å).
+  So the transport reproduces CMFGEN's radiation field for the same
+  populations and atomic data, and the extra lines account for the
+  near-UV differences of all the full-metal comparisons above. What
+  remains with the same populations: the J of the Lyα region (1200–1240 Å)
+  1.3–9 times CMFGEN's at 1.05–1.13×10¹⁵ cm, and the deep layers (above).
+* Like for like, SuperLite's own populations without those lines
+  (`cmf_m002re_nb1`: the hybrid, six iterations from `cmf_m002re_dm11`,
+  populations changing by 1.3–1.5 % per iteration in the last two): the
+  near UV comes to CMFGEN's (1000–3000 Å 4–8 % bright, normalized to the
+  total, where 2000–2600 Å was 14 % faint), the Balmer continuum's excess
+  over the optical falls from 14–20 to 10–14 %, b₂ is 2–17 % below
+  CMFGEN's where the Balmer continuum forms (was 3–24 %) and b₃ within 6 %
+  (was 10 %). The outer wind does not change: H I 3.1×10⁻³, 1.1×10⁻²,
+  3.5×10⁻² of H at 2, 3.5, 6×10¹⁵ cm against CMFGEN's 1.1×10⁻², 4.5×10⁻²,
+  7.0×10⁻² (Fe III 0.84, 0.61, 0.30 of Fe against 0.57, 0.26, 0.17).
+  Equivalent widths with 12 scattering passes in the formal integral, as
+  `cmf_flux` (Å, within ±2700 km/s against the continuum at
+  4000–6000 km/s, 200 km/s smoothing):
+
+  | | CMFGEN `ies` | SuperLite on CMFGEN's populations (`cmf_m002re_holdnb_fi12`) | like for like (`cmf_m002re_nb1_fi12`) | hybrid with the extra lines (`cmf_m002re_dm11_fi12`) |
+  |---|---|---|---|---|
+  | Hα | 87.2 | 92.6 | 101.8 | 98.5 |
+  | Hβ | 17.5 | 19.6 | 22.7 | 19.8 |
+  | Pβ | 50.5 | 52.0 | 53.2 | 52.7 |
+  | He I 10830 | −3.2 | −3.4 | −3.2 | −3.6 |
+  | He I 6678 | −1.4 | −1.7 | −1.6 | −1.8 |
+  | Ca II 8542 | −0.7 | −0.7 | −0.4 | −0.5 |
+
+  On the same populations the formal integral makes Hα 6 % and Hβ 12 %
+  stronger than `cmf_flux` (which has Stark profiles and dissolved high
+  levels, roadmap 9b), and SuperLite's own populations add 10 and 16 %:
+  b₂ (and b₃) where the lines form, with the transport now as CMFGEN's.
 
 Line profiles of the H/He wind (Hα; EW in Å of −2700…−300, ±300 and
 +300…+2700 km/s against the continuum fitted at 4000–6000 km/s on both
