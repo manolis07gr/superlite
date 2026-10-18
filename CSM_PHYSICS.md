@@ -692,7 +692,13 @@ iterations, and of the formal integral):
   T_e), so it emits this energy, much of it in the Balmer continuum: on
   `ies`' own populations (H/He, `cmf_hhe_holdies`, three iterations) its
   Balmer continuum is 5 % above `ies` relative to 4000–6500 Å, and its J
-  at 3000–3646 Å 4–9 % above CMFGEN's at 1.04–1.10×10¹⁵ cm. CMFGEN's own
+  at 3000–3646 Å 4–9 % above CMFGEN's at 1.04–1.10×10¹⁵ cm, while the
+  formal integral of those populations (12 scattering passes,
+  `fi_holdies_q12`), which emits with their emissivities as `cmf_flux`
+  does, gives CMFGEN's spectrum: 3500–3700 Å within 1 %, 3700–13 000 Å
+  0–4 % above (−2.5 to +1.4 % relative to 4000–6500 Å), Hα, Hβ, Pβ 103.3,
+  21.6, 56.0 Å against 100.9, 21.1, 55.2, He I 10830 −3.7 Å against −3.7
+  (H/He; the full-metal wind alike, below). CMFGEN's own
   comoving-frame models are fainter there than its Sobolev model by about
   their imbalance (3000–3646 Å: `blk` 0.98, `ies` 0.92 of `sob`; the
   optical within 1 %). Against the balanced models SuperLite's Balmer
@@ -709,6 +715,25 @@ iterations, and of the formal integral):
   `in_nltex_esrates`), so SuperLite's n₂ is 7–43 % below `ies`' in the
   layer above the thermalization depth of the Balmer continuum (within 3 %
   of `blk`'s inside 1.07×10¹⁵ cm, 7–27 % below it outside).
+* SuperLite's thermal balance against CMFGEN's radiative equilibrium
+  (H/He, Sobolev lines in both; `cmf_hhe_teS`: T_e from `in_tesolve`, eight
+  iterations from CMFGEN's T_e of `sob`). T_e stays within 0.5 % of
+  CMFGEN's in 59 of the 69 cells, from the base (17 000 K, −0.4 %) to the
+  outer edge (7400 K, +0.4 %). At the H recombination front just above
+  the photosphere (1.065–1.24×10¹⁵ cm, x_HI 0.02–0.2) eight cells drift up
+  by 1–3 %, and two (1.090 and 1.098×10¹⁵ cm) by 13 %, where they ionize
+  fully (x_HI 10⁻⁴ against 0.1–0.2 in the cells between them): in every
+  iteration their root lies about 5 % above the last. SuperLite solves the
+  balance of each cell with the J of the previous iteration; CMFGEN
+  linearizes T together with the populations and the radiation field. The
+  emergent bands change by < 2 % (relative to the total), Hα, Hβ, Pβ of
+  the formal integral with the Monte Carlo J by +13, +2, +8 % (91.3, 17.3,
+  55.4 → 103.6, 17.7, 59.7 Å, Monte Carlo noise of J included). In A4's and
+  A7's CSM (ionized, x_HI ≤ 10⁻³) T_e varies by 4–8 % from cell to cell, as
+  the noise of the heating rates. CMFGEN with T released from `ies`
+  (`sn_iin_hhe_iesT`) is far from converged after ten iterations
+  (corrections of 10–1000 % per iteration; its emergent luminosity rose
+  from 97.6 to 98.5 % of the inner one).
 * SuperLite's transport on CMFGEN's populations (`in_nltex_hold`,
   `Tools/cmfgen2superlite_state.py`: the populations of `ies` held in
   every iteration, the hybrid's transport, three or four iterations).
