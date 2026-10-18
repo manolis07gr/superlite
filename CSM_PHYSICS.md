@@ -395,8 +395,11 @@ more iterations with 2¹⁸ packets). With
 in their profiles) the single pass came close to the Monte Carlo, but the
 12 passes give 1.44 times its Hα. A7's Hα is thus 220–235 Å with a flat
 decrement (R5 1.45–1.75; the observed median is
-≈ 100 Å and 3.6), and the populations still change by 10–12 % per
-iteration (median over the cells; 15–17 % with 2¹⁶ packets). For dense, slow CSM the static profiles
+≈ 100 Å and 3.6). The largest change of a state per cell is still
+10–12 % per iteration (median over the cells; 15–17 % with 2¹⁶ packets),
+which the noisy trace states dominate: EW5(Hα) of the Monte Carlo stays at
+227–263 Å over the last seven iterations of `s12_A7` (236 ± 12 Å), as
+A4's at 180–189 Å over those of `s12_A4`. For dense, slow CSM the static profiles
 of all lines are needed; the default Sobolev lines are consistent where
 the flow is fast (A4's formal integral follows its Monte Carlo within 3 %).
 
