@@ -75,6 +75,18 @@ module nltexmod
 !-- the lines that have it (the others keep beta alone)
   real*8,public :: nx_vtb = -1d0
   logical,public :: nx_esdamp = .true.
+!-- (diagnostics, set by the caller per cell: nx_dump) the net flows into
+!-- the ground state of H per H particle [1/s] from each state of H, the
+!-- charge-exchange part, and of Lyman alpha the escape probability, the
+!-- incident intensity of the rates and the source function, of the last
+!-- step of nx_el_step
+  logical,public :: nx_dump = .false.
+  integer,public :: nx_dns = 0
+  real*8,public :: nx_dflow(64) = 0d0,nx_dcx = 0d0,nx_dlya(4) = 0d0
+!-- and per element and ion stage j: the flows from ion j to ion j+1 (or the
+!-- top state) and back without charge exchange, and the net charge exchange
+!-- from j to j+1 [1/s per particle of the element]
+  real*8,allocatable,public :: nx_dion(:,:,:)  !(3,nxa_maxion,nxa_nel)
 !-- level dissolution (nltedismod), set by the caller per cell: the cell's
 !-- parameters (nxd_cell; nx_dis(1) = 0: none)
   real*8,public :: nx_dis(3) = 0d0
@@ -714,8 +726,9 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
   real*8 :: kq,bes,jle(size(jl))
   logical :: les,lesk,lfar,lfark
   real*8 :: m(nxa_el(iel)%ns,nxa_el(iel)%ns),xn(nxa_el(iel)%ns)
-  integer :: ipiv(nxa_el(iel)%ns)
-  logical :: ltd
+  real*8 :: msv(nxa_el(iel)%ns,nxa_el(iel)%ns)
+  integer :: ipiv(nxa_el(iel)%ns),i1
+  logical :: ltd,ldump
 !
   ierr = 0
   d = 0d0
@@ -746,6 +759,8 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
      endif
   enddo
   call nx_el_matrix(iel,ne,r,jle,beta,nti,ntx,m)
+  ldump = nx_dump
+  if(ldump) msv = m
   if(present(ncx)) then
      do k=1,ncx
         m(cxt(k),cxf(k)) = m(cxt(k),cxf(k)) + cxr(k)
@@ -773,12 +788,71 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
   xn = max(xn,1d-300)
   xn = xn/sum(xn)
   d = maxval(abs(xn-x)/(xn+1d-30),mask=xn>1d-20)
+!-- (diagnostics: flows with the new populations, charge exchange apart)
+  if(ldump) call dump_flows
+  if(ldump .and. nxa_el(iel)%z==1) then
+     nx_dns = min(ns,size(nx_dflow))
+     nx_dflow = 0d0
+     do k=2,nx_dns
+        nx_dflow(k) = msv(1,k)*xn(k) - msv(k,1)*xn(1)
+     enddo
+     nx_dcx = 0d0
+     if(present(ncx)) then
+        do k=1,ncx
+           if(cxt(k)==1) nx_dcx = nx_dcx + cxr(k)*xn(cxf(k))
+           if(cxf(k)==1) nx_dcx = nx_dcx - cxr(k)*xn(1)
+        enddo
+     endif
+!-- Lyman alpha: the element's first line, between the first two states
+     kg = k0 + 1
+     i1 = nxa_el(iel)%ion(1)
+     nx_dlya(1) = beta(1)
+     nx_dlya(2) = jle(1)
+     nx_dlya(3) = 2d0*hh*nxa_lnu(kg)**3/cc**2/ &
+          max(nxa_ion(i1)%g(2)/nxa_ion(i1)%g(1)*xn(1)/max(xn(2),1d-300) - 1d0,1d-300)
+     nx_dlya(4) = beta(1)*((nxa_la(kg) + nxa_lbul(kg)*jle(1))*xn(2) - nxa_lblu(kg)*jle(1)*xn(1))
+  endif
   if(it<=3) then
      x = xn
   else
      x = sqrt(x*xn)        !geometric damping keeps the fractions positive
      x = x/sum(x)
   endif
+contains
+  subroutine dump_flows
+!-- per ion stage: flows to the next stage and back (msv: no charge
+!-- exchange), and the net charge exchange to the next stage
+    integer :: j,ia,ib,s,t,a1,a2,b1,b2,kk
+    if(.not.allocated(nx_dion)) allocate(nx_dion(3,nxa_maxion,nxa_nel))
+    nx_dion(:,:,iel) = 0d0
+    do j=1,nxa_el(iel)%nion
+       ia = nxa_el(iel)%ion(j)
+       a1 = nxa_ion(ia)%soff + 1
+       a2 = nxa_ion(ia)%soff + nxa_ion(ia)%nsl
+       if(j < nxa_el(iel)%nion) then
+          ib = nxa_el(iel)%ion(j+1)
+          b1 = nxa_ion(ib)%soff + 1
+          b2 = nxa_ion(ib)%soff + nxa_ion(ib)%nsl
+       else
+          b1 = ns
+          b2 = ns
+       endif
+       do s=a1,a2
+          do t=b1,b2
+             nx_dion(1,j,iel) = nx_dion(1,j,iel) + msv(t,s)*xn(s)
+             nx_dion(2,j,iel) = nx_dion(2,j,iel) + msv(s,t)*xn(t)
+          enddo
+       enddo
+       if(present(ncx)) then
+          do kk=1,ncx
+             if(cxf(kk)>=a1 .and. cxf(kk)<=a2 .and. cxt(kk)>=b1 .and. cxt(kk)<=b2) &
+                  nx_dion(3,j,iel) = nx_dion(3,j,iel) + cxr(kk)*xn(cxf(kk))
+             if(cxf(kk)>=b1 .and. cxf(kk)<=b2 .and. cxt(kk)>=a1 .and. cxt(kk)<=a2) &
+                  nx_dion(3,j,iel) = nx_dion(3,j,iel) - cxr(kk)*xn(cxf(kk))
+          enddo
+       endif
+    enddo
+  end subroutine dump_flows
 end subroutine nx_el_step
 !
 !

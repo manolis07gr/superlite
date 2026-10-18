@@ -667,7 +667,22 @@ subroutine nxt_gas_solve(it,gncell,temp,trad,nelv,neoth,qb,qv,icell1,edep,kap,fc
   real*8 :: x(nxa_nst),xold(nxa_nst),ne,beta(nxa_nlin),jg(nxt_ng),jb(nxa_nlin)
   real*8 :: nti(nxa_nst),ntx(nxa_nst),ntot,dxc(gncell),w,efc(nxa_nlin)
   logical :: ljb(nxa_nlin),lfar
+!-- (diagnostics: cells whose H ground-state rates are written, from the
+!-- environment variable SL_RATEDUMP, a comma-separated list of cell numbers)
+  integer,allocatable,save :: idump(:)
+  character(256) :: env
+  integer :: ios,lu,jj
+  character(24) :: fname
 !
+  if(.not.allocated(idump)) then
+     call get_environment_variable('SL_RATEDUMP',env,status=ios)
+     k = 0
+     if(ios == 0 .and. len_trim(env) > 0) k = count([(env(i:i)==',',i=1,len_trim(env))]) + 1
+     allocate(idump(k))
+     if(k > 0) read(env,*,iostat=ios) idump
+     if(ios /= 0) deallocate(idump)
+     if(.not.allocated(idump)) allocate(idump(0))
+  endif
   nfail = 0
   nnan = 0
   nc = 0
@@ -721,6 +736,7 @@ subroutine nxt_gas_solve(it,gncell,temp,trad,nelv,neoth,qb,qv,icell1,edep,kap,fc
      if(nxd_on) call nxd_cellx(neoth(i)+free_el(nelv(:,i),x),nelv(:,i),x,temp(i),nx_dis)
      nx_vtb = -1d0
      if(present(vel)) call nxt_es_cell(l,vel(i))
+     nx_dump = any(idump == l)
      if(present(kap) .and. present(fcl) .and. present(dr) .and. it>1 .and. nxt_have_mc) &
           call nxt_ali_cell(nxt_ng,kap(:,i),fcl(i),dr(i),lali=nxt_alion)
      if(nxt_dtinv>0d0 .and. lfar) then
@@ -740,6 +756,32 @@ subroutine nxt_gas_solve(it,gncell,temp,trad,nelv,neoth,qb,qv,icell1,edep,kap,fc
      call nxt_ali_off
      nx_vtb = -1d0
      nx_dis = 0d0
+!-- (diagnostics: the net flows into the ground state of H [1/s per H
+!-- particle] from each state of H and by charge exchange, and Lyman alpha)
+     if(nx_dump) then
+        nx_dump = .false.
+        lu = 44
+        write(fname,'(a,i4.4)') 'output.ratedump_',l
+        open(lu,file=fname,position='append')
+        write(lu,'(a,i4,a,i5,a,es11.4,a,es11.4,a,es11.4,a,2es11.4)') '# iteration',it,' cell',l, &
+             ' T',temp(i),' n_H',nelv(1,i),' n_e',neoth(i)+free_el(nelv(:,i),x),' x_1, x_2',x(1),x(2)
+        write(lu,'(a,4es12.4)') '# Lya: beta, J used in the rates, S from the populations, '// &
+             'net radiative 2->1 per H particle:',nx_dlya
+        write(lu,'(a,es12.4)') '# charge exchange into the ground state:',nx_dcx
+        write(lu,'(a)') '# state  net flow into the ground state [1/s per H particle], charge exchange apart'
+        do k=2,nx_dns
+           write(lu,'(i6,es14.5)') k,nx_dflow(k)
+        enddo
+        write(lu,'(a)') '# per element and ion stage [1/s per particle of the element]: up (to the next '// &
+             'stage, photo- and collisional ionization), down (recombination), net charge exchange up'
+        do k=1,nxa_nel
+           if(nelv(k,i) <= 0d0) cycle
+           do jj=1,nxa_el(k)%nion
+              write(lu,'(2i4,a,3es13.4)') nxa_el(k)%z,jj,'  ',nx_dion(:,jj,k)
+           enddo
+        enddo
+        close(lu)
+     endif
 !-- (a solution that is not finite counts as failed; the guess is kept)
      if(any(x/=x) .or. any(abs(x)>huge(x))) then
         if(nnan<5) write(0,'(a,i6,a,es11.3,a,es11.3,a,i2,a,l2)') 'nxt_gas_solve: populations not finite in cell', &
