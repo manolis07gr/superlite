@@ -758,7 +758,13 @@ iterations, and of the formal integral):
   fully (x_HI 10⁻⁴ against 0.1–0.2 in the cells between them): in every
   iteration their root lies about 5 % above the last. SuperLite solves the
   balance of each cell with the J of the previous iteration; CMFGEN
-  linearizes T together with the populations and the radiation field. The
+  linearizes T together with the populations and the radiation field. In
+  both cells the Lyman continuum stays in local detailed balance
+  (`in_nltex_ldb`: J = S of the cell), which is 2000–3000 times that of
+  their neighbours once they are hot and ionized: such a cell keeps its
+  own Lyman-continuum field instead of exchanging it across the front,
+  so local detailed balance at sharp ionization fronts is the place to
+  look (roadmap). The
   emergent bands change by < 2 % (relative to the total), Hα, Hβ, Pβ of
   the formal integral with the Monte Carlo J by +13, +2, +8 % (91.3, 17.3,
   55.4 → 103.6, 17.7, 59.7 Å, Monte Carlo noise of J included). In A4's and
