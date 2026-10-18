@@ -210,26 +210,31 @@ end function nxd_dfrac
 !
 pure function nxd_numin(nu0,z,p) result(numin)
 !-- lowest frequency of the dissolved continuum below the edge nu0: where
-!-- 1 - w(n*) falls to 1e-4 (bisection in n*), at least 0.8 nu0 and 1e14 Hz
+!-- 1 - w(n*) falls to 1e-4, at least 0.8 nu0 and 1e14 Hz.  f = 1/1e-4 - 1
+!-- at the critical beta of the quadratic y beta^2 - f x beta - 7.782 f = 0,
+!-- K z^3/n^4 = (beta/b)^(2/3) =: q there: n = (z^3/q)^(1/4) where K = 1
+!-- (n <= 3), else n^3 (1+n)^2 = 16 z^3/(3 q) by Newton's method
   real*8,intent(in) :: nu0,z,p(3)
-  real*8 :: numin,nlo,nhi,nm
+  real*8 :: numin,y,ff,bs,q,n,c,g,dg
   integer :: it
   numin = nu0
   if(p(1) <= 0d0) return
-!-- 1 - w decreases towards small n*: bracket [2z, 1e4]
-  nlo = 2d0*z
-  nhi = 1d4
-  if(dis(nhi,z,p) <= dmin) return
-  do it=1,60
-     nm = sqrt(nlo*nhi)
-     if(dis(nm,z,p) > dmin) then
-        nhi = nm
-     else
-        nlo = nm
-     endif
-     if(nhi/nlo < 1.0001d0) exit
-  enddo
-  numin = max(nu0 - ryd*z*z/(nlo*nlo),fmin*nu0,1d14)
+  y = 1.091d0*(p(3) + 4d0*(z-1d0)*p(2))
+  ff = 1d0/dmin - 1d0
+  bs = (ff*p(3) + sqrt((ff*p(3))**2 + 4d0*y*ff*7.782d0))/(2d0*y)
+  q = (bs/p(1))**(2d0/3d0)
+  n = (z**3/q)**0.25d0
+  if(n > 3d0) then
+     c = 16d0*z**3/(3d0*q)
+     n = c**0.2d0
+     do it=1,8
+        g = n**3*(1d0+n)**2 - c
+        dg = 3d0*n**2*(1d0+n)**2 + 2d0*n**3*(1d0+n)
+        n = n - g/dg
+     enddo
+  endif
+  n = max(n,2d0*z)
+  numin = max(nu0 - ryd*z*z/(n*n),fmin*nu0,1d14)
 end function nxd_numin
 !
 !

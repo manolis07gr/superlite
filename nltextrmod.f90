@@ -2525,12 +2525,13 @@ subroutine nxt_write(ncell,rcell,vcell,tempinv,radtemp,vol)
      if(g>0) jd(5) = max(nxt_jg(g,ic) - nxt_jlosum(g,ic)/(4d0*pi*vol(ic)*nxt_dnug(g)),0d0)/bp
      jes = 0d0
      if(nxt_have_mc) jes = nxt_bes(kha,ic)*nx_jes(kha,t,nxt_ng,nxt_nug,nxt_dnug,nxt_jg(:,ic))/bp
+     if(jes < 1d-99) jes = 0d0
      write(4,'(1p,29e12.4)') rcell(ic),vcell(ic),t,radtemp(ic),nxt_nel(iel,ic),nxt_ne(ic), &
           nxt_x(o+nxa_el(iel)%ns,ic),nxt_x(o+1,ic),nxt_x(o+2,ic),nxt_x(o+3,ic),b(1),b(2),b(3), &
           nxt_kq(kla,ic)/qv,nxt_kq(kha,ic)/qv,nxt_kq(khb,ic)/qv,nxt_beta(kha,ic), &
           nxt_jb(kha,ic)/bp,merge(1d0,0d0,nxt_jbcnt(kha,ic)>=nxt_njbmin), &
           merge(nxt_bes(kha,ic),0d0,nxt_bes(kha,ic)>1d-99),jd,nxt_haem(ic),nxt_haab(ic),jes, &
-          merge(nxt_efsum(kha,ic)/bp,0d0,nxt_esrates)
+          merge(nxt_efsum(kha,ic)/bp,0d0,nxt_esrates .and. nxt_efsum(kha,ic)/bp > 1d-99)
   enddo
   close(4)
 contains
