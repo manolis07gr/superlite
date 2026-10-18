@@ -331,7 +331,9 @@ profiles of the metal lines in the slow CSM (58 of 82 cells,
 `in_nltex_dopmc` 2 with `in_nltex_dopes`; `s11_A4h`, six iterations from
 `s10_A4`) barely move the optical spectrum (EW5(Hα) 163–187 Å, 158 Å in the formal
 integral with 12 scattering passes, `fi_A4h_q12`, within 3 % of the Monte
-Carlo spectrum; Hβ
+Carlo spectrum; with level dissolution, four more iterations on the
+corrected code of §2, `s12_A4`: 180 Å in the Monte Carlo, 160 Å in the
+12 passes; Hβ
 against the red sideband 48–54 Å, R5 2.7–2.8; He II 4686 a little
 stronger and bluer), but the populations of the CSM still change by
 22–29 % per iteration after six: for A4 the Sobolev lines stay the
