@@ -1,7 +1,7 @@
 !This file is part of SuperLite. SuperLite is released under the terms of the GNU GPLv3, see COPYING.
 !Copyright (c) 2023 Gururaj A. Wagle.  All rights reserved.
 pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
-  eraddens,eamp,jrad,totevelo,ierr,jbk,jbval,stl,stk)
+  eraddens,eamp,jrad,totevelo,ierr,jbk,jbval,stl,stk,swl)
 
   use randommod
   use miscmod
@@ -31,6 +31,7 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
   real*8,intent(out) :: jbval     !its contribution e*c/(nu*|Q|)
   real*8,intent(out) :: stl(4)    !flight in a slow cell (nxt_dopmc): comoving wavelength, comoving energy times length (0: none), projected velocity gradient, comoving length
   integer,intent(out) :: stk      !the packet's own line on that flight (nxt_static_tally)
+  real*8,intent(out) :: swl(3)    !the flight for the window estimator of the line incident intensity (nxt_jbwin): comoving wavelength at its start and end, comoving energy times length (0: none)
 !##################################################
 !This subroutine passes particle parameters as input and modifies
 !them through one IMC transport event (Fleck&Cummings, 1971).  If
@@ -107,6 +108,7 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
   jbval = 0d0
   stl = 0d0
   stk = 0
+  swl = 0d0
   lremit = .false.
 !-- the packet sits on an NLTE line only right after a resonance event
   ilin0 = ptcl2%iline
@@ -120,6 +122,27 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
 !-- calculating initial transformation factors
   elabfact = 1d0 - mu*vx*cinv
   elabfactold = elabfact
+
+!-- (nxt_esrates: a photon just scattered out of a line core by an electron
+!-- lands in the line profiles as after a thermal electron scattering)
+  if(ptcl2%estest) then
+     ptcl2%estest = .false.
+     if(nxt_on .and. nxt_esrates) then
+        mucmf = (mu-vx*cinv)/(1d0-mu*vx*cinv)
+        qmu = mucmf**2*dvdr(ix) + (1d0-mucmf**2)*vx/x
+        call rnd_r(r1,rndstate)
+        call rnd_r(r2,rndstate)
+        call nxt_esfar(ic,wl/elabfact,qmu,vx,1d0/grd_tempinv(ic),grd_sig(ic),r1,r2,kres,ptcl2%kskip)
+        if(kres>0) then
+           ptcl2%kfa = kres
+           ptcl2%efa = e*elabfact
+           d = 0d0
+           call nx_lineabs(kres,ic,ix,elabfact,dvdr(ix),x,vx,wl,ig,e,e0,mu,totevelo, &
+                ptcl,ptcl2,rndstate)
+           return
+        endif
+     endif
+  endif
 
 !-- distance longer than logest possible photon path
   far = 2d0*abs(sqrt(grd_xarr(ix+1)**2-grd_xarr(ix)**2))
@@ -350,6 +373,12 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
 !
 !-- updating transformation factors
   elabfact = 1d0 - mu*vx*cinv
+!-- the flight for the window estimator of the line incident intensity
+  if(nxt_on .and. nxt_jbwin>0d0) then
+     swl(1) = wlc0
+     swl(2) = wl/elabfact
+     swl(3) = jrad
+  endif
 
 !
 !-- instantiate new particle at inner boundary
@@ -451,6 +480,27 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
 !-- energy weight
      e = e*help
      e0 = e0*help
+!-- (nxt_esrates: scattered into the profile of a line, where the point
+!-- resonance would absorb it only if it drifted through the centre before
+!-- the next scattering: absorbed in the profile, as the electron scattering
+!-- of the rates brings photons into the cores; the lines ahead whose whole
+!-- profile was tested are then passed without absorption, ptcl2%kskip)
+     ptcl2%kskip = 0
+     if(nuratio/=1d0 .and. nxt_on .and. nxt_esrates) then
+        mucmf = (mu-vx*cinv)/(1d0-mu*vx*cinv)
+        qmu = mucmf**2*dvdr(ix) + (1d0-mucmf**2)*vx/x
+        call rnd_r(r1,rndstate)
+        call rnd_r(r2,rndstate)
+        call nxt_esfar(ic,wl/(1d0-mu*vx*cinv),qmu,vx,1d0/grd_tempinv(ic),grd_sig(ic),r1,r2,kres, &
+             ptcl2%kskip)
+        if(kres>0) then
+           ptcl2%kfa = kres
+           ptcl2%efa = e*(1d0-mu*vx*cinv)
+           call nx_lineabs(kres,ic,ix,1d0-mu*vx*cinv,dvdr(ix),x,vx,wl,ig,e,e0,mu,totevelo, &
+                ptcl,ptcl2,rndstate)
+           return
+        endif
+     endif
      if(nuratio/=1d0) then
 !-- (a line photon scattered to the blue of its line will cross it again)
         if(ptcl%ilem>0) then
@@ -696,9 +746,19 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
 !-- resonance estimator of the incident intensity
      jbk = kres
      jbval = e*elabfact*pc_c/(nxa_lnu(kres)*qmu)
+!-- (nxt_esrates: the line's profile was tested for the whole path at the
+!-- packet's last electron scattering, nxt_esfar)
+     if(any(ptcl2%kskip==kres)) then
+        where(ptcl2%kskip==kres) ptcl2%kskip = 0
+        jbk = 0
+        jbval = 0d0
+        tau = 0d0
+     endif
      call rnd_r(r1,rndstate)
      if(tau>0d0 .and. r1<1d0-exp(-tau)) then
 !-- absorbed: macro-atom in the upper level
+        ptcl2%kab = kres
+        ptcl2%eab = e*elabfact
         if(nxt_tau0>0d0) then
 !-- benchmark: pure scattering in the same line
            kind = em_line

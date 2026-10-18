@@ -49,6 +49,7 @@ module nltextrmod
 !-----------------------------------------------------------------------
   use nlteatommod
   use nltexmod
+  use nltedismod
   use nltehmod, only:bplanck,nlteh_twophoton_y,nlteh_svs
   use randommod
   implicit none
@@ -78,6 +79,20 @@ module nltextrmod
   logical,allocatable,public :: nxt_ljb(:,:)  !(nlin,ncell) jb set (MC; nxt_tally_finish)
   real*8,allocatable,public :: nxt_jbsum(:,:) !(nlin,ncell) tally: sum e c/(nu |Q|)
   real*8,allocatable,public :: nxt_jbcnt(:,:) !(nlin,ncell) tally: crossings
+!-- incident intensity of the Sobolev lines from the flights in a window next
+!-- to each line (nxt_window_tally; 0: off): its width [cm/s], the tallies
+!-- (sum of the contributions and of their squares), and the widths to the
+!-- blue and red of each active line (up to the next active line)
+  real*8,public :: nxt_jbwin = 0d0
+  real*8,allocatable,public :: nxt_jwsum(:,:),nxt_jwsq(:,:) !(nlin,ncell)
+  real*8,allocatable :: nxt_wwb(:),nxt_wwr(:) !(nlin) by active index
+!-- (diagnostics, output.nlteh: Halpha emitted by the macro-atom and absorbed
+!-- at its resonances in each cell on the last Monte Carlo step [erg/s])
+  real*8,allocatable,public :: nxt_haem(:),nxt_haab(:) !(ncell)
+!-- (largest Sobolev depth of each active line over the cells; the windows end
+!-- at the next line with at least nxt_tauwin: the weaker ones absorb little)
+  real*8,allocatable :: nxt_tmact(:)          !(nlin) by active index
+  real*8,parameter :: nxt_tauwin = 0.1d0
 !-- radiation of the optically thick groups (nxt_ldb): tallies of the packets
 !-- on IMC steps outside the cell of their last thermal or bound-free
 !-- emission (radiation from elsewhere), and of the DDMC packets in the
@@ -189,6 +204,12 @@ module nltextrmod
   integer :: nxt_bsz = 0                     !groups per block
   integer :: nxt_nwm = 0                     !64-bit words of a level mask
   real*4,allocatable :: nxt_smaxb(:,:)      !(nlv,nbb) largest sigma of the level in the block
+!-- level dissolution (nltedismod): per cell its parameters, and per level
+!-- the lowest frequency of its dissolved continuum and the share of its
+!-- radiative recombination that goes into it (nxt_tables)
+  real*8,allocatable :: nxt_disp(:,:)       !(3,ncell)
+  real*8,allocatable :: nxt_dnuc(:,:)       !(nlv,ncell)
+  real*4,allocatable :: nxt_fdis(:,:)       !(nlv,ncell)
   integer,allocatable :: nxt_bfl(:,:,:)     !(bfk,nbb,ncell) the levels
   integer,allocatable :: nxt_bfn(:,:)       !(nbb,ncell) their number
   integer*8,allocatable :: nxt_bfm(:,:,:)   !(nwm,nbb,ncell) mask of the listed levels
@@ -217,6 +238,13 @@ module nltextrmod
 !-- scattering)
   logical,public :: nxt_esrates = .false.
   logical,public :: nxt_esdamp = .true.   !Lorentz-wing escape factor (nx_wq)
+!-- (with nxt_esrates, the photons that electrons scatter into the core of a
+!-- Sobolev line on the side they drift away to are absorbed in the
+!-- transport, nxt_esfar; the rates take that absorption from its tally,
+!-- the comoving energy E per line and cell, which nxt_tally_finish turns
+!-- into the beta-weighted incident intensity E c/(4 pi V nu K) with the K
+!-- of the transport: in the rates it absorbs E K/K_transport)
+  real*8,allocatable,public :: nxt_efsum(:,:) !(nlin,ncell)
 !-- Doppler-profile lines in the Monte Carlo transport of slow cells
 !-- (in_nltex_dopmc > 0): where the velocity changes across a cell by less
 !-- than nxt_dopmc Doppler widths, a Sobolev resonance would lie further
@@ -264,7 +292,7 @@ module nltextrmod
   public :: nxt_shares,nxt_dealloc,nxt_emcode,nxt_emloc
   public :: nxt_write_state,nxt_read_prev,nxt_read_init,nxt_release,nxt_activate_rel
   public :: nxt_ali_cell,nxt_ali_off,nxt_ldb,nxt_lsldb,nxt_vtb,nxt_vturbv
-  public :: nxt_static_line,nxt_static_tally,nxt_sobolev_neighbors,nxt_act_lookup
+  public :: nxt_static_line,nxt_static_tally,nxt_sobolev_neighbors,nxt_act_lookup,nxt_window_tally,nxt_esfar
   public :: nxt_useb,nxt_es_cell
 !
 contains
@@ -307,13 +335,18 @@ subroutine nxt_init(ncell,gncell,ng,wlg,nfile,files,hnlev)
   allocate(nxt_kq(nxa_nlin,ncell),nxt_beta(nxa_nlin,ncell),nxt_bes(nxa_nlin,ncell))
   allocate(nxt_jg(ng,ncell),nxt_jb(nxa_nlin,ncell),nxt_ljb(nxa_nlin,ncell))
   allocate(nxt_jbsum(nxa_nlin,ncell),nxt_jbcnt(nxa_nlin,ncell))
+  allocate(nxt_jwsum(nxa_nlin,ncell),nxt_jwsq(nxa_nlin,ncell),nxt_haem(ncell),nxt_haab(ncell))
+  nxt_haem = 0d0; nxt_haab = 0d0
+  allocate(nxt_efsum(nxa_nlin,ncell))
+  nxt_efsum = 0d0
   allocate(nxt_jxsum(ng,ncell),nxt_jlsum(ncell),nxt_jlosum(ng,ncell))
-  nxt_jxsum = 0d0; nxt_jlsum = 0d0; nxt_jlosum = 0d0
+  nxt_jxsum = 0d0; nxt_jlsum = 0d0; nxt_jlosum = 0d0; nxt_jwsum = 0d0; nxt_jwsq = 0d0
   allocate(grd_capnbf(ng,ncell),grd_emnbf(ng,ncell))
   allocate(nxt_xloc(nst,gncell),nxt_neloc(gncell),nxt_nelloc(nxa_nel,gncell),nxt_neothloc(gncell))
   allocate(gas_capnbf(ng,gncell),gas_emnbf(ng,gncell))
   allocate(nxt_lgrp(nxa_nlin),nxt_isrt(nxa_nlin),nxt_nug(ng),nxt_dnug(ng))
-  allocate(nxt_act(nxa_nlin),nxt_wlact(nxa_nlin))
+  allocate(nxt_act(nxa_nlin),nxt_wlact(nxa_nlin),nxt_tmact(nxa_nlin))
+  nxt_tmact = 1d99
   nxt_x = 0d0; nxt_nel = 0d0; nxt_ne = 0d0; nxt_kq = 0d0; nxt_beta = 1d0; nxt_bes = 0d0
   nxt_jg = 0d0; nxt_jb = 0d0; nxt_ljb = .false.; nxt_jbsum = 0d0; nxt_jbcnt = 0d0
   grd_capnbf = 0.; gas_capnbf = 0.; grd_emnbf = 0.; gas_emnbf = 0.
@@ -511,8 +544,8 @@ subroutine nxt_dealloc
 !-- free the cell arrays and tables (set up again by nxt_init)
   if(allocated(nxt_x)) deallocate(nxt_x,nxt_nel,nxt_ne,nxt_kq,nxt_beta,nxt_bes,nxt_jg,nxt_jb,nxt_ljb, &
        nxt_jbsum,nxt_jbcnt,nxt_jxsum,nxt_jlsum,nxt_jlosum,grd_capnbf,nxt_xloc,nxt_neloc,nxt_nelloc,nxt_neothloc,gas_capnbf, &
-       grd_emnbf,gas_emnbf, &
-       nxt_lgrp,nxt_isrt,nxt_nug,nxt_dnug,nxt_act,nxt_wlact,nxt_w)
+       grd_emnbf,gas_emnbf,nxt_jwsum,nxt_jwsq,nxt_haem,nxt_haab,nxt_efsum, &
+       nxt_lgrp,nxt_isrt,nxt_nug,nxt_dnug,nxt_act,nxt_wlact,nxt_w,nxt_tmact)
   if(allocated(nxt_lch)) deallocate(nxt_lch,nxt_bch,nxt_2pch)
   if(allocated(nxt_inl)) deallocate(nxt_inl)
   nxt_nin = 0
@@ -527,6 +560,7 @@ subroutine nxt_dealloc
   if(allocated(nxt_bfl)) deallocate(nxt_bfl,nxt_bfn,nxt_bfm,nxt_bfr,nxt_bfs,nxt_smaxb)
   if(allocated(nxt_wcnt)) deallocate(nxt_wcnt)
   if(allocated(nxt_lstat)) deallocate(nxt_lstat,nxt_sjlo,nxt_sjhi)
+  if(allocated(nxt_wwb)) deallocate(nxt_wwb,nxt_wwr)
   if(allocated(nxt_erel)) deallocate(nxt_erel,nxt_prel,nxt_rcum)
   if(allocated(nxt_xinit)) deallocate(nxt_xinit,nxt_tinit,nxt_neinit)
   nxt_warm = .false.
@@ -631,8 +665,8 @@ subroutine nxt_gas_solve(it,gncell,temp,trad,nelv,neoth,qb,qv,icell1,edep,kap,fc
   real*8,intent(in),optional :: fcl(gncell),dr(gncell),vel(gncell)
   integer :: i,l,ig,ierr,nfail,k,nc,nnan
   real*8 :: x(nxa_nst),xold(nxa_nst),ne,beta(nxa_nlin),jg(nxt_ng),jb(nxa_nlin)
-  real*8 :: nti(nxa_nst),ntx(nxa_nst),ntot,dxc(gncell),w
-  logical :: ljb(nxa_nlin)
+  real*8 :: nti(nxa_nst),ntx(nxa_nst),ntot,dxc(gncell),w,efc(nxa_nlin)
+  logical :: ljb(nxa_nlin),lfar
 !
   nfail = 0
   nnan = 0
@@ -658,6 +692,7 @@ subroutine nxt_gas_solve(it,gncell,temp,trad,nelv,neoth,qb,qv,icell1,edep,kap,fc
         enddo
         jb = 0d0
         ljb = .false.
+        nx_dis = 0d0
         call nx_lte(temp(i),max(neoth(i),1d-3*ntot),x)
      else
         jg = nxt_jg(:,l)
@@ -665,21 +700,46 @@ subroutine nxt_gas_solve(it,gncell,temp,trad,nelv,neoth,qb,qv,icell1,edep,kap,fc
         ljb = nxt_ljb(:,l)
         x = nxt_xloc(:,i)
      endif
+!-- (nxt_esrates: the absorption in the cores of the Sobolev lines from the
+!-- transport, nxt_esfar; the static lines of a slow cell keep bes J_es)
+     lfar = nxt_esrates .and. nxt_have_mc .and. it>1
+     if(lfar) then
+        efc = nxt_efsum(:,l)
+        if(nxt_dopmc>0d0 .and. nxt_anystat) then
+           if(nxt_slow(l)) then
+              do k=1,nxa_nlin
+                 if(nxt_lstat(k)) efc(k) = -1d0
+              enddo
+           endif
+        endif
+     endif
      xold = x
      call nxt_ntrates(nelv(:,i),x,edep(i),nti,ntx)
+!-- (level dissolution: the cell's parameters with the populations from
+!-- which the solution starts)
+     nx_dis = 0d0
+     if(nxd_on) call nxd_cellx(neoth(i)+free_el(nelv(:,i),x),nelv(:,i),x,temp(i),nx_dis)
      nx_vtb = -1d0
      if(present(vel)) call nxt_es_cell(l,vel(i))
      if(present(kap) .and. present(fcl) .and. present(dr) .and. it>1 .and. nxt_have_mc) &
           call nxt_ali_cell(nxt_ng,kap(:,i),fcl(i),dr(i),lali=nxt_alion)
-     if(nxt_dtinv>0d0) then
+     if(nxt_dtinv>0d0 .and. lfar) then
+        call nx_solve_cell(temp(i),trad(i),nelv(:,i),neoth(i),qb(i),qv(i),nxt_ng, &
+             nxt_nug,nxt_dnug,jg,jb,ljb,nti,ntx,x,ne,beta,ierr,xprev=nxt_xprev(:,l),dtinv=nxt_dtinv, &
+             efar=efc)
+     elseif(nxt_dtinv>0d0) then
         call nx_solve_cell(temp(i),trad(i),nelv(:,i),neoth(i),qb(i),qv(i),nxt_ng, &
              nxt_nug,nxt_dnug,jg,jb,ljb,nti,ntx,x,ne,beta,ierr,xprev=nxt_xprev(:,l),dtinv=nxt_dtinv)
+     elseif(lfar) then
+        call nx_solve_cell(temp(i),trad(i),nelv(:,i),neoth(i),qb(i),qv(i),nxt_ng, &
+             nxt_nug,nxt_dnug,jg,jb,ljb,nti,ntx,x,ne,beta,ierr,efar=efc)
      else
         call nx_solve_cell(temp(i),trad(i),nelv(:,i),neoth(i),qb(i),qv(i),nxt_ng, &
              nxt_nug,nxt_dnug,jg,jb,ljb,nti,ntx,x,ne,beta,ierr)
      endif
      call nxt_ali_off
      nx_vtb = -1d0
+     nx_dis = 0d0
 !-- (a solution that is not finite counts as failed; the guess is kept)
      if(any(x/=x) .or. any(abs(x)>huge(x))) then
         if(nnan<5) write(0,'(a,i6,a,es11.3,a,es11.3,a,i2,a,l2)') 'nxt_gas_solve: populations not finite in cell', &
@@ -907,6 +967,11 @@ subroutine nxt_tally_reset
   nxt_jxsum = 0d0
   nxt_jlsum = 0d0
   nxt_jlosum = 0d0
+  nxt_jwsum = 0d0
+  nxt_jwsq = 0d0
+  nxt_haem = 0d0
+  nxt_haab = 0d0
+  nxt_efsum = 0d0
 end subroutine nxt_tally_reset
 !
 !
@@ -921,7 +986,8 @@ subroutine nxt_tally_finish(ncell,vol)
 ! (CMFGEN's Sobolev option).  The whole group J, which the line's own
 ! escaping photons dominate where it is strong (Halpha in the outer wind of
 ! a IIn: a few crossings per cell; 4-5 times the continuum in a 1000 km/s
-! group), pumped the upper level.
+! group), pumped the upper level.  With nxt_jbwin, first the window
+! estimator (nxt_window_tally) where it has nxt_njbmin effective samples.
 !-----------------------------------------------------------------------
   integer,intent(in) :: ncell
   real*8,intent(in) :: vol(ncell)
@@ -929,6 +995,15 @@ subroutine nxt_tally_finish(ncell,vol)
   do i=1,ncell
      nxt_jb(:,i) = nxt_jbsum(:,i)/(4d0*pi*vol(i))
      nxt_ljb(:,i) = nxt_jbcnt(:,i) >= nxt_njbmin
+!-- (nxt_jbwin: the window estimator where it has nxt_njbmin effective samples)
+     if(nxt_jbwin>0d0) then
+        do k=1,nxa_nlin
+           if(nxt_jwsq(k,i) <= 0d0) cycle
+           if(nxt_jwsum(k,i)**2 < nxt_njbmin*nxt_jwsq(k,i)) cycle
+           nxt_jb(k,i) = nxt_jwsum(k,i)/(4d0*pi*vol(i))
+           nxt_ljb(k,i) = .true.
+        enddo
+     endif
      do k=1,nxa_nlin
         if(nxt_ljb(k,i)) cycle
         g = nxt_lgrp(k)
@@ -936,6 +1011,16 @@ subroutine nxt_tally_finish(ncell,vol)
         nxt_jb(k,i) = max(nxt_jg(g,i) - nxt_jlosum(g,i)/(4d0*pi*vol(i)*nxt_dnug(g)),0d0)
         nxt_ljb(k,i) = .true.
      enddo
+!-- (the far-side core absorption of the electron-scattered photons, nxt_esfar)
+     if(nxt_esrates) then
+        do k=1,nxa_nlin
+           if(nxt_kq(k,i) > 0d0) then
+              nxt_efsum(k,i) = nxt_efsum(k,i)*cc/(4d0*pi*vol(i)*nxa_lnu(k)*nxt_kq(k,i))
+           else
+              nxt_efsum(k,i) = 0d0
+           endif
+        enddo
+     endif
   enddo
   nxt_have_mc = .true.
 end subroutine nxt_tally_finish
@@ -954,7 +1039,7 @@ subroutine nxt_tables(ncell,tempinv,radtemp,capemitgrey,xarr,vxarr)
   real*8 :: bnd(nxa_nlv),bnb(nxa_nlv) !bound-free weights and their bounds in a block of groups
   integer :: ixb(nxa_nlv)
   real*8 :: jg(nxt_ng),jb(nxa_nlin),jl(nxa_nlin),btab(0:nx_nbt),etab(0:nx_nbt),sig,vt,bu(nxa_nlin)
-  logical :: ljb(nxa_nlin)
+  logical :: ljb(nxa_nlin),lst
   real*8 :: kw(nxt_nko)            !k-packet: non-returning flows
   type(nxrt) :: r
   real*8,allocatable :: q(:,:),nn(:,:),tot(:),emt(:),kex(:),kin(:),chw(:)
@@ -990,7 +1075,20 @@ subroutine nxt_tables(ncell,tempinv,radtemp,capemitgrey,xarr,vxarr)
         ljb = .false.
      endif
      call nx_beta_table(qb,qv,btab)
-     call nxa_weights(t,nxt_w(:,ic))
+!-- level dissolution: the cell's parameters, the dissolved shares, the
+!-- lowest frequency of each level's dissolved continuum
+     nx_dis = 0d0
+     if(nxd_on) then
+        if(.not.allocated(nxt_disp)) allocate(nxt_disp(3,ncell),nxt_dnuc(nxa_nlv,ncell),nxt_fdis(nxa_nlv,ncell))
+        call nxd_cellx(ne,nxt_nel(:,ic),nxt_x(:,ic),t,nx_dis)
+        nxt_disp(:,ic) = nx_dis
+        nxt_fdis(:,ic) = 0.
+        do lv=1,nxa_nlv
+           nxt_dnuc(lv,ic) = nxa_lvnu0(lv)
+           if(nxd_ga(lv) > 0) nxt_dnuc(lv,ic) = nxd_numin(nxa_lvnu0(lv),nxd_z(lv),nx_dis)
+        enddo
+     endif
+     call nxd_weights(t,nx_dis,nxt_w(:,ic))
      do k=1,nxa_nlin
         jl(k) = nx_jline(k,nxt_ng,nxt_nug,jg,jb(k),ljb(k))
         iel = nxa_lel(k)
@@ -1013,7 +1111,16 @@ subroutine nxt_tables(ncell,tempinv,radtemp,capemitgrey,xarr,vxarr)
         do k=1,nxa_nlin
            nxt_bes(k,ic) = nx_bes(nxt_kq(k,ic),sig*nx_vdop(nxa_lel(k),t,vt), &
                 merge(nx_wq(k,t),0d0,nxt_esdamp),nxt_beta(k,ic),qb,qv,etab)
-           if(nxt_bes(k,ic) <= 0d0 .or. .not.nxt_useb(k,ic)) cycle
+           if(.not.nxt_useb(k,ic)) cycle
+!-- (nxt_esrates: the core absorption of the transport, nxt_esfar, for the
+!-- Sobolev lines; the static lines of a slow cell keep bes J_es)
+           lst = .false.
+           if(nxt_dopmc>0d0 .and. nxt_anystat) lst = nxt_slow(ic) .and. nxt_lstat(k)
+           if(nxt_esrates .and. nxt_have_mc .and. .not.lst) then
+              jl(k) = (nxt_beta(k,ic)*jl(k) + nxt_efsum(k,ic))/(nxt_beta(k,ic) + nxt_bes(k,ic))
+              cycle
+           endif
+           if(nxt_bes(k,ic) <= 0d0) cycle
            jl(k) = (nxt_beta(k,ic)*jl(k) + nxt_bes(k,ic)*nx_jes(k,t,nxt_ng,nxt_nug,nxt_dnug,jg))/ &
                 (nxt_beta(k,ic) + nxt_bes(k,ic))
         enddo
@@ -1050,7 +1157,11 @@ subroutine nxt_tables(ncell,tempinv,radtemp,capemitgrey,xarr,vxarr)
 !-- recombination cooling per level of this element (from level 1 of the next ion)
         do k=1,nxa_el(iel)%nlv
            lv = lo + k
-           kw(1+lv) = nxt_nel(iel,ic)*nxt_x(o+nxa_lvc(lv),ic)*r%wc(k)*ne*nxa_rcool(lv,t)
+           kw(1+lv) = nxt_nel(iel,ic)*nxt_x(o+nxa_lvc(lv),ic)*r%wc(k)*ne*nxa_rcool(lv,t)*nxd_lvw(lv,nx_dis)
+!-- (the share of the recombinations into the dissolved continuum)
+           if(nxd_on) then
+              if(r%arl(k) > 0d0) nxt_fdis(lv,ic) = real(r%ard(k)/r%arl(k))
+           endif
         enddo
 !-- fundamental matrix N = (I-Q)^-1
         nn = 0d0
@@ -1130,6 +1241,7 @@ subroutine nxt_tables(ncell,tempinv,radtemp,capemitgrey,xarr,vxarr)
   enddo
   if(nfail>0) write(0,*) 'nxt_tables: singular macro-atom chain in cells:',nfail
 !
+  nx_dis = 0d0
 !-- bound-free absorption: per block of groups the levels of largest bound
 !-- of their weight, their weight at each group of the block, and the bound
 !-- of all others
@@ -1148,6 +1260,16 @@ subroutine nxt_tables(ncell,tempinv,radtemp,capemitgrey,xarr,vxarr)
            j = (ig-1)/nxt_bsz + 1
            nxt_smaxb(lv,j) = max(nxt_smaxb(lv,j),nxa_sgm(nxa_sgo(lv)+ig))
         enddo
+!-- (level dissolution: the dissolved continuum below the edge, at most the
+!-- threshold cross-section)
+        if(nxd_on) then
+           if(nxd_ga(lv) > 0) then
+              do ig=nxd_ga(lv),min(nxd_gb(lv),nxt_ng)
+                 j = (ig-1)/nxt_bsz + 1
+                 nxt_smaxb(lv,j) = max(nxt_smaxb(lv,j),real(nxd_sth(lv)))
+              enddo
+           endif
+        endif
      enddo
   endif
   nxt_bfstat = 0d0
@@ -1181,8 +1303,7 @@ subroutine nxt_tables(ncell,tempinv,radtemp,capemitgrey,xarr,vxarr)
            nxt_bfs(ig,ic) = 0d0
            do m=1,k
               lv = ixb(m)
-              if(ig > nxa_g1(lv)) cycle
-              nxt_bfs(ig,ic) = nxt_bfs(ig,ic) + bnd(lv)*nxa_sgm(nxa_sgo(lv)+ig)
+              nxt_bfs(ig,ic) = nxt_bfs(ig,ic) + bnd(lv)*bfsig(lv,ig,ic)
            enddo
 !-- (share of the absorptions at the group that walk the other levels)
            if(nxt_bfr(j,ic)>0d0) then
@@ -1212,6 +1333,7 @@ subroutine nxt_tables(ncell,tempinv,radtemp,capemitgrey,xarr,vxarr)
         nxt_nact = nxt_nact + 1
         nxt_act(nxt_nact) = k
         nxt_wlact(nxt_nact) = nxa_lwl(k)
+        nxt_tmact(nxt_nact) = ww
         nxt_isrt(k) = nxt_nact
      endif
   enddo
@@ -1237,6 +1359,25 @@ subroutine nxt_act_lookup
      nxt_sjhi(j) = merge(nxt_sjhi(j+1),j,nxt_lstat(nxt_act(j)))
   enddo
   nxt_anystat = any(nxt_lstat(nxt_act(1:nxt_nact)))
+!-- windows of the incident-intensity estimator (nxt_window_tally)
+  if(.not.allocated(nxt_wwb)) allocate(nxt_wwb(nxa_nlin),nxt_wwr(nxa_nlin))
+  nxt_wwb = 0d0
+  nxt_wwr = 0d0
+  if(nxt_jbwin>0d0) then
+!-- (up to the nearest line with a Sobolev depth of nxt_tauwin somewhere)
+     e = 0d0
+     do j=1,nxt_nact
+        nxt_wwb(j) = nxt_jbwin
+        if(e>0d0) nxt_wwb(j) = min(nxt_jbwin,(1d0 - e/nxt_wlact(j))*cc)
+        if(nxt_tmact(j) >= nxt_tauwin) e = nxt_wlact(j)
+     enddo
+     e = 0d0
+     do j=nxt_nact,1,-1
+        nxt_wwr(j) = nxt_jbwin
+        if(e>0d0) nxt_wwr(j) = min(nxt_jbwin,(e/nxt_wlact(j) - 1d0)*cc)
+        if(nxt_tmact(j) >= nxt_tauwin) e = nxt_wlact(j)
+     enddo
+  endif
   if(.not.allocated(nxt_wcnt)) allocate(nxt_wcnt(0:nxt_nwt))
   nxt_wcnt = 0
   if(nxt_nact<1) return
@@ -1516,6 +1657,184 @@ pure subroutine nxt_static_tally(ic,wlc,ed,kown,q,dl,jbsum,jbcnt)
 end subroutine nxt_static_tally
 !
 !
+pure subroutine nxt_window_tally(ic,wla,wlb,ed,jwsum,jwsq)
+!-----------------------------------------------------------------------
+! Incident intensity of the Sobolev lines of cell ic (nxt_jbwin > 0): the
+! path-length estimator of J_nu in a window next to each line, on the side
+! the comoving frequency of the flight drifts in from (to the blue of the
+! line for a flight whose comoving wavelength grows from wla to wlb, to the
+! red for one whose wavelength shrinks), nxt_jbwin wide or up to the next
+! active line (nxt_wwb, nxt_wwr).  The part f of the flight (comoving energy
+! times length ed) in a window of width w adds ed f c/(nu w), and its square
+! goes to jwsq for the effective number of samples, jwsum^2/jwsq: a drift
+! across the window adds e c/(nu |Q|), as a resonance crossing, and a flight
+! that stays in it its path.  Where the flights drift a small part of the
+! window between electron scatterings (a slow, electron-scattering CSM) it
+! has many samples for each crossing, and unlike the group J without the
+! line's own photons (nxt_tally_finish) it counts the photons of the line
+! that drift back into it: those scattered by electrons to the incident
+! side, and in a decelerating or non-monotonic flow those emitted elsewhere
+! whose projected velocity gradient changes sign along their path.  The
+! line's own escaping photons drift away from it on the other side.
+! (Lines with static profiles in a slow cell: nxt_static_tally.)
+!-----------------------------------------------------------------------
+  integer,intent(in) :: ic
+  real*8,intent(in) :: wla,wlb,ed
+  real*8,intent(inout) :: jwsum(:,:),jwsq(:,:)
+  integer :: jlo,jhi,j,k
+  real*8 :: wl0,w,a,b,v
+  logical :: lst
+  if(nxt_nact <= 0 .or. wla == wlb .or. ed <= 0d0) return
+  lst = .false.
+  if(nxt_dopmc>0d0 .and. nxt_anystat) lst = nxt_slow(ic)
+  call nxt_neighbors(wla,0,0,jlo,jhi)
+  if(wlb > wla) then
+!-- the windows to the blue of the lines to the red of the flight
+     if(jhi <= 0) return
+     do j=jhi,nxt_nact
+        wl0 = nxt_wlact(j)
+        if(wl0*(1d0 - nxt_jbwin/cc) >= wlb) exit
+        w = nxt_wwb(j)
+        if(w <= 0d0) cycle
+        k = nxt_act(j)
+        if(lst) then
+           if(nxt_lstat(k)) cycle
+        endif
+        a = max(wla,wl0*(1d0 - w/cc))
+        b = min(wlb,wl0)
+        if(b <= a) cycle
+        v = ed*(b - a)/(wlb - wla)*cc/(nxa_lnu(k)*w)
+        jwsum(k,ic) = jwsum(k,ic) + v
+        jwsq(k,ic) = jwsq(k,ic) + v*v
+     enddo
+  else
+!-- the windows to the red of the lines to the blue of the flight
+     if(jlo <= 0) return
+     do j=jlo,1,-1
+        wl0 = nxt_wlact(j)
+        if(wl0*(1d0 + nxt_jbwin/cc) <= wlb) exit
+        w = nxt_wwr(j)
+        if(w <= 0d0) cycle
+        k = nxt_act(j)
+        if(lst) then
+           if(nxt_lstat(k)) cycle
+        endif
+        a = max(wlb,wl0)
+        b = min(wla,wl0*(1d0 + w/cc))
+        if(b <= a) cycle
+        v = ed*(b - a)/(wla - wlb)*cc/(nxa_lnu(k)*w)
+        jwsum(k,ic) = jwsum(k,ic) + v
+        jwsq(k,ic) = jwsq(k,ic) + v*v
+     enddo
+  endif
+end subroutine nxt_window_tally
+!
+!
+pure subroutine nxt_esfar(ic,wlc,q,vflow,temp,sig,r1,r2,kres,ksk)
+!-----------------------------------------------------------------------
+! (nxt_esrates) A photon scattered by a thermal electron to comoving
+! wavelength wlc in cell ic (Thomson opacity sig [1/cm]), with projected
+! velocity gradient q along its new direction, within the Doppler profile
+! of a line: the Sobolev point resonance would absorb it only where its
+! comoving frequency drifts through the line centre, and not at all
+! behind the line, but the profile absorbs it where it lands.  At x Doppler
+! widths from the centre, positive on the side it drifts in from, it
+! drifts through the rest of the profile while electrons scatter it again
+! (a = sig v_D/|q| per Doppler width of drift); the depth of the line
+! before its next scattering is
+!   tau = (K/|q|) Int_0^inf phi(x - u) exp(-a u) du
+!       = (K/2|q|) exp(-x^2) erfcx(a/2 - x).
+! Without the scattering (a = 0) this is the Sobolev depth K/|q| ahead of
+! the line and (K/|q|) erfc(|x|)/2 behind it, and with frequent scattering
+! (a >> 1) K phi(x)/(sig v_D): the profile against the electrons.  A slow,
+! electron-scattering flow (the deep wind, a dense CSM) scatters a photon
+! many times before it drifts a Doppler width, so it never reaches the
+! centre: there the profile absorbs the photons that electrons scatter
+! into the cores.  It is absorbed with probability 1 - exp(-sum of the
+! depths), by a line in proportion to its depth (kres; 0: not absorbed).
+! The lines ahead of the photon (x > 0; ksk, at most four) have then been
+! tested for its whole path: the transport passes their resonances without
+! absorption until the next scattering.  The rates take this absorption
+! from its tally (nxt_efsum) instead of bes J_es.  (Lines with static
+! profiles in a slow cell absorb in their profiles.)
+!-----------------------------------------------------------------------
+  integer,intent(in) :: ic
+  real*8,intent(in) :: wlc,q,vflow,temp,sig,r1,r2
+  integer,intent(out) :: kres,ksk(4)
+  real*8,parameter :: xmax = 5d0
+  integer,parameter :: mk = 16
+  integer :: jlo,jhi,j,k,n,iel,iside,nsk
+  integer :: kk(mk)
+  real*8 :: tt(mk),vt,vdm,vd,x,aq,tsum,s,dv,a
+  logical :: lst
+  kres = 0
+  ksk = 0
+  nsk = 0
+  if(nxt_nact <= 0) return
+  aq = max(abs(q),1d-30)
+  vt = nxt_vtb(vflow)
+  vdm = 0d0
+  do iel=1,nxa_nel
+     vdm = max(vdm,nx_vdop(iel,temp,vt))
+  enddo
+  lst = .false.
+  if(nxt_dopmc>0d0 .and. nxt_anystat) lst = nxt_slow(ic)
+  call nxt_neighbors(wlc,0,0,jlo,jhi)
+  n = 0
+  tsum = 0d0
+!-- the lines to the blue of the photon (iside = 1), then to the red (2)
+  do iside=1,2
+     if(iside == 1) then
+        j = jlo
+     else
+        j = jhi
+        if(j <= 0) exit
+     endif
+     do while(j >= 1 .and. j <= nxt_nact)
+        dv = (wlc/nxt_wlact(j) - 1d0)*cc
+        if(abs(dv) > xmax*vdm) exit
+        k = nxt_act(j)
+        if(iside == 1) then
+           j = j - 1
+        else
+           j = j + 1
+        endif
+        if(lst) then
+           if(nxt_lstat(k)) cycle
+        endif
+        vd = nx_vdop(nxa_lel(k),temp,vt)
+!-- offset in Doppler widths, positive on the side the photon drifts in
+!-- from (the blue side for q > 0: the photon to the red of a line is behind it)
+        x = -dv/vd
+        if(q < 0d0) x = -x
+        if(abs(x) > xmax) cycle
+        a = sig*vd/aq
+        s = 0.5d0*max(nxt_kq(k,ic),0d0)/aq*exp(-x*x)*erfc_scaled(0.5d0*a - x)
+        if(s < 1d-6) cycle
+        n = n + 1
+        kk(n) = k
+        tt(n) = s
+        tsum = tsum + s
+        if(x > 0d0 .and. nsk < 4) then
+           nsk = nsk + 1
+           ksk(nsk) = k
+        endif
+        if(n == mk) exit
+     enddo
+     if(n == mk) exit
+  enddo
+  if(n == 0) return
+  if(r1 >= 1d0 - exp(-tsum)) return
+  s = r2*tsum
+  do j=1,n
+     s = s - tt(j)
+     if(s <= 0d0) exit
+  enddo
+  kres = kk(min(j,n))
+  ksk = 0
+end subroutine nxt_esfar
+!
+!
 pure subroutine nxt_sobolev_neighbors(jlo,jhi)
 !-- in a slow cell: from the neighbors jlo, jhi of nxt_neighbors, the
 !-- nearest lines that keep their Sobolev resonances there (0: none)
@@ -1625,18 +1944,39 @@ pure subroutine pick(cum,r,i)
 end subroutine pick
 !
 !
-pure subroutine nxt_bffreq(lv,t,state,nu)
+pure subroutine nxt_bffreq(lv,t,state,nu,ic)
 !-----------------------------------------------------------------------
 ! Frequency of a recombination photon to global level lv at temperature t:
 ! energy spectrum j_nu ~ sigma(nu) nu^3 e^{-h nu/kT}, by rejection from
 ! nu = nu0 + y kT/h, y ~ e^{-y}, with the running maximum of sigma u^3.
+! With the cell ic (a recombination of the macro-atom; level dissolution):
+! into the dissolved continuum below the edge with its share nxt_fdis.
 !-----------------------------------------------------------------------
   integer,intent(in) :: lv
   real*8,intent(in) :: t
   type(rnd_t),intent(inout) :: state
   real*8,intent(out) :: nu
-  real*8 :: r,y,u,f,fmax,nu0
+  integer,intent(in),optional :: ic
+  real*8 :: r,y,u,f,fmax,nu0,r2
   integer :: i,k,it,j0,j1,jc,a,b,m,ic0
+  logical :: ok
+  if(present(ic) .and. nxd_on) then
+     if(allocated(nxt_fdis)) then
+        if(nxt_fdis(lv,ic) > 0.) then
+           call rnd_r(r,state)
+           if(r < nxt_fdis(lv,ic)) then
+              do it=1,1000
+                 call rnd_r(r,state)
+                 call rnd_r(r2,state)
+                 call nxd_sample(lv,nxt_disp(:,ic),t,nxt_dnuc(lv,ic),r,r2,nu,ok)
+                 if(ok) return
+              enddo
+              nu = nxa_lvnu0(lv)
+              return
+           endif
+        endif
+     endif
+  endif
   i = nxa_lvion(lv)
   k = lv - nxa_ion(i)%lvoff
   nu0 = nxa_lvnu0(lv)
@@ -1698,7 +2038,7 @@ pure subroutine emit_state(ic,gs,state,kind,idx,wlc)
   case(em_line)
      wlc = nxa_lwl(idx)
   case(em_bf)
-     call nxt_bffreq(idx,1d0/grd_tempinv(ic),state,nu)
+     call nxt_bffreq(idx,1d0/grd_tempinv(ic),state,nu,ic)
      wlc = cc/nu
   case default
      call rnd_r(r,state)
@@ -1848,6 +2188,22 @@ pure function nxt_ntdep(ng,nug,dnug,jg,cap) result(edep)
 end function nxt_ntdep
 !
 !
+pure function bfsig(lv,ig,ic) result(s)
+!-- bound-free cross-section of global level lv, mean over group ig in
+!-- cell ic: above its edge, and below it its dissolved continuum (level
+!-- dissolution, nltedismod)
+  integer,intent(in) :: lv,ig,ic
+  real*8 :: s,dm,dh,dhs,dsp
+  s = 0d0
+  if(ig <= nxa_g1(lv)) s = nxa_sgm(nxa_sgo(lv)+ig)
+  if(.not.nxd_on) return
+  if(nxd_ga(lv) <= 0 .or. ig < nxd_ga(lv) .or. ig > nxd_gb(lv)) return
+  if(.not.allocated(nxt_disp)) return
+  call nxd_gint(lv,ig,nxt_disp(:,ic),1d4,nxt_dnuc(lv,ic),dm,dh,dhs,dsp)
+  s = s + dm
+end function bfsig
+!
+!
 pure subroutine nxt_bfabs(ic,ig,nu,state,kind,idx,wlc)
 !-----------------------------------------------------------------------
 ! NLTE bound-free absorption of a packet of comoving frequency nu (group
@@ -1927,13 +2283,13 @@ pure subroutine nxt_bfpick(ic,ig,state,lsel)
   endif
 contains
   pure real*8 function wgt(lv_)
-!-- n_l <sigma_l>_g of level lv_ (0 below its edge)
+!-- n_l <sigma_l>_g of level lv_ (0 below its edge but for its dissolved
+!-- continuum, bfsig)
     integer,intent(in) :: lv_
     integer :: iel_
     wgt = 0d0
-    if(ig > nxa_g1(lv_)) return
     iel_ = nxa_lvel(lv_)
-    wgt = nxt_nel(iel_,ic)*nxt_x(nxa_el(iel_)%xoff+nxa_lvs(lv_),ic)*nxt_w(lv_,ic)*nxa_sgm(nxa_sgo(lv_)+ig)
+    wgt = nxt_nel(iel_,ic)*nxt_x(nxa_el(iel_)%xoff+nxa_lvs(lv_),ic)*nxt_w(lv_,ic)*bfsig(lv_,ig,ic)
   end function wgt
   pure integer function from_list(rr)
 !-- listed level where the cumulative weight passes rr (< s)
@@ -2073,17 +2429,23 @@ pure subroutine sort_desc(a,ix)
 end subroutine sort_desc
 !
 !
-subroutine nxt_write(ncell,rcell,vcell,tempinv,radtemp)
+subroutine nxt_write(ncell,rcell,vcell,tempinv,radtemp,vol)
 !-----------------------------------------------------------------------
 ! Per-cell NLTE diagnostics: output.nltex (ion fractions of each element,
 ! departure coefficients of the first levels of each ion, line depths of
 ! selected lines) and, for hydrogen, output.nlteh in the format of the
-! H-only treatment.
+! H-only treatment, with the estimators of the Halpha incident intensity
+! of the last Monte Carlo step (nxt_tally_finish: resonance crossings and
+! their number, the window estimate and its effective number of samples,
+! the group J without the line's own photons), its emission by the
+! macro-atom and absorption at the resonances in the Monte Carlo [erg/s],
+! and the absorption of the electron-scattered photons in its core:
+! bes J_es and (nxt_esrates) the far-side tally, both beta-weighted.
 !-----------------------------------------------------------------------
   integer,intent(in) :: ncell
-  real*8,intent(in) :: rcell(ncell),vcell(ncell),tempinv(ncell),radtemp(ncell)
-  integer :: ic,iel,j,i,o,k,kla,kha,khb,ih
-  real*8 :: t,xl(nxa_nst),qv,b(3),fr(nxa_maxion+1),b8(8),trw(2)
+  real*8,intent(in) :: rcell(ncell),vcell(ncell),tempinv(ncell),radtemp(ncell),vol(ncell)
+  integer :: ic,iel,j,i,o,k,kla,kha,khb,ih,g
+  real*8 :: t,xl(nxa_nst),qv,b(3),fr(nxa_maxion+1),b8(8),trw(2),bp,jd(5),jes
   character(16) :: hd(nxa_maxion+1)
   open(4,file='output.nltex',status='replace')
   write(4,'(a)') '# NLTE elements per cell: ion fractions (last = top ion), electron density'
@@ -2141,8 +2503,10 @@ subroutine nxt_write(ncell,rcell,vcell,tempinv,radtemp)
   open(4,file='output.nlteh',status='replace')
   write(4,'(a)') '# NLTE hydrogen per cell: b_n = departure coefficients relative to the'// &
        ' actual ion density (b = 1: LTE); tau = K/(v/r) (homologous equivalent)'
-  write(4,'(a1,a11,20a12)') '#','r[cm]','v[cm/s]','T[K]','Trad[K]','nH','ne','x_HII','x_1','x_2','x_3', &
-       'b_1','b_2','b_3','tau_Lya','tau_Ha','tau_Hb','beta_Ha','Jb_Ha/B','ljb_Ha','bes_Ha'
+  write(4,'(a1,a11,29a12)') '#','r[cm]','v[cm/s]','T[K]','Trad[K]','nH','ne','x_HII','x_1','x_2','x_3', &
+       'b_1','b_2','b_3','tau_Lya','tau_Ha','tau_Hb','beta_Ha','Jb_Ha/B','ljb_Ha','bes_Ha', &
+       'nres_Ha','Jres_Ha/B','nwin_Ha','Jwin_Ha/B','Jgrp_Ha/B','LHa_emMC','LHa_abMC','besJes/B','Jfar_Ha/B'
+  g = nxt_lgrp(kha)
   do ic=1,ncell
      t = 1d0/tempinv(ic)
      call nx_lte(t,nxt_ne(ic),xl)
@@ -2151,11 +2515,22 @@ subroutine nxt_write(ncell,rcell,vcell,tempinv,radtemp)
              (xl(o+k)/max(xl(o+nxa_el(iel)%ns),1d-300))
      enddo
      qv = max(vcell(ic)/rcell(ic),1d-30)
-     write(4,'(1p,20e12.4)') rcell(ic),vcell(ic),t,radtemp(ic),nxt_nel(iel,ic),nxt_ne(ic), &
+     bp = max(bplanck(nxa_lnu(kha),t),1d-300)
+     jd(1) = nxt_jbcnt(kha,ic)
+     jd(2) = nxt_jbsum(kha,ic)/(4d0*pi*vol(ic)*bp)
+     jd(3) = 0d0
+     if(nxt_jwsq(kha,ic)>0d0) jd(3) = nxt_jwsum(kha,ic)**2/nxt_jwsq(kha,ic)
+     jd(4) = nxt_jwsum(kha,ic)/(4d0*pi*vol(ic)*bp)
+     jd(5) = 0d0
+     if(g>0) jd(5) = max(nxt_jg(g,ic) - nxt_jlosum(g,ic)/(4d0*pi*vol(ic)*nxt_dnug(g)),0d0)/bp
+     jes = 0d0
+     if(nxt_have_mc) jes = nxt_bes(kha,ic)*nx_jes(kha,t,nxt_ng,nxt_nug,nxt_dnug,nxt_jg(:,ic))/bp
+     write(4,'(1p,29e12.4)') rcell(ic),vcell(ic),t,radtemp(ic),nxt_nel(iel,ic),nxt_ne(ic), &
           nxt_x(o+nxa_el(iel)%ns,ic),nxt_x(o+1,ic),nxt_x(o+2,ic),nxt_x(o+3,ic),b(1),b(2),b(3), &
           nxt_kq(kla,ic)/qv,nxt_kq(kha,ic)/qv,nxt_kq(khb,ic)/qv,nxt_beta(kha,ic), &
-          nxt_jb(kha,ic)/max(bplanck(nxa_lnu(kha),t),1d-300),merge(1d0,0d0,nxt_jbcnt(kha,ic)>=nxt_njbmin), &
-          merge(nxt_bes(kha,ic),0d0,nxt_bes(kha,ic)>1d-99)
+          nxt_jb(kha,ic)/bp,merge(1d0,0d0,nxt_jbcnt(kha,ic)>=nxt_njbmin), &
+          merge(nxt_bes(kha,ic),0d0,nxt_bes(kha,ic)>1d-99),jd,nxt_haem(ic),nxt_haab(ic),jes, &
+          merge(nxt_efsum(kha,ic)/bp,0d0,nxt_esrates)
   enddo
   close(4)
 contains

@@ -22,7 +22,7 @@ build() {   # build <test> <sources...>
 build test_doppler   "$src/TRANSPORT1/dopplermod.f90"
 build test_compton   "$src/randommod.f" "$src/TRANSPORT1/comptonmod.f90"
 NLTEX="$src/elemdatamod.f $src/physconstmod.f $src/miscmod.f $src/groupmod.f $src/gridmod.f $src/randommod.f \
-       $src/nltehmod.f90 $src/nlteatommod.f90 $src/nltexmod.f90 $src/nltextrmod.f90"
+       $src/nltehmod.f90 $src/nlteatommod.f90 $src/nltedismod.f90 $src/nltexmod.f90 $src/nltextrmod.f90"
 build test_nlteh     "$src/nltehmod.f90"
 build test_nltex     $NLTEX
 build test_bbsob     "$src/physconstmod.f" "$src/bbsobmod.f90"

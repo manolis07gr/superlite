@@ -23,7 +23,7 @@ module nxemitmod
   implicit none
   private
   real*8,parameter :: cinv = 1d0/pc_c
-  public :: nx_emitwl,nx_place,nx_reemit,line_mu,nx_linees,nx_ilem
+  public :: nx_emitwl,nx_place,nx_reemit,line_mu,nx_linees,nx_ilem,nx_lineabs
 !
 contains
 !
@@ -75,6 +75,9 @@ contains
     real*8,intent(inout) :: wl,e,e0,totevelo
     type(packet2),intent(inout) :: ptcl2
     real*8 :: qn,dvdrl
+!-- (a new frequency: no line profile tested yet, nxt_esfar)
+    ptcl2%kskip = 0
+    ptcl2%estest = .false.
     if(lout) then
        wl = wlc*(1d0-vx*mu*cinv)
        ptcl2%stat = 'flux'
@@ -99,6 +102,9 @@ contains
        e0 = e0*(1d0-vx*mu*cinv)
        wl = wlc
     endif
+!-- (nxt_esrates: a photon scattered out of a line core by an electron is
+!-- tested against the line profiles on its next transport step)
+    ptcl2%estest = kind==em_lines .and. ptcl2%itype==1 .and. nxt_esrates
   end subroutine nx_place
 !
 !
@@ -118,6 +124,12 @@ contains
     real*8 :: wlc
     logical :: lout
     call nx_emitwl(kind,idx,wlcmf,ic,rndstate,wlc,ig,lout)
+!-- (diagnostics: the line emitted)
+    if(kind==em_line .or. kind==em_lines) then
+       ptcl2%kem = idx
+       ptcl2%cem = ic
+       ptcl2%eem = e
+    endif
     call nx_place(kind,idx,wlc,ig,lout,wl,e,e0,mu,vx,x,ix,ic,ptcl2,totevelo)
   end subroutine nx_reemit
 !
@@ -152,6 +164,45 @@ contains
     wlcmf = wlcmf/ratio
     kind = em_lines
   end subroutine nx_linees
+!
+!
+  pure subroutine nx_lineabs(kres,ic,ix,fac,qb,x,vx,wl,ig,e,e0,mu,totevelo,ptcl,ptcl2,rndstate)
+!-----------------------------------------------------------------------
+! A photon absorbed in line kres of cell ic (at x, flow velocity vx, dv/dr
+! = qb; fac: comoving over lab energy of the packet): the macro-atom in the
+! upper level and the re-emission, a line photon along the directions of
+! its Sobolev escape (or scattered by an electron in the resonance zone),
+! continuum isotropically, as after a resonance absorption.
+!-----------------------------------------------------------------------
+    integer,intent(in) :: kres,ic,ix
+    real*8,intent(in) :: fac,qb,x,vx
+    real*8,intent(inout) :: wl,e,e0,mu,totevelo
+    integer,intent(inout) :: ig
+    type(packet),intent(inout) :: ptcl
+    type(packet2),intent(inout) :: ptcl2
+    type(rnd_t),intent(inout) :: rndstate
+    integer :: kind,idx
+    real*8 :: wlcmf,mucmf,r,help
+    call nxt_activate_line(ic,kres,rndstate,kind,idx,wlcmf)
+    mucmf = (mu-vx*cinv)/(1d0-mu*vx*cinv)
+    if(kind==em_line) call nx_linees(kind,idx,ic,rndstate,mucmf,wlcmf)
+    if(kind==em_line) then
+       call line_mu(nxt_kq(idx,ic),qb,vx/x,rndstate,mucmf)
+    elseif(kind/=em_lines) then
+       call rnd_r(r,rndstate)
+       mucmf = 1d0-2d0*r
+    endif
+    mu = (mucmf+vx*cinv)/(1d0+vx*mucmf*cinv)
+    help = fac/(1d0-mu*vx*cinv)
+    totevelo = totevelo+e*(1d0-help)
+    e = e*help
+    e0 = e0*help
+    call nx_reemit(kind,idx,wlcmf,ig,wl,e,e0,mu,vx,x,ix,ic,ptcl2,totevelo,rndstate)
+    ptcl%em = nxt_emcode(kind,idx)
+    ptcl%icem = 0
+    if(nxt_emloc(ptcl%em)) ptcl%icem = ic
+    ptcl%ilem = nx_ilem(kind,idx,wlcmf)
+  end subroutine nx_lineabs
 !
 !
   pure function nx_ilem(kind,idx,wlcmf) result(ilem)

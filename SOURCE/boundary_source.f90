@@ -100,6 +100,7 @@ subroutine boundary_source
     ptcl%em = 1
     ptcl%icem = 0
     ptcl%ilem = 0
+    ptcl%est = 0
     ptcl%wl = wl0
 
 !-- save particle result

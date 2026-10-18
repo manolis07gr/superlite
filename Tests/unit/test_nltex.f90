@@ -12,6 +12,7 @@ program test_nltex
   use nlteatommod
   use nltexmod
   use nltextrmod
+  use nltedismod
   use randommod
   use gridmod, only:grd_tempinv
   implicit none
@@ -115,6 +116,7 @@ program test_nltex
   call td_tests
   call ali_tests
   call ldb_tests
+  call dis_tests
   deallocate(x, xl, beta, jb, ljb, nti, ntx, nel)
 !
 !-- 2. He model atoms
@@ -391,6 +393,63 @@ contains
     if(dev1 > 1d-4 .or. dev2 > 1d-6 .or. na == 0 .or. nb == 0 .or. nb >= na) nfail = nfail + 1
     if(abs(xc(nxa_nst)/xb(nxa_nst) - 1d0) > 1d-5 .or. abs(xa(nxa_nst)/xb(nxa_nst) - 1d0) < 1d-2) nfail = nfail + 1
   end subroutine ldb_tests
+!
+  subroutine dis_tests
+!-- level dissolution (nltedismod):
+!--  a) 1 - w of hydrogen and He II levels against CMFGEN's OCCUPATION_PROB
+!--     (values computed independently from its formula, n_e = N_ion);
+!--  b) the LTE limit of hydrogen at nH = 1e15 cm^-3, T = 1e4 K in a
+!--     Planck field, where the levels above n = 10 dissolve: the
+!--     statistical equilibrium with the dissolved LTE populations, shares
+!--     and continua below the edges gives the dissolved Saha-Boltzmann
+!--     populations (detailed balance of all the dissolution terms)
+    real*8 :: p(3), dref(6), dval, dmx
+    integer :: j
+    real*8,parameter :: nn(5) = [8d0, 10d0, 15d0, 20d0, 30d0]
+    nxd_on = .true.
+    call nxd_setup(ng, wlg)
+!-- a) n_e = 1e13, 1e15 cm^-3, T = 1e4 K; the last value He II n = 20
+    dmx = 0d0
+    dref = [2.501514d-04, 1.255859d-03, 2.771890d-02, 3.422844d-01, 9.925372d-01, 9.158527d-03]
+    call nxd_cell(1d13, 1d13, 1d4, p)
+    do j = 1, 5
+       dval = 1d0 - nxd_wocc(nn(j), 1d0, p)
+       dmx = max(dmx, abs(dval/dref(j) - 1d0))
+    enddo
+    dmx = max(dmx, abs((1d0 - nxd_wocc(20d0, 2d0, p))/dref(6) - 1d0))
+    dref = [2.932838d-02, 2.030115d-01, 9.803182d-01, 9.996923d-01, 9.999992d-01, 8.764411d-01]
+    call nxd_cell(1d15, 1d15, 1d4, p)
+    do j = 1, 5
+       dval = 1d0 - nxd_wocc(nn(j), 1d0, p)
+       dmx = max(dmx, abs(dval/dref(j) - 1d0))
+    enddo
+    dmx = max(dmx, abs((1d0 - nxd_wocc(20d0, 2d0, p))/dref(6) - 1d0))
+    write(*,'(a,es10.3)') '  dissolution: max |(1-w)/(1-w)_CMFGEN - 1| =', dmx
+    if(dmx > 1d-5) nfail = nfail + 1
+!-- b) LTE limit with dissolution
+    t = 1d4; nh = 1d15
+    do k = 1, ng
+       jg(k) = bplanck(nug(k), t)
+    enddo
+    jb = [(bplanck(nxa_lnu(k), t), k=1,nxa_nlin)]; ljb = .true.
+    nti = 0d0; ntx = 0d0; nel = nh
+    nx_dis = 0d0
+    call nx_lte(t, nh, x)
+    ne = nh*x(nxa_nst)
+!-- (the cell's parameters follow the solution: three passes)
+    do j = 1, 3
+       call nxd_cellx(ne, nel, x, t, nx_dis)
+       call nx_solve_cell(t, t, nel, 0d0, 1d0/1.7d6, 1d0/1.7d6, ng, nug, dnug, jg, jb, ljb, nti, ntx, x, ne, beta, ierr)
+    enddo
+    call nxd_cellx(ne, nel, x, t, nx_dis)
+    call nx_lte(t, ne, xl)
+    dev = maxval(abs(x(1:nxa_nst)/xl(1:nxa_nst) - 1d0), mask=xl(1:nxa_nst) > 1d-30)
+    write(*,'(a,es10.3,a,es10.3,a,es10.3,a,i2)') '  dissolution LTE limit: n_e =', ne, &
+         '  1-w(n=12) =', 1d0 - nxd_lvw(12, nx_dis), '  max |x/x_LTE - 1| =', dev, '  ierr=', ierr
+    if(ierr /= 0 .or. dev > 1d-2 .or. nxd_lvw(12, nx_dis) > 0.99d0) nfail = nfail + 1
+    nx_dis = 0d0
+    nxd_on = .false.
+  end subroutine dis_tests
 !
   subroutine lyc_sk(xx, ss, kk, jj)
 !-- toy cell: source function and opacity of the ground state's Lyman
@@ -680,6 +739,46 @@ contains
     enddo
     write(*,'(a,i3)') '  all-element LTE test, elements off LTE:', nbad
     if(nbad > 0) nfail = nfail + 1
+!-- the same with level dissolution (nltedismod) at 25 000 K: the dissolved
+!-- shares within the super-levels and the states' mean w of the
+!-- collisional de-excitations keep every element at its dissolved LTE
+    nxd_on = .true.
+    call nxd_setup(ng, wlg)
+    t = 2.5d4; nh = 1d17
+    do k = 1, ng
+       jg(k) = bplanck(nug(k), t)
+    enddo
+    jb = [(bplanck(nxa_lnu(k), t), k=1,nxa_nlin)]; ljb = .true.
+    nx_dis = 0d0
+    call nx_lte(t, nh, x)
+    ne = nh
+    do j = 1, 3
+       call nxd_cellx(ne, nel, x, t, nx_dis)
+       nti = 0d0; ntx = 0d0
+       call nx_solve_cell(t, t, nel, 0d0, 1d0/1.7d6, 1d0/1.7d6, ng, nug, dnug, jg, jb, ljb, nti, ntx, x, ne, beta, ierr)
+    enddo
+    call nxd_cellx(ne, nel, x, t, nx_dis)
+    call nx_lte(t, ne, xl)
+    nbad = 0
+    dmax = 0d0
+    do iel = 1, nxa_nel
+       o = nxa_el(iel)%xoff
+       devel = 0d0
+       do s = 1, nxa_el(iel)%ns
+          if(xl(o+s) > 1d-10) devel = max(devel, abs(x(o+s)/xl(o+s) - 1d0))
+       enddo
+       dmax = max(dmax, devel)
+       if(devel > 2d-2 .or. ierr /= 0) then
+          nbad = nbad + 1
+          write(*,'(a,i3,a,i2,a,es10.3)') '    dissolution: Z=', nxa_el(iel)%z, '  ierr=', ierr, &
+               '  max |n/n_LTE - 1| =', devel
+       endif
+    enddo
+    write(*,'(a,es10.3,a,es10.3,a,i3)') '  all-element LTE test with dissolution (n_e =', ne, &
+         '): max |n/n_LTE - 1| =', dmax, ', elements off LTE:', nbad
+    if(nbad > 0) nfail = nfail + 1
+    nx_dis = 0d0
+    nxd_on = .false.
     call bf_pick_test
   end subroutine all_lte
 !
@@ -687,12 +786,14 @@ contains
 !-- bound-free absorption: the level choice (nxt_bfpick) against the
 !-- weights n_l <sigma_l>_g at a few groups, all atoms at LTE (25 000 K),
 !-- with the default lists and with lists of 4 levels (most choices then
-!-- walk the other levels); chi-square over the levels expected at least
-!-- 10 times, the others lumped
+!-- walk the other levels), and with level dissolution just below the
+!-- Lyman, Balmer and Paschen edges (the dissolved continua, bfsig);
+!-- chi-square over the levels expected at least 10 times, the others
+!-- lumped
     real*8,allocatable :: p(:)
     integer,allocatable :: cnt(:)
-    real*8 :: wls(4), chi2, e, ptot, elump, olump, tb, nhb, neb
-    integer :: k, iw, ig, lv, iel, j, ndr, nbin, kb, lsel, nbad, kbs(2)
+    real*8 :: wls(4), chi2, e, ptot, elump, olump, tb, nhb, neb, pd(3), dm, dh, dhs, dsp
+    integer :: k, iw, ig, lv, iel, j, ndr, nbin, kb, lsel, nbad, kbs(3)
     type(rnd_t) :: st
     nbad = 0
     tb = 2.5d4; nhb = 1d17
@@ -709,21 +810,34 @@ contains
     if(.not.allocated(grd_tempinv)) allocate(grd_tempinv(1))
     grd_tempinv = 1d0/tb
     allocate(p(nxa_nlv), cnt(nxa_nlv))
-    wls = [3000d-8, 900d-8, 500d-8, 200d-8]
-    kbs = [256, 4]
+    kbs = [256, 4, 256]
     if(.not.allocated(rnd_states)) call rnd_init(1, 11)
     st = rnd_states(1)
-    do kb = 1, 2
+    do kb = 1, 3
        nxt_bfk = kbs(kb)
+       wls = [3000d-8, 900d-8, 500d-8, 200d-8]
+       pd = 0d0
+       if(kb == 3) then
+          nxd_on = .true.
+          call nxd_setup(ng, wlg)
+          call nxd_cellx(neb, nel, x, tb, pd)
+          wls = [3700d-8, 915d-8, 8400d-8, 3000d-8]
+       endif
        call nxt_tables(1, [1d0/tb], [tb], [0d0], [1d15, 1.001d15], [1d15/1.7d6, 1.001d15/1.7d6])
        ndr = 200000; if(kb == 2) ndr = 50000
        do iw = 1, 4
           ig = minloc(abs(wlg(1:ng) - wls(iw)), 1)
           do lv = 1, nxa_nlv
              p(lv) = 0d0
-             if(ig > nxa_g1(lv)) cycle
              iel = nxa_lvel(lv)
-             p(lv) = nxt_nel(iel,1)*nxt_x(nxa_el(iel)%xoff+nxa_lvs(lv),1)*nxt_w(lv,1)*nxa_sgm(nxa_sgo(lv)+ig)
+             if(ig <= nxa_g1(lv)) p(lv) = nxa_sgm(nxa_sgo(lv)+ig)
+             if(kb == 3 .and. nxd_ga(lv) > 0) then
+                if(ig >= nxd_ga(lv) .and. ig <= nxd_gb(lv)) then
+                   call nxd_gint(lv, ig, pd, 1d4, nxd_numin(nxa_lvnu0(lv), nxd_z(lv), pd), dm, dh, dhs, dsp)
+                   p(lv) = p(lv) + dm
+                endif
+             endif
+             p(lv) = nxt_nel(iel,1)*nxt_x(nxa_el(iel)%xoff+nxa_lvs(lv),1)*nxt_w(lv,1)*p(lv)
           enddo
           ptot = sum(p)
           if(ptot <= 0d0) cycle
@@ -762,6 +876,7 @@ contains
        enddo
     enddo
     nxt_bfk = 256
+    nxd_on = .false.
     deallocate(p, cnt)
     if(nbad > 0) then
        write(*,'(a,i4)') '  bound-free level choice: failed checks', nbad

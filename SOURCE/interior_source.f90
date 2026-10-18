@@ -96,6 +96,7 @@ subroutine interior_source!(it)
      ipart = ipart + 1
      ivac = src_ivacant(ipart)
      ptcl => prt_particles(ivac)
+     ptcl%est = 0
 
 !-- setting particle index to not vacant
      prt_isvacant(ivac) = .false.
@@ -173,6 +174,9 @@ subroutine interior_source!(it)
         if(nxt_emloc(ptcl%em)) ptcl%icem = l
         ptcl%ilem = 0
         if(nxt_on .and. ptcl%em/=6) ptcl%ilem = nx_ilem(kind,idx,wlc)
+        if(nxt_on .and. ptcl%em/=6 .and. nxt_esrates) then
+           if(kind==em_lines) ptcl%est = 1
+        endif
         ep0 = grd_emit(l)/dble(nemit)
         ptcl%e = ep0
         ptcl%e0 = ep0

@@ -27,8 +27,9 @@ module formalmod
 !    incoherent scattering to the populations of iterations with coherent
 !    scattering), redistributed by the thermal electrons as the electron
 !    scattering of J, on a grid of the comoving frequency (30 km/s or the
-!    spacing of the spectrum).  These photons are not in the Monte Carlo J,
-!    so their next scattering is added to first order: the mean intensity
+!    spacing of the spectrum).  These photons are not in the Monte Carlo J
+!    (but with nxt_esrates, which emits them in the iterations), so their
+!    next scattering is added to first order: the mean intensity
 !    of the optically thin shells of their emission, J(r) = L/(32 pi^2 r r')
 !    ln|(r+r')/(r-r')| (no Doppler shifts between the shells), scattered
 !    with the same kernel (rescat).
@@ -56,7 +57,7 @@ subroutine fi_spectrum(ncell,xarr,vxarr,tempinv,wl1,wl2,dvkms,npc,impi,nmpi,lmpi
   use gridmod, only:grd_cap,grd_sig,grd_capemit
   use bbsobmod, only:grd_capsc
   use groupmod, only:grp_ng,grp_wl
-  use nltextrmod, only:nxt_jg,nxt_nug,nxt_dnug,grd_emnbf,nxt_estrap,nxt_vturbv
+  use nltextrmod, only:nxt_jg,nxt_nug,nxt_dnug,grd_emnbf,nxt_estrap,nxt_vturbv,nxt_esrates
   use nlteatommod, only:nxa_nel
   use nltexmod, only:nx_vdop
   use mpimod, only:allreduce_sum
@@ -158,7 +159,9 @@ subroutine fi_spectrum(ncell,xarr,vxarr,tempinv,wl1,wl2,dvkms,npc,impi,nmpi,lmpi
      nt = int((log(cc/wl1) + lext - lt0)/dlt) + 2
      allocate(etr(nt,ncell))
      call trapped_es(etr)
-     call rescat(etr)
+!-- (with nxt_esrates the iterations emit these photons, and their further
+!-- scattering is in the electron scattering of the Monte Carlo J)
+     if(.not.nxt_esrates) call rescat(etr)
 !-- (its luminosity in the table: 4 pi Int eta dnu dV)
      if(lmpi0) then
         x = 0d0

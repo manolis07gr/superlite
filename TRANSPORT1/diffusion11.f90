@@ -90,6 +90,9 @@ pure subroutine diffusion11(ptcl,ptcl2,vx,vy,vz,cache,rndstate,&
 
 !-- no error by default
   ierr = 0
+!-- (nxt_esrates: line profiles are tested on IMC steps only)
+  ptcl2%kskip = 0
+  ptcl2%estest = .false.
 !-- init
   eraddens = 0d0
   jrad = 0d0
@@ -550,6 +553,12 @@ pure subroutine diffusion11(ptcl,ptcl2,vx,vy,vz,cache,rndstate,&
 !-- (a line photon scattered by an electron in its resonance zone: new
 !-- comoving wavelength and direction)
         if(kind==em_line) call nx_linees(kind,idx,ic,rndstate,mucmf,wlcmf)
+!-- (diagnostics: the line emitted)
+        if(kind==em_line .or. kind==em_lines) then
+           ptcl2%kem = idx
+           ptcl2%cem = ic
+           ptcl2%eem = e
+        endif
         call nx_emitwl(kind,idx,wlcmf,ic,rndstate,wlc,iiig,lout)
         lddmc = .false.
         if(.not.lout) lddmc = (grd_sig(ic)+grd_cap(iiig,ic)+grd_capsc(iiig,ic))*dist >= trn_tauddmc

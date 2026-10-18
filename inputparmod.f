@@ -143,6 +143,19 @@ c-- model atom, and of the top ions, in the Sobolev expansion opacity
 c-- (lower level from the highest model level below it, Boltzmann above);
 c-- f: only the lines of the model atoms (as a CMFGEN model with them)
       logical :: in_nltex_bbext = .true.
+c-- incident intensity of the Sobolev NLTE lines in the statistical
+c-- equilibrium: path-length estimator of J_nu in a window this wide
+c-- [km/s] next to each line, on the side the comoving frequency of a
+c-- flight drifts in from (up to the next line), where it has 30 effective
+c-- samples (0: off; the resonance crossings where a line has 30, else the
+c-- J of its group without the line's own photons).  It counts the line
+c-- photons that drift back into the line: scattered by electrons to the
+c-- incident side, or in a decelerating CSM (nltextrmod, nxt_window_tally)
+      real*8 :: in_nltex_jbwin = 0d0
+c-- level dissolution by the plasma microfield (Hummer & Mihalas 1988
+c-- occupation probabilities as CMFGEN's DO_DIS, nltedismod): the LTE
+c-- populations carry w, and the bound-free continua go on below the edges
+      logical :: in_nltex_dis = .false.
 c-- accelerated lambda iteration of the NLTE bound-free transitions (local
 c-- operator of each cell and group; nltexmod)
       logical :: in_nltex_ali = .false.
@@ -300,7 +313,7 @@ c-- runtime parameter namelist
      & in_nlteh_tau0,in_nltex_atoms,in_nltex_dir,in_nltex_chgexch,
      & in_srctype,in_shock_dvmin,in_shock_tmax,in_shock_cie,
      & in_nltex_prev,in_nltex_dtprev,in_nltex_init,in_nltex_hold,
-     & in_nltex_bbext,
+     & in_nltex_bbext,in_nltex_jbwin,in_nltex_dis,
      & in_nltex_ali,
      & in_nltex_ldb,in_nltex_vturb,in_nltex_vturbmax,in_nltex_esrates,
      & in_nltex_esdamp,in_nltex_dopmc,in_nltex_dopz,in_nltex_dopes,
@@ -447,6 +460,8 @@ c
       call insertl(in_nltex_esrates,in_l,il)
       call insertl(in_nltex_hold,in_l,il)
       call insertl(in_nltex_bbext,in_l,il)
+      call insertr(in_nltex_jbwin,in_r,ir)
+      call insertl(in_nltex_dis,in_l,il)
       call insertl(in_nltex_esdamp,in_l,il)
       call insertr(in_nltex_dopmc,in_r,ir)
       call inserti(in_nltex_dopz,in_i,ii)
@@ -668,6 +683,7 @@ c
       if(in_nt_emin>0d0.and..not.in_nltex) stop 'in_nt_emin: NLTE'
       if(in_nltex_hold.and.trim(in_nltex_init)=='none')
      &  stop 'in_nltex_hold: needs in_nltex_init'
+      if(in_nltex_jbwin<0d0) stop 'in_nltex_jbwin < 0'
 c
       if(in_nlte.and.in_nlte_nelem.ne.1) stop 'in_nlte_nelem!=1'
 c

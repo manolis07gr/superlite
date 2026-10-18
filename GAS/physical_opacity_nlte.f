@@ -21,6 +21,8 @@ c$    use omp_lib
       use nltextrmod, only:nxt_xloc,nxt_nelloc,nxt_neloc,gas_capnbf,
      &  nxt_isel,nxt_elz,nxt_ionzs,nxt_etop,gas_emnbf,nxt_bbext
       use nlteatommod, only:nxa_ion,nxa_nion
+      use nltedismod, only:nxd_on,nxd_cellx,nxd_weights,nxd_lvw,
+     &  nxd_ga,nxd_gb,nxd_z,nxd_numin,nxd_gint
       use gridmod, only:grd_xarr,grd_vxarr
       use bbsobmod
       implicit none
@@ -104,6 +106,8 @@ c-- (model level at or below the lower level, or the top state), its weight,
 c-- and the excitation energy of the lower level above it [cm^-1]
       integer :: jst,k,jlv
       real*8 :: eup,boltz,gref,dchi,elv,ethr,wcl
+      real*8 :: nuc,dm,dh,dhs,dsp
+      real*8,allocatable :: pdis(:,:)
 c-- share of each NLTE level in its state (super-levels) per cell
       real*8,allocatable :: wlv(:,:)
       real*8 :: expfe(gas_ncell)
@@ -116,13 +120,17 @@ c-- temporary population arrays
 c
 c-- subgroups
       ngsub = grp_ng*grp_ngs
-c-- shares of the NLTE levels in their states at T_e
-      allocate(wlv(max(nxa_nlv,1),gas_ncell))
+c-- shares of the NLTE levels in their states at T_e (level dissolution:
+c-- with the occupation probabilities of the cell, pdis)
+      allocate(wlv(max(nxa_nlv,1),gas_ncell),pdis(3,gas_ncell))
       wlv = 1d0
+      pdis = 0d0
       if(in_nltex) then
        do i=1,gas_ncell
         if(gas_mass(i)<=0d0) cycle
-        call nxa_weights(gas_temp(i),wlv(:,i))
+        if(nxd_on) call nxd_cellx(nxt_neloc(i),nxt_nelloc(:,i),
+     &    nxt_xloc(:,i),gas_temp(i),pdis(:,i))
+        call nxd_weights(gas_temp(i),pdis(:,i),wlv(:,i))
        enddo
       endif
 c
@@ -656,7 +664,8 @@ c-- ion), times exp(-h nu0/kT) (applied with the frequency below)
          wcl = 1d0
          if(nxa_lvcl(lv)>0) wcl = wlv(nxa_lvcl(lv),i)
          xstar = nxt_xloc(o+nxa_lvc(lv),i)*wcl*nxt_neloc(i)*
-     &     nxa_lvphi(lv)*4.1412d-16*gas_temp(i)**(-1.5d0)
+     &     nxa_lvphi(lv)*4.1412d-16*gas_temp(i)**(-1.5d0)*
+     &     nxd_lvw(lv,pdis(:,i))
          do igs=1,min(nxa_g1(lv),ngsub)
           capn(igs) = capn(igs) + nl*nxt_xloc(o+nxa_lvs(lv),i)*
      &      wlv(lv,i)*nxa_sgm(nxa_sgo(lv)+igs)
@@ -671,6 +680,23 @@ c-- stimulated recombination: from the edge up to h(nu-nu0) = 40 kT
           emn(igs) = emn(igs) + nl*xstar*exp(-argx)*
      &    nxa_sgm(nxa_sgo(lv)+igs)
          enddo !igs
+c-- level dissolution: the dissolved continuum below the edge
+         if(nxd_on .and. pdis(1,i)>0d0) then
+          if(nxd_ga(lv)>0) then
+           nuc = nxd_numin(nxa_lvnu0(lv),nxd_z(lv),pdis(:,i))
+           do igs=nxd_ga(lv),min(nxd_gb(lv),ngsub)
+            if(pc_c/wlsub(igs)<=nuc) exit
+            call nxd_gint(lv,igs,pdis(:,i),gas_temp(i),nuc,dm,dh,dhs,
+     &        dsp)
+            if(dm<=0d0) cycle
+            nu = 2d0*pc_c/(wlsub(igs)+wlsub(igs+1))
+            argx = pc_h*(nu-nxa_lvnu0(lv))/(pc_kb*gas_temp(i))
+            capn(igs) = capn(igs) + nl*(nxt_xloc(o+nxa_lvs(lv),i)*
+     &        wlv(lv,i) - xstar*exp(-argx))*dm
+            emn(igs) = emn(igs) + nl*xstar*exp(-argx)*dm
+           enddo
+          endif
+         endif
         enddo !lv
         do igs=1,ngsub
          capn(igs) = max(0d0,capn(igs))

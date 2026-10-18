@@ -30,6 +30,7 @@ program superlite
   use xraysrcmod
   use formalmod, only:fi_spectrum
   use nltexmod, only:nx_esdamp
+  use nltedismod, only:nxd_on,nxd_setup
   use bbsobmod
   use tebalmod, only:te_damp,te_ntemin,te_zsolve
   use shockciemod, only:shc_read,shc_setup,shc_nel,shc_elz
@@ -216,6 +217,15 @@ program superlite
      nxt_bbext = in_nltex_bbext
      if(lmpi0 .and. .not.nxt_bbext) write(6,'(1x,a)') &
           'NLTE elements: only the lines of the model atoms (in_nltex_bbext = f)'
+!-- level dissolution (occupation probabilities, CMFGEN's DO_DIS)
+     nxd_on = in_nltex_dis
+     if(nxd_on) then
+        call nxd_setup(grp_ng,grp_wl)
+        if(lmpi0) write(6,'(1x,a)') 'NLTE levels: dissolution by the plasma microfield (in_nltex_dis)'
+     endif
+     nxt_jbwin = in_nltex_jbwin*1d5
+     if(lmpi0 .and. nxt_jbwin>0d0) write(6,'(1x,a,f7.1,a)') &
+          'NLTE lines: incident intensity from windows of',in_nltex_jbwin,' km/s on their incident side'
 !-- electron scattering of line photons trapped in their resonance zones
 !-- (the electrons' Doppler shifts: thermal Thomson scattering)
      nxt_estrap = in_nltex_vturb>=0d0 .and. in_thm_thermal
@@ -487,7 +497,7 @@ program superlite
 !-- (NLTE populations and radiation field: every iteration, to follow the
 !-- convergence)
         if(in_nltex) call nxt_write(grd_ncell,grd_rcell, &
-             0.5d0*(grd_vxarr(:grd_ncell)+grd_vxarr(2:)),grd_tempinv,grd_radtemp)
+             0.5d0*(grd_vxarr(:grd_ncell)+grd_vxarr(2:)),grd_tempinv,grd_radtemp,grd_vol)
         if(it==in_niter.and.in_nltex) call nxt_write_state(grd_ncell,grd_mass,grd_vol,grd_tempinv)
 
 !-- write stdout

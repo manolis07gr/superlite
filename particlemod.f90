@@ -20,6 +20,10 @@ module particlemod
 !-- the blue), 0 otherwise: in an expanding flow it is then not incident on
 !-- that line (nxt_tally_finish)
      integer :: ilem = 0
+!-- (nxt_esrates) 1: a photon just scattered out of a line core by an
+!-- electron (em_lines at the emission of the packet): where it lands in
+!-- the line profiles is tested on its first transport step (nxt_esfar)
+     integer :: est = 0
   end type packet
 !
 !-- secondary particle properties
@@ -33,6 +37,21 @@ module particlemod
      integer :: idist        !transport distance identifier
      integer :: iline = 0    !sorted H line the packet sits on (comoving wavelength = line), 0 if none
      integer :: ilside = 0   !+1 red side, -1 blue side of that line
+!-- (diagnostics: a line emitted by the macro-atom on this step, its cell and
+!-- energy, and a line absorbed at its resonance; nxt_lemab)
+     integer :: kem = 0, cem = 0, kab = 0
+     real*8 :: eem = 0d0, eab = 0d0
+!-- a line that absorbed the packet in its core after an electron
+!-- scattering on this step, and the comoving energy (nxt_esfar, nxt_efsum)
+     integer :: kfa = 0
+     real*8 :: efa = 0d0
+!-- (nxt_esrates) lines ahead of the packet whose profiles were tested for
+!-- its whole path at its last electron scattering: their resonances are
+!-- passed without absorption until the next scattering or emission
+!-- (nxt_esfar); estest: a photon re-emitted as em_lines, to be tested on
+!-- its next transport step
+     integer :: kskip(4) = 0
+     logical :: estest = .false.
   end type packet2
 !
   type(packet),allocatable,target :: prt_particles(:)  !(prt_npartmax)

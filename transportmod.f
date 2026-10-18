@@ -24,7 +24,8 @@ c-- explicit interfaces
 c
 c-- transport
       pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,
-     &  rndstate,eraddens,eamp,jrad,totevelo,ierr,jbk,jbval,stl,stk)
+     &  rndstate,eraddens,eamp,jrad,totevelo,ierr,jbk,jbval,stl,stk,
+     &  swl)
       use randommod
       use particlemod
       type(packet),target,intent(inout) :: ptcl
@@ -39,6 +40,7 @@ c-- transport
       real*8,intent(out) :: jbval
       real*8,intent(out) :: stl(4)
       integer,intent(out) :: stk
+      real*8,intent(out) :: swl(3)
       end subroutine transport11
 c
 c-- diffusion
@@ -70,7 +72,8 @@ c     -------------------------------------------
       end subroutine direction2lab_
 c
       pure subroutine transport_(ptcl,ptcl2,vx,vy,vz,
-     &  rndstate,eraddens,eamp,jrad,totevelo,ierr,jbk,jbval,stl,stk)
+     &  rndstate,eraddens,eamp,jrad,totevelo,ierr,jbk,jbval,stl,stk,
+     &  swl)
       use randommod
       use groupmod
       use particlemod
@@ -86,6 +89,7 @@ c
       real*8,intent(out) :: jbval
       real*8,intent(out) :: stl(4)
       integer,intent(out) :: stk
+      real*8,intent(out) :: swl(3)
       end subroutine transport_
 c
       pure subroutine diffusion_(ptcl,ptcl2,vx,vy,vz,

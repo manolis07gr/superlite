@@ -45,6 +45,7 @@ module tebalmod
 ! to te_damp while the changes keep their sign.
 !-----------------------------------------------------------------------
   use nlteatommod
+  use nltedismod
   use nltexmod, only:nx_solve_cell,nx_cx_heat,nx_jline
   use nltextrmod, only:nxt_shares,nxt_elh,nxt_elhe
   implicit none
@@ -126,12 +127,16 @@ subroutine te_terms(temp,ng,nug,dnug,jg,capabs,capem,nel,x,ne,gam_ext,terms,pa,p
   integer :: ig,lv,iel,o,i,j,k,ns,lo,s,u
   real*8 :: hkt,bg,sm,xs,fh,jh,nu,sh,sst,chi
   real*8 :: qa(nxa_nlv),qb(nxa_nlv),wg(nxa_nlv),wc
+  real*8 :: pd(3),wo,nuc,dm,dh,dhs,dsp,ph,ps,pr
   real*8,allocatable :: cq(:,:),eup(:,:),edn(:,:),cil(:),c3l(:)
 !
   hkt = hh/(kb*temp)
   terms = 0d0
   fh = te_heatshare(nel,x)
-  call nxa_weights(temp,wg)
+!-- (level dissolution: the cell's occupation probabilities, nltedismod)
+  pd = 0d0
+  if(nxd_on) call nxd_cellx(ne,nel,x,temp,pd)
+  call nxd_weights(temp,pd,wg)
 !-- LTE opacities and Compton
   do ig=1,ng
      if(hkt*nug(ig) < 700d0) then
@@ -165,7 +170,8 @@ subroutine te_terms(temp,ng,nug,dnug,jg,capabs,capem,nel,x,ne,gam_ext,terms,pa,p
 !-- the continuum: level 1 of the next ion
      wc = 1d0
      if(nxa_lvcl(lv)>0) wc = wg(nxa_lvcl(lv))
-     xs = x(o+nxa_lvc(lv))*wc*ne*nxa_lvphi(lv)*nxa_sahac*temp**(-1.5d0)
+     wo = nxd_lvw(lv,pd)
+     xs = x(o+nxa_lvc(lv))*wc*ne*nxa_lvphi(lv)*nxa_sahac*temp**(-1.5d0)*wo
 !-- Int_g sigma (1 - nu_l/nu) dnu = sgm dnu - h nu_l sgh; stimulated
 !-- recombination from the edge up to h(nu-nu0) = 40 kT
      sst = 0d0
@@ -177,10 +183,28 @@ subroutine te_terms(temp,ng,nug,dnug,jg,capabs,capem,nel,x,ne,gam_ext,terms,pa,p
         sst = sst + jh*exp(-hkt*(nu-nxa_lvnu0(lv)))* &
              (nxa_sgm(nxa_sgo(lv)+ig)*dnug(ig) - hh*nxa_lvnu0(lv)*nxa_sgh(nxa_sgo(lv)+ig))
      enddo
-     sh0 = nel(iel)*(x(o+nxa_lvs(lv))*wg(lv)*(qa(lv) + fh*qb(lv)) - xs*sst)
+!-- (level dissolution: the dissolved continuum below the edge takes
+!-- h(nu0 - nu) from the gas per photoionization and gives it per
+!-- recombination, as CMFGEN's QUAD_MULTI)
+     ph = 0d0
+     ps = 0d0
+     pr = 0d0
+     if(pd(1) > 0d0 .and. nxd_ga(lv) > 0) then
+        nuc = nxd_numin(nxa_lvnu0(lv),nxd_z(lv),pd)
+        do ig=nxd_ga(lv),min(nxd_gb(lv),ng)
+           if(nug(ig) + 0.5d0*dnug(ig) <= nuc) exit
+           call nxd_gint(lv,ig,pd,temp,nuc,dm,dh,dhs,dsp)
+           if(dm <= 0d0) cycle
+           ph = ph + jg(ig)*(dm*dnug(ig) - hh*nxa_lvnu0(lv)*dh)
+           ps = ps + jg(ig)*hh*(nug(ig) - nxa_lvnu0(lv))*dhs
+           pr = pr + hh*(nug(ig) - nxa_lvnu0(lv))*dsp
+        enddo
+     endif
+     sh0 = nel(iel)*(x(o+nxa_lvs(lv))*wg(lv)*(qa(lv) + fh*qb(lv) + ph) - xs*(sst + ps))
      sm = sm + sh0
      se(iel) = se(iel) + 4d0*pi*abs(sh0)
-     sh0 = nel(iel)*x(o+nxa_lvc(lv))*wc*nxa_rcool(lv,temp)
+     sh0 = nel(iel)*x(o+nxa_lvc(lv))*wc*(nxa_rcool(lv,temp)*wo + &
+          4d0*pi*nxa_lvphi(lv)*nxa_sahac*temp**(-1.5d0)*2d0/cc**2*pr*wo)
      sh = sh + sh0
      se(iel) = se(iel) + ne*abs(sh0)
   enddo

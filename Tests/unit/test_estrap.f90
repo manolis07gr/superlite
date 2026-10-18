@@ -9,7 +9,9 @@
 !--     redistribution over the Doppler profile, frequency drift, electron
 !--     scattering): the share of the photons scattered by an electron on a
 !--     flight that the line would have ended, before they escape, against
-!--     bes/(beta+bes)
+!--     bes/(beta+bes), from the Sobolev regime (sigma L = 0.03) to the one
+!--     where electrons scatter a photon before it drifts a Doppler width
+!--     (sigma L = 1, 10)
 program test_estrap
   use nltexmod
   use randommod
@@ -60,18 +62,21 @@ program test_estrap
 !-- 3. Monte Carlo of one resonance
   call rnd_init(1, 11)
   st = rnd_states(1)
-  tau = 30d0
-  sl = 0.03d0
-  pmc = mc_trap(tau, sl, 40000)
-  beta = (1d0 - exp(-tau))/tau
-  bes = sl*nx_ytrap(tau)/tau
-  bes = (1d0-beta)*(1d0 - exp(-bes/(1d0-beta)))
-  p = bes/(beta + bes)
-  write(6,'(a,f7.4,a,f7.4)') ' trapped e.s. before escape: Monte Carlo', pmc, ', bes/(beta+bes)', p
-  if(abs(pmc/p - 1d0) > 0.08d0) then
-     write(6,*) 'FAIL: Monte Carlo of the resonance'
-     nfail = nfail + 1
-  endif
+  do i = 1, 4
+     tau = merge(30d0, 1d3, i <= 3)
+     sl = merge(0.03d0, merge(1d0, 10d0, i == 2 .or. i == 4), i == 1)
+     pmc = mc_trap(tau, sl, 40000)
+     beta = (1d0 - exp(-tau))/tau
+     bes = sl*nx_ytrap(tau)/tau
+     bes = (1d0-beta)*(1d0 - exp(-bes/(1d0-beta)))
+     p = bes/(beta + bes)
+     write(6,'(a,es8.1,a,f6.2,a,f7.4,a,f7.4)') ' trapped e.s. before escape, tau', tau, ' sigma L', sl, &
+          ': Monte Carlo', pmc, ', bes/(beta+bes)', p
+     if(abs(pmc/p - 1d0) > 0.08d0) then
+        write(6,*) 'FAIL: Monte Carlo of the resonance'
+        nfail = nfail + 1
+     endif
+  enddo
 !
   if(nfail == 0) then
      write(6,*) 'test_estrap: PASS'

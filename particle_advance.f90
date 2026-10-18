@@ -18,7 +18,8 @@ subroutine particle_advance
   use countersmod
   use fluxmod
   use sourcemod
-  use nltextrmod, only:nxt_on,nxt_jbsum,nxt_jbcnt,nxt_jxsum,nxt_jlsum,nxt_jlosum,nxt_lgrp,nxt_static_tally
+  use nltextrmod, only:nxt_on,nxt_jbsum,nxt_jbcnt,nxt_jxsum,nxt_jlsum,nxt_jlosum,nxt_lgrp,nxt_static_tally, &
+       nxt_jwsum,nxt_jwsq,nxt_window_tally,nxt_haem,nxt_haab,nxt_kha,nxt_efsum
   implicit none
 !
 !##################################################
@@ -47,6 +48,7 @@ subroutine particle_advance
   real*8 :: jbval
   integer :: stk
   real*8 :: stl(4)
+  real*8 :: swl(3)
 !-- specint cache
   integer :: nstepmax, ndist(-3:7)
 !
@@ -97,14 +99,15 @@ subroutine particle_advance
 !$omp    grp_ng,grp_wl,grd_igeom,grd_sig,grd_cap,grd_capsc,grd_eamp, &
 !$omp    trn_tauddmc,trn_taulump,trn_noampfact,trn_errorfatal, &
 !$omp    grd_vxarr,grd_methodswap,t_pckt_stat,transport,diffusion, &
-!$omp    in_puretran,in_io_dogrdtally,in_nomp,nxt_on,nxt_lgrp) &
+!$omp    in_puretran,in_io_dogrdtally,in_nomp,nxt_on,nxt_lgrp,nxt_kha) &
 !$omp private(ptcl,ptcl2,cache, &
 !$omp    specarr,glumps,llumps, &
 !$omp    x,y,z,mu,om,wl,e,e0,ix,iy,iz,ic,ig,icold,igold,ixold,limc, &
 !$omp    vx,vy,vz,help1,help2,vhelp1,vhelp2, &
 !$omp    i,t0,t1,help,tau,labfact,jrad, &
-!$omp    rndstate,eraddens,eamp,ierr,iomp,jbk,jbval,stl,stk) &
+!$omp    rndstate,eraddens,eamp,ierr,iomp,jbk,jbval,stl,stk,swl) &
 !$omp reduction(+:grd_tally,grd_jrad,nxt_jbsum,nxt_jbcnt,nxt_jxsum,nxt_jlsum,nxt_jlosum, &
+!$omp    nxt_jwsum,nxt_jwsq,nxt_haem,nxt_haab,nxt_efsum, &
 !$omp    tot_evelo,tot_eout,tot_sflux, &
 !$omp    npckt,nflux, &
 !$omp    nstepddmc,nstepimc,nmethodswap,ndist) &
@@ -162,6 +165,10 @@ subroutine particle_advance
 
 !-- group index
      ig = binsrch(wl,grp_wl,grp_ng+1,.false.) !co-moving frame
+!-- (diagnostics: Halpha emitted by the source, nxt_haem)
+     if(nxt_on .and. nxt_kha>0) then
+        if(ptcl%ilem==nxt_kha) nxt_haem(ic) = nxt_haem(ic) + e
+     endif
 !
 !-- determine particle type
      select case(grd_igeom)
@@ -209,9 +216,17 @@ subroutine particle_advance
      ptcl2%stat = 'live'
      ptcl2%iline = 0
      ptcl2%ilside = 0
+!-- (nxt_esrates: a source photon scattered out of a line core by an
+!-- electron is tested against the line profiles on its first IMC step)
+     ptcl2%kskip = 0
+     ptcl2%estest = ptcl%est>0 .and. ptcl2%itype==1
+     ptcl%est = 0
 
      do while (ptcl2%stat=='live')
         ptcl2%istep = ptcl2%istep + 1
+        ptcl2%kem = 0
+        ptcl2%kab = 0
+        ptcl2%kfa = 0
         icold = ic
         igold = ig
         ixold = ix
@@ -219,7 +234,7 @@ subroutine particle_advance
         if(limc) then
            nstepimc = nstepimc + 1
            call transport(ptcl,ptcl2,vx,vy,vz,rndstate, &
-                eraddens,eamp,jrad,tot_evelo,ierr,jbk,jbval,stl,stk)
+                eraddens,eamp,jrad,tot_evelo,ierr,jbk,jbval,stl,stk,swl)
 !-- NLTE line resonance estimator
            if(jbk>0) then
               nxt_jbsum(jbk,icold) = nxt_jbsum(jbk,icold) + jbval
@@ -227,6 +242,8 @@ subroutine particle_advance
            endif
 !-- (the static profiles of the lines of a slow cell, in_nltex_dopmc)
            if(stl(2)>0d0) call nxt_static_tally(icold,stl(1),stl(2),stk,stl(3),stl(4),nxt_jbsum,nxt_jbcnt)
+!-- (the window estimator of the incident intensity, in_nltex_jbwin)
+           if(swl(3)>0d0) call nxt_window_tally(icold,swl(1),swl(2),swl(3),nxt_jwsum,nxt_jwsq)
            if(ptcl2%itype/=1) then
               nmethodswap = nmethodswap + 1
               if(in_io_dogrdtally) grd_methodswap(icold) = grd_methodswap(icold) + 1
@@ -242,6 +259,13 @@ subroutine particle_advance
               nmethodswap = nmethodswap + 1
               if(in_io_dogrdtally) grd_methodswap(icold) = grd_methodswap(icold) + 1
            endif
+        endif
+!-- (the absorption in a line core after an electron scattering, nxt_esfar)
+        if(ptcl2%kfa>0) nxt_efsum(ptcl2%kfa,icold) = nxt_efsum(ptcl2%kfa,icold) + ptcl2%efa
+!-- (diagnostics: Halpha absorbed at its resonances and emitted by the macro-atom)
+        if(nxt_kha>0) then
+           if(ptcl2%kab==nxt_kha) nxt_haab(icold) = nxt_haab(icold) + ptcl2%eab
+           if(ptcl2%kem==nxt_kha) nxt_haem(ptcl2%cem) = nxt_haem(ptcl2%cem) + ptcl2%eem
         endif
         i = max(-3,ptcl2%idist)
         ndist(i) = ndist(i) + 1

@@ -29,6 +29,7 @@ module nltexmod
 ! super-level drop out.
 !-----------------------------------------------------------------------
   use nlteatommod
+  use nltedismod
   use nltehmod, only:nlteh_beta,bplanck
   use elemdatamod, only:elem_data
   implicit none
@@ -50,6 +51,7 @@ module nltexmod
      real*8,allocatable :: cil(:),c3l(:) !(nlv) collisional ionization of k [cm^3/s]; three-body into k per continuum particle [cm^6/s]
      real*8,allocatable :: gaml(:)    !(nlv) photoionization of k [1/s]
      real*8,allocatable :: gstl(:),arl(:) !(nlv) stimulated, spontaneous recombination into k per continuum particle [cm^3/s]
+     real*8,allocatable :: ard(:)     !(nlv) the part of arl into the dissolved continuum below the edge (nx_dis)
 !-- the same summed over the levels of each state (with the shares w; the
 !-- recombination coefficients per particle in the continuum state)
      real*8,allocatable :: ci(:),c3(:),gam(:),gst(:),ar(:) !(ns)
@@ -73,6 +75,9 @@ module nltexmod
 !-- the lines that have it (the others keep beta alone)
   real*8,public :: nx_vtb = -1d0
   logical,public :: nx_esdamp = .true.
+!-- level dissolution (nltedismod), set by the caller per cell: the cell's
+!-- parameters (nxd_cell; nx_dis(1) = 0: none)
+  real*8,public :: nx_dis(3) = 0d0
   logical,allocatable,public :: nx_esm(:)    !(nlin)
 !-- y(tau) = tau G(tau) of nx_ytrap at log10(tau) = -2, -1.75, ..., 10
   integer,parameter :: nx_nyt = 49
@@ -229,7 +234,10 @@ pure function nx_bes(kq,sv,wq,beta,qb,qv,tab) result(bes)
 ! wings); bounded by the probability 1 - beta that the photon is absorbed
 ! in the line again.  With the escape probability, beta + bes is the
 ! effective escape probability of the line (as for a continuum in the
-! resonance zone, Hummer & Rybicki 1985, ApJ 293, 258).
+! resonance zone, Hummer & Rybicki 1985, ApJ 293, 258).  The saturation
+! (1 - exp) keeps it right where electrons scatter a photon before it
+! drifts a Doppler width (sigma v_D > |Q|): against a Monte Carlo of one
+! resonance (test_estrap) within 2.5 % for sigma v_D/|Q| = 0.03 - 10.
 !-----------------------------------------------------------------------
   real*8,intent(in) :: kq,sv,wq,beta,qb,qv,tab(0:nx_nbt)
   real*8 :: bes,qs,lt,w,y
@@ -341,7 +349,8 @@ subroutine nx_lte(temp,ne,x)
 !-----------------------------------------------------------------------
 ! Saha-Boltzmann populations of all elements at temp and ne (fractions of
 ! each element; partition functions from the model levels; a super-level
-! holds the sum of its levels).
+! holds the sum of its levels), with the occupation probabilities of the
+! levels in the cell of nx_dis (level dissolution).
 !-----------------------------------------------------------------------
   real*8,intent(in) :: temp,ne
   real*8,intent(out) :: x(nxa_nst)
@@ -360,9 +369,10 @@ subroutine nx_lte(temp,ne,x)
         i = nxa_el(iel)%ion(j)
         lo = nxa_ion(i)%lvoff - lv0
 !-- n(level k of ion j)/n(ground of next) = ne phi_k T^-1.5 sahac e^{h nu0/kT}
+!-- (times the occupation probability, nx_dis)
         do k=1,nxa_ion(i)%nlev
            lw(lo+k) = lsaha + log(ne*nxa_ion(i)%g(k)/(2d0*nxa_ion(i)%gion)* &
-                nxa_sahac*temp**(-1.5d0)) + hh*nxa_ion(i)%nu0(k)/(kb*temp)
+                nxa_sahac*temp**(-1.5d0)*nxd_lvw(nxa_ion(i)%lvoff+k,nx_dis)) + hh*nxa_ion(i)%nu0(k)/(kb*temp)
         enddo
 !-- relative to the top: next ion's ground state
         lsaha = lw(lo+1)
@@ -398,6 +408,12 @@ subroutine nx_el_rates(iel,temp,trad,ng,nug,dnug,jg,r,xo,nelo,neo)
 ! populations follow the radiation from elsewhere at once instead of
 ! over many iterations.  The solution does not change (both corrections
 ! are equal at xo).
+! Level dissolution (nx_dis, nltedismod): the LTE population of a level
+! carries its occupation probability w, so its shares within a super-level,
+! the recombination and three-body rates into it, and the electron-impact
+! de-excitations (by the ratio of the states' mean w) have it as well; and
+! its photoionization and recombination continue below its edge into the
+! dissolved upper levels (nxd_gint, the Monte Carlo J of those groups).
 !-----------------------------------------------------------------------
   integer,intent(in) :: iel,ng
   real*8,intent(in) :: temp,trad,nug(ng),dnug(ng),jg(ng)
@@ -406,20 +422,39 @@ subroutine nx_el_rates(iel,temp,trad,ng,nug,dnug,jg,r,xo,nelo,neo)
   integer :: j,i,k,lv,ig,igred,isub,ns,nl,lv0,kl,s
   integer,parameter :: nsub = 200
   real*8 :: sm,sst,nu,phit,numin,jred,dlt,xr,sig,hkt
-  real*8 :: dal,gsf,nlo,arg
-  logical :: lali
+  real*8 :: dal,gsf,nlo,arg,wo,nuc,dm,dh,dhs,dsp,sdis
+  real*8 :: wocc(nxa_el(iel)%nlv),ws(nxa_el(iel)%ns)
+  logical :: lali,ldis
 !
   ns = nxa_el(iel)%ns
   nl = nxa_el(iel)%nlv
   lv0 = nxa_el(iel)%lvoff
   if(allocated(r%w)) then
      if(size(r%w)/=nl .or. size(r%eps)/=ns) deallocate(r%w,r%wc,r%eps,r%cq,r%eup,r%edn,r%cil,r%c3l, &
-          r%gaml,r%gstl,r%arl,r%ci,r%c3,r%gam,r%gst,r%ar)
+          r%gaml,r%gstl,r%arl,r%ard,r%ci,r%c3,r%gam,r%gst,r%ar)
   endif
   if(.not.allocated(r%w)) allocate(r%w(nl),r%wc(nl),r%eps(ns),r%cq(ns,ns),r%eup(ns,ns),r%edn(ns,ns), &
-       r%cil(nl),r%c3l(nl),r%gaml(nl),r%gstl(nl),r%arl(nl),r%ci(ns),r%c3(ns),r%gam(ns),r%gst(ns),r%ar(ns))
-!-- shares and energies
+       r%cil(nl),r%c3l(nl),r%gaml(nl),r%gstl(nl),r%arl(nl),r%ard(nl),r%ci(ns),r%c3(ns),r%gam(ns),r%gst(ns),r%ar(ns))
+!-- shares and energies (level dissolution: the shares of a super-level's
+!-- levels in proportion to their LTE populations w g e^{-E/kT}; ws the
+!-- states' mean occupation probability)
   call nxa_wel(iel,temp,r%w)
+  ldis = nx_dis(1) > 0d0
+  wocc = 1d0
+  ws = 1d0
+  if(ldis) then
+     ws = 0d0
+     do kl=1,nl
+        wocc(kl) = nxd_lvw(lv0+kl,nx_dis)
+        ws(nxa_lvs(lv0+kl)) = ws(nxa_lvs(lv0+kl)) + wocc(kl)*r%w(kl)
+     enddo
+     ws(ns) = 1d0
+     do kl=1,nl
+        s = nxa_lvs(lv0+kl)
+        if(ws(s) > 0d0) r%w(kl) = r%w(kl)*wocc(kl)/ws(s)
+     enddo
+     where(ws <= 0d0) ws = 1d0
+  endif
   do kl=1,nl
      lv = nxa_lvcl(lv0+kl)
      if(lv>0) then
@@ -431,6 +466,19 @@ subroutine nx_el_rates(iel,temp,trad,ng,nug,dnug,jg,r,xo,nelo,neo)
   call nxa_eps(iel,r%w,r%eps)
 !-- collisions
   call nxa_coll_el(iel,temp,r%cq,r%eup,r%edn,r%cil,r%c3l)
+  if(ldis) then
+!-- (detailed balance with the dissolved LTE populations: de-excitations
+!-- by the ratio of the states' mean w, three-body recombination by w)
+     do s=1,ns
+        do kl=1,ns
+           if(r%eps(s) > r%eps(kl)) then
+              r%cq(s,kl) = r%cq(s,kl)*ws(kl)/ws(s)
+              r%edn(s,kl) = r%edn(s,kl)*ws(kl)/ws(s)
+           endif
+        enddo
+     enddo
+     r%c3l = r%c3l*wocc
+  endif
 !-- radiative bound-free per level
   hkt = hh/(kb*temp)
   igred = minloc(nug,1)
@@ -467,8 +515,25 @@ subroutine nx_el_rates(iel,temp,trad,ng,nug,dnug,jg,r,xo,nelo,neo)
            enddo
         endif
         phit = nxa_lvphi(lv)*nxa_sahac*temp**(-1.5d0)
+!-- dissolved continuum below the edge
+        sdis = 0d0
+        if(ldis .and. nxd_ga(lv) > 0) then
+           nuc = nxd_numin(nxa_lvnu0(lv),nxd_z(lv),nx_dis)
+           if(nuc < nxa_lvnu0(lv)) then
+              do ig=nxd_ga(lv),min(nxd_gb(lv),ng)
+                 if(nug(ig) + 0.5d0*dnug(ig) <= nuc) exit
+                 call nxd_gint(lv,ig,nx_dis,temp,nuc,dm,dh,dhs,dsp)
+                 sm = sm + jg(ig)*dh
+                 sst = sst + jg(ig)*dhs
+                 sdis = sdis + dsp
+              enddo
+           endif
+        endif
+        wo = wocc(kl)
         r%gaml(kl) = 4d0*pi*sm
-        r%gstl(kl) = 4d0*pi*phit*sst
+        r%gstl(kl) = 4d0*pi*phit*sst*wo
+        r%ard(kl) = 4d0*pi*phit*2d0/cc**2*sdis*wo
+        r%arl(kl) = r%arl(kl)*wo + r%ard(kl)
      enddo
   enddo
 !-- accelerated lambda iteration (per level): dal = recombinations into l per
@@ -613,7 +678,7 @@ end subroutine nx_el_matrix
 !
 !
 subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
-     ncx,cxf,cxt,cxr,xp,dti,sv,etab,wqe,jes)
+     ncx,cxf,cxt,cxr,xp,dti,sv,etab,wqe,jes,efar)
 !-----------------------------------------------------------------------
 ! One iteration for the populations x of element iel (number density nel)
 ! at electron density ne: escape probabilities from x, then the linear
@@ -630,7 +695,9 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
 ! the element's lines add the electron scattering of the trapped photons
 ! (nx_bes): escape probability beta + bes, incident intensity
 ! (beta Jb + bes Jes)/(beta + bes); only to the lines of nx_esm when it
-! is allocated.
+! is allocated.  efar (optional, >= 0 for a line): the absorption of the
+! photons scattered into its core in the transport (nxt_esfar), as a
+! beta-weighted intensity in place of bes Jes.
 !-----------------------------------------------------------------------
   integer,intent(in) :: iel,it
   real*8,intent(in) :: nel,ne,qb,qv,btab(0:nx_nbt),jl(:)
@@ -640,10 +707,10 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
   real*8,intent(out) :: beta(:),d
   integer,intent(out) :: ierr
   integer,intent(in),optional :: ncx,cxf(:),cxt(:)
-  real*8,intent(in),optional :: cxr(:),xp(:),dti,sv,etab(0:nx_nbt),wqe(:),jes(:)
+  real*8,intent(in),optional :: cxr(:),xp(:),dti,sv,etab(0:nx_nbt),wqe(:),jes(:),efar(:)
   integer :: ns,nl,k,kg,k0,info,ir
   real*8 :: kq,bes,jle(size(jl))
-  logical :: les,lesk
+  logical :: les,lesk,lfar
   real*8 :: m(nxa_el(iel)%ns,nxa_el(iel)%ns),xn(nxa_el(iel)%ns)
   integer :: ipiv(nxa_el(iel)%ns)
   logical :: ltd
@@ -655,6 +722,7 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
   k0 = nxa_ion(nxa_el(iel)%ion(1))%loff
   les = present(sv) .and. present(etab) .and. present(wqe) .and. present(jes)
   if(les) les = sv > 0d0
+  lfar = present(efar)
   do k=1,nl
      kg = k0 + k
      kq = nx_kq(kg,nel,x,r%w)
@@ -664,7 +732,11 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
      if(lesk .and. allocated(nx_esm)) lesk = nx_esm(kg)
      if(lesk) then
         bes = nx_bes(kq,sv,wqe(k),beta(k),qb,qv,etab)
-        if(bes > 0d0) jle(k) = (beta(k)*jl(k) + bes*jes(k))/(beta(k) + bes)
+        if(lfar .and. efar(k) >= 0d0) then
+           jle(k) = (beta(k)*jl(k) + efar(k))/(beta(k) + bes)
+        elseif(bes > 0d0) then
+           jle(k) = (beta(k)*jl(k) + bes*jes(k))/(beta(k) + bes)
+        endif
         beta(k) = beta(k) + bes
      endif
   enddo
@@ -706,7 +778,7 @@ end subroutine nx_el_step
 !
 !
 subroutine nx_solve_cell(temp,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx,x,ne,beta,ierr,lsolve, &
-     tol,maxit,xprev,dtinv)
+     tol,maxit,xprev,dtinv,efar)
 !-----------------------------------------------------------------------
 ! Statistical equilibrium of all NLTE elements in one cell.
 !  temp, trad   electron and radiation temperature [K] (trad: shape of J
@@ -727,6 +799,8 @@ subroutine nx_solve_cell(temp,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx
 !  xprev, dtinv (optional) time-dependent equations: the populations of
 !               the previous model at the same mass coordinate and 1/dt
 !               [1/s] (nx_el_step)
+!  efar         (optional) per global line, the absorption of the photons
+!               scattered into its core in the transport (>= 0; nx_el_step)
 ! The escape probabilities, populations and electron density are iterated
 ! together (each iteration: one linear solve per element).  With nx_vtb >=
 ! 0 the escape probabilities include the electron scattering of trapped
@@ -743,6 +817,7 @@ subroutine nx_solve_cell(temp,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx
   real*8,intent(in),optional :: tol
   integer,intent(in),optional :: maxit
   real*8,intent(in),optional :: xprev(nxa_nst),dtinv
+  real*8,intent(in),optional :: efar(nxa_nlin) !absorption in the line cores (nx_el_step)
   integer :: iel,ns,o,l0,l1,it,ie,k,ncx,mit
   real*8 :: dtol
   real*8 :: neold,nenew,d,dmax,dne,dold,jl(nxa_nlin),btab(0:nx_nbt),wg(nxa_nlv)
@@ -764,7 +839,7 @@ subroutine nx_solve_cell(temp,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx
   call nx_beta_table(qb,qv,btab)
   etab = 0d0
   if(nx_vtb >= 0d0) call nx_es_table(qb,qv,etab)
-  call nxa_weights(temp,wg)
+  call nxd_weights(temp,nx_dis,wg)
   ne = neoth + chg(x)
   do iel=1,nxa_nel
      if(.not.lsol(iel)) cycle
@@ -804,9 +879,20 @@ subroutine nx_solve_cell(temp,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx
         sv = 0d0
         if(nx_vtb >= 0d0) sv = ne*sigt*nx_vdop(iel,temp,nx_vtb)
         if(present(xprev) .and. present(dtinv)) then
+           if(present(efar)) then
+              call nx_el_step(iel,nel(iel),ne,qb,qv,btab,jl(l0:l1),r(iel), &
+                   nti(o+1:o+ns),ntx(o+1:o+ns),it,x(o+1:o+ns),beta(l0:l1),d,ie, &
+                   ncx,cxf,cxt,cxr,xprev(o+1:o+ns),dtinv,sv=sv,etab=etab,wqe=wq(l0:l1),jes=jes(l0:l1), &
+                   efar=efar(l0:l1))
+           else
+              call nx_el_step(iel,nel(iel),ne,qb,qv,btab,jl(l0:l1),r(iel), &
+                   nti(o+1:o+ns),ntx(o+1:o+ns),it,x(o+1:o+ns),beta(l0:l1),d,ie, &
+                   ncx,cxf,cxt,cxr,xprev(o+1:o+ns),dtinv,sv=sv,etab=etab,wqe=wq(l0:l1),jes=jes(l0:l1))
+           endif
+        elseif(present(efar)) then
            call nx_el_step(iel,nel(iel),ne,qb,qv,btab,jl(l0:l1),r(iel), &
                 nti(o+1:o+ns),ntx(o+1:o+ns),it,x(o+1:o+ns),beta(l0:l1),d,ie, &
-                ncx,cxf,cxt,cxr,xprev(o+1:o+ns),dtinv,sv=sv,etab=etab,wqe=wq(l0:l1),jes=jes(l0:l1))
+                ncx,cxf,cxt,cxr,sv=sv,etab=etab,wqe=wq(l0:l1),jes=jes(l0:l1),efar=efar(l0:l1))
         else
            call nx_el_step(iel,nel(iel),ne,qb,qv,btab,jl(l0:l1),r(iel), &
                 nti(o+1:o+ns),ntx(o+1:o+ns),it,x(o+1:o+ns),beta(l0:l1),d,ie, &
