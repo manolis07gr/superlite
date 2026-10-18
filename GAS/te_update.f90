@@ -29,12 +29,24 @@ subroutine te_update(it)
   real*8,allocatable,save :: dprev(:),dloc(:)
   logical :: lout
   character(24) :: fname
+!-- (diagnostics: cells whose balance function is tabulated, from the
+!-- environment variable SL_TESCAN, a comma-separated list of cell numbers)
+  integer,allocatable,save :: iscan(:)
+  character(256) :: env
+  integer :: lu,n,ios
 !
   if(.not.nxt_have_mc) return
   if(.not.allocated(dprev)) then
      allocate(dprev(gas_ncell),dloc(gas_ncell))
      dprev = 0d0
      dloc = te_damp
+     call get_environment_variable('SL_TESCAN',env,status=ios)
+     n = 0
+     if(ios == 0 .and. len_trim(env) > 0) n = count([(env(k:k)==',',k=1,len_trim(env))]) + 1
+     allocate(iscan(n))
+     if(n > 0) read(env,*,iostat=ios) iscan
+     if(ios /= 0) deallocate(iscan)
+     if(.not.allocated(iscan)) allocate(iscan(0))
   endif
   lout = it==in_niter
   if(lout) then
@@ -80,14 +92,25 @@ subroutine te_update(it)
           grd_xarr(l+1)-grd_xarr(l),lali=in_nltex_ali)
 !-- (electron scattering of trapped line photons in the rates)
      call nxt_es_cell(l,0.5d0*(grd_vxarr(l)+grd_vxarr(l+1)))
+     lu = 0
+     if(any(iscan == l)) then
+        lu = 43
+        write(fname,'(a,i4.4)') 'output.tescan_',l
+        open(lu,file=fname,position='append')
+        write(lu,'(a,i3,a,f10.1)') '# iteration',it,', T_old',gas_temp(i)
+     endif
      if(nxt_dtinv>0d0) then
         call te_balance(gas_temp(i),gas_radtemp(i),nel,neoth,qb,qv,nxt_ng,nxt_nug,nxt_dnug, &
              nxt_jg(:,l),nxt_jb(:,l),nxt_ljb(:,l),nti,ntx,capabs,gas_capemit(:,i),gext, &
-             nxt_xloc(:,i),tnew,ierr,tsol,xprev=nxt_xprev(:,l),dtinv=nxt_dtinv)
+             nxt_xloc(:,i),tnew,ierr,tsol,xprev=nxt_xprev(:,l),dtinv=nxt_dtinv,scanlu=lu)
      else
         call te_balance(gas_temp(i),gas_radtemp(i),nel,neoth,qb,qv,nxt_ng,nxt_nug,nxt_dnug, &
              nxt_jg(:,l),nxt_jb(:,l),nxt_ljb(:,l),nti,ntx,capabs,gas_capemit(:,i),gext, &
-             nxt_xloc(:,i),tnew,ierr,tsol)
+             nxt_xloc(:,i),tnew,ierr,tsol,scanlu=lu)
+     endif
+     if(lu > 0) then
+        write(lu,'(a,2f10.1)') '# root, new T',tsol,tnew
+        close(lu)
      endif
      call te_step(gas_temp(i),tsol,dprev(i),dloc(i),tnew)
      if(ierr/=0) nfail = nfail + 1

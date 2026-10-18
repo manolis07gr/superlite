@@ -261,14 +261,16 @@ end subroutine te_terms
 !
 !
 subroutine te_balance(told,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx,capabs, &
-     capem,gam_ext,x,tnew,ierr,tsolout,xprev,dtinv)
+     capem,gam_ext,x,tnew,ierr,tsolout,xprev,dtinv,scanlu)
 !-----------------------------------------------------------------------
 ! Solve f(T) = 0 with the NLTE populations re-solved at each trial T; x is
 ! the initial guess for the populations (unchanged on return).  tnew is
 ! the damped and limited new temperature, tsolout (optional) the root;
 ! ierr = 1 if f has no sign change in [te_tmin, te_tmax] (the root is the
 ! bound).  xprev, dtinv (optional): time-dependent statistical equilibrium
-! (nx_solve_cell).
+! (nx_solve_cell).  scanlu (optional, diagnostics): after the solve, write
+! f(T)/(sum of the magnitudes of the terms) at 41 temperatures within
+! told*exp(+-0.3) to that unit.
 !-----------------------------------------------------------------------
   real*8,intent(in) :: told,trad,nel(nxa_nel),neoth,qb,qv,gam_ext
   integer,intent(in) :: ng
@@ -280,16 +282,14 @@ subroutine te_balance(told,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx,ca
   integer,intent(out) :: ierr
   real*8,intent(out),optional :: tsolout
   real*8,intent(in),optional :: xprev(nxa_nst),dtinv
-  integer :: it,side,nwarm
+  integer,intent(in),optional :: scanlu
+  integer :: it,side,ielast
+  real*8 :: nelast,xhlast
   real*8 :: a,b,c,fa,fb,fc,tsol,lo,hi,step,elc(nxa_nel),scale
   logical :: lsol(nxa_nel),lfirst
   real*8 :: pa(nxa_nlv),pb(nxa_nlv),jl(nxa_nlin)
-!-- populations at the temperatures tried (warm starts)
-  integer,parameter :: mwarm = 8
-  real*8 :: xw(nxa_nst,mwarm),tw(mwarm)
 !
   ierr = 0
-  nwarm = 0
   call te_pisums(ng,nug,dnug,jg,pa,pb)
   do it=1,nxa_nlin
      jl(it) = nx_jline(it,ng,nug,jg,jb(it),ljb(it))
@@ -352,40 +352,42 @@ subroutine te_balance(told,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx,ca
   tnew = told**(1d0-te_damp)*tsol**te_damp
   tnew = min(max(tnew, told/te_maxfac), told*te_maxfac)
   tnew = min(max(tnew, te_tmin), te_tmax)
+!-- (diagnostics: the balance function around the old temperature)
+  if(present(scanlu)) then
+     if(scanlu > 0) then
+        do it=0,40
+           c = log(told) - 0.3d0 + 0.015d0*it
+           fc = fval(c)
+           write(scanlu,'(f10.1,es13.4,i3,2es13.4)') exp(c), fc/max(scale,1d-300), ielast, nelast, xhlast
+        enddo
+     endif
+  endif
 contains
   real*8 function fval(lt)
     real*8,intent(in) :: lt
     real*8 :: t,xx(nxa_nst),ne,beta(nxa_nlin),terms(te_nterm)
-    integer :: ie,k,kn
+    integer :: ie
     t = exp(lt)
-!-- start from the populations of the nearest temperature tried
+!-- start from the populations at the old temperature: with the Lyman
+!-- continuum in local detailed balance (J = S of the cell) the equations
+!-- of a cell can have a neutral and an ionized solution besides the one
+!-- that continues the old state, and a warm start from another trial
+!-- temperature (formerly the nearest one) jumped between them
     xx = x
-    kn = 0
-    do k=1,nwarm
-       if(kn == 0) then
-          kn = k
-       elseif(abs(log(tw(k)/t)) < abs(log(tw(kn)/t))) then
-          kn = k
-       endif
-    enddo
-    if(kn > 0) then
-       if(abs(log(tw(kn)/t)) < abs(log(told/t))) xx = xw(:,kn)
+    call solve(t,xx,ne,beta,ie,100)
+!-- (a solve that fails, singular or not converged, is retried with more
+!-- iterations; if that fails too the terms are those of the old
+!-- populations)
+    if(ie /= 0) then
+       xx = x
+       call solve(t,xx,ne,beta,ie,400)
     endif
-    if(present(xprev) .and. present(dtinv)) then
-       call nx_solve_cell(t,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx,xx,ne,beta,ie, &
-            lsolve=lsol,tol=1d-3,maxit=100,xprev=xprev,dtinv=dtinv)
-    else
-       call nx_solve_cell(t,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx,xx,ne,beta,ie, &
-            lsolve=lsol,tol=1d-3,maxit=100)
-    endif
-    if(ie == 1) then
+    ielast = ie
+    nelast = ne
+    xhlast = xx(nxa_el(1)%xoff + nxa_el(1)%ns)
+    if(ie /= 0) then
        xx = x
        ne = neoth + free_el(xx)
-    else
-       k = mod(nwarm, mwarm) + 1
-       nwarm = min(nwarm + 1, mwarm)
-       xw(:,k) = xx
-       tw(k) = t
     endif
     call te_terms(t,ng,nug,dnug,jg,capabs,capem,nel,xx,ne,gam_ext,terms,pa,pb,elc,beta,jl)
     fval = terms(1) - terms(2) + terms(3) + terms(4) + terms(5) - terms(6)
@@ -395,6 +397,21 @@ contains
        lsol = lsol .and. elc >= 1d-2*scale
     endif
   end function fval
+  subroutine solve(t,xx,ne,beta,ie,mit)
+!-- statistical equilibrium at the trial temperature t from the guess xx
+    real*8,intent(in) :: t
+    real*8,intent(inout) :: xx(nxa_nst)
+    real*8,intent(out) :: ne,beta(nxa_nlin)
+    integer,intent(out) :: ie
+    integer,intent(in) :: mit
+    if(present(xprev) .and. present(dtinv)) then
+       call nx_solve_cell(t,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx,xx,ne,beta,ie, &
+            lsolve=lsol,tol=1d-3,maxit=mit,xprev=xprev,dtinv=dtinv)
+    else
+       call nx_solve_cell(t,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx,xx,ne,beta,ie, &
+            lsolve=lsol,tol=1d-3,maxit=mit)
+    endif
+  end subroutine solve
   real*8 function free_el(xx)
     real*8,intent(in) :: xx(nxa_nst)
     integer :: je,jo
