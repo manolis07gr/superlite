@@ -14,12 +14,15 @@ program test_overlap
 !  4. with the H and O I model atoms (directory as the first argument;
 !     skipped without): the LTE limit of the statistical equilibrium with
 !     the overlap terms at high density in a Planck field, and in a dilute
-!     field the Bowen pumping of O I 3d 3D by Lyman beta
+!     field the Bowen pumping of O I 3d 3D by Lyman beta, and the macro-atom:
+!     recombinations of H give O I line packets through the overlap
 !-----------------------------------------------------------------------
   use nlteatommod
   use nltexmod
   use nltextrmod
   use nltehmod, only:bplanck
+  use randommod
+  use gridmod, only:grd_tempinv
   implicit none
   real*8,parameter :: km = 1d5, cl = 2.99792458d10
   integer,parameter :: ng = 6000
@@ -76,8 +79,9 @@ contains
     character(256) :: files(2)
     real*8,allocatable :: x(:),xl(:),xo(:),beta(:),jb(:),nti(:),ntx(:),nel(:)
     logical,allocatable :: ljb(:)
-    real*8 :: t,ne,nh,w,b3d(2)
-    integer :: k,ierr,o,s,kb,ko,ir
+    real*8 :: t,ne,nh,w,b3d(2),wlc
+    integer :: k,ierr,o,s,kb,ko,ir,kind,idx,nox(2)
+    type(rnd_t) :: st
     logical :: lex
     files(1) = dir//'/h1.atom'
     files(2) = dir//'/o1.atom'
@@ -156,5 +160,36 @@ contains
     write(*,'(a,es10.3,a,es10.3,a,f6.3,a,f6.3)') ' dilute field: n(O I 3d 3D)/n(O I 3P) with overlap',b3d(1), &
          '  without',b3d(2),'   x(H I) with',xo(1),' without',x(1)
     if(.not.(b3d(1) > 3d0*b3d(2))) nfail = nfail + 1
+!-- the macro-atom of that cell: recombination activations of H reach O I
+!-- through the overlap channel (net photons of Lyman beta to O I 1025.76),
+!-- which activates the O I macro-atom; without it only through the
+!-- thermal pool (collisional excitation of O I)
+    nxt_x(:,1) = xo
+    nxt_nel(:,1) = nel
+    nxt_ne(1) = ne
+    nxt_jg(:,1) = jg
+    nxt_jb(:,1) = jb
+    nxt_ljb(:,1) = ljb
+    nxt_have_mc = .true.
+    nxt_vturb = 20d0*km
+    allocate(grd_tempinv(1))
+    grd_tempinv = 1d0/t
+    call rnd_init(1,7)
+    st = rnd_states(1)
+    do ir=1,2
+       if(ir==2) nxo_npair = 0
+       call nxt_tables(1,[1d0/t],[6d3],[0d0],[3d15,3.001d15],[2.3d7,2.3d7*(1d0+1d-6)])
+       nox(ir) = 0
+       do k=1,200000
+          call nxt_activate(1,1,nxa_el(1)%ns,st,kind,idx,wlc)
+          if(kind==em_line .and. idx>0) then
+             if(nxa_lel(idx)==2) nox(ir) = nox(ir) + 1
+          endif
+       enddo
+    enddo
+    nxo_npair = nxo_ptr(nxa_nlin+1) - 1
+    write(*,'(a,i7,a,i7,a)') ' macro-atom: O I line packets of 2e5 recombinations of H, with overlap',nox(1), &
+         '  without',nox(2)
+    if(nox(1) < 10*max(nox(2),1)) nfail = nfail + 1
   end subroutine atom_tests
 end program test_overlap
