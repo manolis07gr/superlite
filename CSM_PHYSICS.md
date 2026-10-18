@@ -385,6 +385,7 @@ Carlo J and its trapped-photon term, and with 12 scattering passes as
 | `in_nltex_esrates`, four more (`s10_A7y2`) | 176 | 216 | 253.6 | 1.62, 1.71 |
 | static Doppler profiles of all lines in the slow cells (`in_nltex_dopmc` 2, `in_nltex_dopz` 1, with `in_nltex_dopes`; `s10_A7s`, six more iterations) | 209 | 300 | 222.5 | 1.45, 1.73 |
 | the same with level dissolution and 2¹⁸ packets, eight more iterations (`s12_A7`, the recommended configuration of §5) | 236 | 290 | 232.7 | 1.47, 1.61 |
+| the same after the fixes of the ζ broadcast and the thermal balance (§4.4), six more iterations (`s13_A7`) | 237 | | 226.8 | 1.45, 1.63 |
 
 With static profiles the single-pass formal integral adds the
 trapped-photon scattering of the Sobolev escape on top of the profiles'
