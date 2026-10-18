@@ -427,7 +427,20 @@ than it emits where the Balmer continuum forms, while SuperLite's Monte
 Carlo re-emits what the gas absorbs; against CMFGEN's radiative-equilibrium
 Sobolev model SuperLite's Balmer continuum agrees within 3 % (below).
 Open: the Lyα transport in the slow line forest and the H ionization of
-the outer wind (roadmap 9c), Stark profiles (9b).
+the outer wind (roadmap 9c).
+
+Summary of the H/He benchmark. On CMFGEN's own populations SuperLite's
+formal integral (12 scattering passes) gives `cmf_flux` within 1–4 % in
+the continuum and Hα, Hβ, Pβ, He I 10830 within 2.5 %. With its own
+populations (Sobolev lines in the iterations, as CMFGEN's Sobolev
+option; Doppler profiles and 12 scattering passes in the formal
+integral) Hα, Hβ and Pβ are 105.9, 22.6 and 55.0 Å against `ies`'
+100.9, 21.1 and 55.2 (+5, +7, 0 %), with level dissolution 108.0, 23.0
+and 54.2. Its T_e from the thermal balance stays within 0.5 % of
+CMFGEN's radiative-equilibrium T_e in 59 of 69 cells (two cells at the
+H recombination front run 13 % hot, roadmap 9d). Open: the incoherent
+scattering of CMFGEN's iterations, which ionizes H just above the
+photosphere (`in_nltex_esrates`, experimental, does part of it).
 
 | CMFGEN model | lines | T_e | state |
 |---|---|---|---|
