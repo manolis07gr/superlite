@@ -370,6 +370,18 @@ spectra are converted to air before profiles are compared (83 km/s at Hα;
 the comparisons before this was done had CMFGEN's profiles 83 km/s to the
 red, which moved part of its line core into its red wing).
 
+Summary of the full-metal benchmark (details below). With the same atomic
+data (`in_nltex_bbext = f`: no line-list lines beyond the model atoms) and
+CMFGEN's own populations (`in_nltex_hold`), SuperLite's transport gives
+CMFGEN's emergent spectrum within 5 % from 1500 Å to 2.5 µm and its J
+within 4 % in the Lyman and He continua; its formal integral makes Hα, Hβ
+and Pβ 6, 12 and 3 % stronger than `cmf_flux`. With its own populations,
+like for like, Hα, Hβ and Pβ are 17, 30 and 5 % stronger, the Balmer
+continuum 10–14 % brighter relative to the optical (b₂ 2–17 % low where
+it forms), and H in the outer wind 2–4 times more ionized. Open: the Lyα
+transport in the slow line forest and the H ionization of the outer wind
+(roadmap 9c), level dissolution and Stark profiles (9b).
+
 | CMFGEN model | lines | T_e | state |
 |---|---|---|---|
 | m002: H, He, C, N, O, Ca, Fe | comoving frame | held at its starting structure (≈ 5000 K beyond 2×10¹⁵ cm) | inner wind converged; beyond ≈ 2×10¹⁵ cm the H I ground state changes by factors of several per iteration |
