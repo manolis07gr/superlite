@@ -507,7 +507,9 @@ program superlite
 !-- convergence)
         if(in_nltex) call nxt_write(grd_ncell,grd_rcell, &
              0.5d0*(grd_vxarr(:grd_ncell)+grd_vxarr(2:)),grd_tempinv,grd_radtemp,grd_vol)
-        if(it==in_niter.and.in_nltex) call nxt_write_state(grd_ncell,grd_mass,grd_vol,grd_tempinv)
+!-- (the state and its radiation field every iteration as well: a run that
+!-- stops can be continued from the last one with in_nltex_init)
+        if(in_nltex) call nxt_write_state(grd_ncell,grd_mass,grd_vol,grd_tempinv)
 
 !-- write stdout
         write(6,*)
