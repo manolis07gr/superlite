@@ -776,9 +776,13 @@ iterations, and of the formal integral):
   55.4 → 103.6, 17.7, 59.7 Å, Monte Carlo noise of J included). In A4's and
   A7's CSM (ionized, x_HI ≤ 10⁻³) T_e varies by 4–8 % from cell to cell, as
   the noise of the heating rates. CMFGEN with T released from `ies`
-  (`sn_iin_hhe_iesT`) is far from converged after ten iterations
-  (corrections of 10–1000 % per iteration; its emergent luminosity rose
-  from 97.6 to 98.5 % of the inner one).
+  (`sn_iin_hhe_iesT`, 50 iterations; its linearization had to be rebuilt
+  with T free, `FIX_BA`) does not converge either: T rises by 0–4 % over
+  the Sobolev model's, most at the recombination front and in the outer
+  wind, and its emergent luminosity from 97.6 to 99.5 % of the inner one,
+  but its balance overshoots (net cooling 2.9×10⁴¹ erg/s inside
+  1.12×10¹⁵ cm, locally up to 97 % of the rates) and the corrections stay
+  at 6–20 % per iteration. SuperLite's T_e lies within 0.5–4 % of it.
 * SuperLite's transport on CMFGEN's populations (`in_nltex_hold`,
   `Tools/cmfgen2superlite_state.py`: the populations of `ies` held in
   every iteration, the hybrid's transport, three or four iterations).
