@@ -168,7 +168,7 @@ for H, He and the abundant metals), charge exchange, core-shell X-ray opacity.
 9c. Comoving-frame line transfer in slow flows: static Doppler profiles of the metal lines in the Monte Carlo (`in_nltex_dopmc`, experimental) with ~~the electron scattering of their trapped photons~~ (`in_nltex_dopes`: without it the photons scattered into the static cores were all converted, §4.4). Still: the noise of the static incident intensities (2–5 % per iteration against 0.6 % with resonances), static H and He lines (b₁ of the outer H/He wind 2.5–4 times CMFGEN's), and the outer wind of the full-metal benchmark, where CMFGEN's comoving-frame lines make H fourteen times more neutral than its Sobolev lines at 3.5×10¹⁵ cm and the hybrid four times: CMFGEN's J between Fe III 1214.56 Å and Lyα, which pumps n = 2, lies 4–13 times below the neighbouring continuum and below SuperLite's incident intensity of Lyα. CMFGEN's own incoherent scattering in its iterations makes H three times more neutral at 2×10¹⁵ cm (b₁ 13 against 4.0) and less neutral further out; the trapped-photon scattering of all lines in SuperLite's rates (`in_nltex_esrates`, four iterations from the hybrid) moves b₁ the other way (4.5 → 3.8). On CMFGEN's own populations SuperLite's J follows CMFGEN's in every band but the Lyα region (1200–1240 Å: 1.3–9 times CMFGEN's at 1.05–1.13×10¹⁵ cm), and leaving out the line-list lines beyond the model atoms (`in_nltex_bbext`) leaves the outer wind as it was (§4.4): the Lyα transport in the line forest (where CMFGEN's Fe III 1214.56 Å shadows Lyα) is what remains.
 
 **Stage 4 — validation and production**
-9d. Thermal balance at sharp ionization fronts: in the H/He benchmark two cells of the H recombination front run 13 % hot and ionize fully while their neighbours stay 10–20 % neutral (§4.4); their Lyman continuum stays in local detailed balance (J = S of the cell, 2000–3000 times their neighbours'). Candidates: the local-detailed-balance threshold or a coupling of J_ext to the neighbouring source functions there, and a linearization of T with the populations as CMFGEN's.
+9d. Thermal balance at sharp ionization fronts: in the H/He benchmark two cells of the H recombination front run 13 % hot and ionize fully while their neighbours stay 10–20 % neutral (§4.4); their Lyman continuum stays in local detailed balance (J = S of the cell, 2000–3000 times their neighbours'), and raising the threshold of local detailed balance to τ = 100 moves the hot cell instead of removing it. The balance of a cell with the J of the previous iteration has a cold, partly neutral and a hot, ionized root there; a linearization of T with the populations and the response of J (as CMFGEN's), or a continuation that keeps each cell on the branch of its neighbours, would be needed.
 10. The observed-line-metric harness (EW, decrement, absorption share, peak velocity on a common ±5000 km/s window; `balmer_validation`) as regression tests; grids for the A/B/C model series; comparison with CMFGEN/ARTIS spectra of the same hydro snapshots.
 
 ## 4. Results
@@ -766,11 +766,11 @@ iterations, and of the formal integral):
   balance of each cell with the J of the previous iteration; CMFGEN
   linearizes T together with the populations and the radiation field. In
   both cells the Lyman continuum stays in local detailed balance
-  (`in_nltex_ldb`: J = S of the cell), which is 2000–3000 times that of
-  their neighbours once they are hot and ionized: such a cell keeps its
-  own Lyman-continuum field instead of exchanging it across the front,
-  so local detailed balance at sharp ionization fronts is the place to
-  look (roadmap). The
+  (`in_nltex_ldb`: J = S of the cell), 2000–3000 times that of their
+  neighbours once they are hot and ionized; but with local detailed
+  balance only from τ = 100 per cell (`cmf_hhe_teL`) another cell runs
+  10 % hot and ionizes, so the front is bistable for the lagged J rather
+  than held by that treatment (roadmap 9d). The
   emergent bands change by < 2 % (relative to the total), Hα, Hβ, Pβ of
   the formal integral with the Monte Carlo J by +13, +2, +8 % (91.3, 17.3,
   55.4 → 103.6, 17.7, 59.7 Å, Monte Carlo noise of J included). In A4's and
