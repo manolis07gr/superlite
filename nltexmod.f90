@@ -105,6 +105,9 @@ module nltexmod
 !-- that the partner absorbs the photon (nxo_p), and the bluest line of the
 !-- zone (nxo_jcl), whose incident intensity is the zone's.
   real*8,public :: nx_ovl_dv = 0d0, nx_ovl_vtb = 0d0
+!-- (partners thinner than nx_ovl_tmin for the mean projected gradient are
+!-- left out of a zone, nx_ovl_cell)
+  real*8,public :: nx_ovl_tmin = 1d-3
   integer,public :: nxo_npair = 0
   integer,allocatable,public :: nxo_ptr(:)            !(nlin+1)
   integer,allocatable,public :: nxo_par(:),nxo_rev(:) !(npair)
@@ -113,14 +116,18 @@ module nltexmod
   real*8,allocatable,public :: nxo_p(:)               !(npair)
   integer,allocatable,public :: nxo_jcl(:)            !(nlin)
 !-- (nx_ovl_terms, per line with the current populations: the probability
-!-- that a partner absorbs its photon, sum_j P(k,j); the partners' photons
-!-- it absorbs, sum_j K_j S_j P(j,k), and sum_j K_j P(j,k); the incident
-!-- intensity of its zone.  nxo_use: in the rates of nx_el_step)
-  real*8,allocatable,public :: nxo_out(:),nxo_ins(:),nxo_inw(:),nxo_jz(:) !(nlin)
+!-- that a partner absorbs its photon, sum_j P(k,j), and sum_j K_j P(j,k),
+!-- over all partners; over the partners of other elements the same
+!-- probability and the partners' photons it absorbs, sum_j K_j S_j P(j,k)
+!-- (the partners of the element are implicit in its rate matrix); the
+!-- incident intensity of its zone.  nxo_use: in the rates of nx_el_step)
+  real*8,allocatable,public :: nxo_out(:),nxo_ins(:),nxo_inw(:),nxo_jz(:),nxo_oux(:) !(nlin)
   logical,public :: nxo_use = .false.
 !-- (nx_ovl_keep: nx_solve_cell keeps the zones the caller made for the
 !-- cell, as the thermal balance's solves at trial temperatures)
   logical,public :: nx_ovl_keep = .false.
+!-- (diagnostics: iterations of the last nx_solve_cell)
+  integer,public :: nx_nits = 0
 !-- y(tau) = tau G(tau) of nx_ytrap at log10(tau) = -2, -1.75, ..., 10
   integer,parameter :: nx_nyt = 49
   real*8,parameter :: nx_yt(nx_nyt) = [ &
@@ -372,7 +379,7 @@ subroutine nx_ovl_init(dv)
   integer,allocatable :: cnt(:)
   real*8 :: du
   if(allocated(nxo_ptr)) deallocate(nxo_ptr,nxo_par,nxo_rev,nxo_du)
-  if(allocated(nxo_rho)) deallocate(nxo_rho,nxo_p,nxo_jcl,nxo_out,nxo_ins,nxo_inw,nxo_jz)
+  if(allocated(nxo_rho)) deallocate(nxo_rho,nxo_p,nxo_jcl,nxo_out,nxo_ins,nxo_inw,nxo_jz,nxo_oux)
   nx_ovl_dv = max(dv,0d0)
   nxo_npair = 0
   nxo_use = .false.
@@ -441,10 +448,11 @@ subroutine nx_ovl_init(dv)
      enddo
   enddo
   allocate(nxo_rho(nxa_nlin),nxo_p(max(nxo_npair,1)),nxo_jcl(nxa_nlin))
-  allocate(nxo_out(nxa_nlin),nxo_ins(nxa_nlin),nxo_inw(nxa_nlin),nxo_jz(nxa_nlin))
+  allocate(nxo_out(nxa_nlin),nxo_ins(nxa_nlin),nxo_inw(nxa_nlin),nxo_jz(nxa_nlin),nxo_oux(nxa_nlin))
   nxo_rho = 1d0
   nxo_p = 0d0
   nxo_jcl = [(k,k=1,nxa_nlin)]
+  nxo_oux = 0d0
   nxo_out = 0d0
   nxo_ins = 0d0
   nxo_inw = 0d0
@@ -552,16 +560,18 @@ subroutine nx_ovl_cell(temp,nel,x,wg,qb,qv)
 ! each element), level shares wg, gradients qb = dv/dr, qv = v/r.  For
 ! each line, its partners whose profiles reach its own (centres within 6
 ! times the sum of the Doppler widths, at most 64, nearest first) and that
-! absorb noticeably somewhere (depth 1e-6 for the smallest projected
-! gradient): nxo_rho, nxo_p and nxo_jcl.
+! absorb noticeably: a depth of at least nx_ovl_tmin for the mean
+! projected gradient (a partner of depth t takes about t of the photons a
+! thick line would otherwise lose by escape, less than t of a thin
+! line's): nxo_rho, nxo_p and nxo_jcl.
 !-----------------------------------------------------------------------
   real*8,intent(in) :: temp,nel(nxa_nel),x(nxa_nst),wg(nxa_nlv),qb,qv
   integer,parameter :: mz = 64
   integer :: k,m,j,iel,nl,ii,o,ns,lo,nv,mm(mz)
-  real*8 :: kq(nxa_nlin),vdl(nxa_nel),qmin,tp,esc,bet1
+  real*8 :: kq(nxa_nlin),vdl(nxa_nel),qtyp,esc,bet1
   real*8 :: uu(mz),vv(mz),kk(mz),pp(mz)
   if(nxo_npair <= 0) return
-  qmin = 1d-3*max(abs(qb),abs(qv),1d-30)
+  qtyp = max((abs(qb) + 2d0*abs(qv))/3d0,1d-3*max(abs(qb),abs(qv)),1d-30)
   do iel=1,nxa_nel
      vdl(iel) = nx_vdop(iel,temp,nx_ovl_vtb)
   enddo
@@ -582,10 +592,9 @@ subroutine nx_ovl_cell(temp,nel,x,wg,qb,qv)
      uu(1) = 0d0
      vv(1) = vdl(nxa_lel(k))
      kk(1) = kq(k)
-     tp = 0d0
      do m=nxo_ptr(k),nxo_ptr(k+1)-1
         j = nxo_par(m)
-        if(kq(j) <= 0d0) cycle
+        if(kq(j) < nx_ovl_tmin*qtyp) cycle
         if(abs(nxo_du(m)) > 6d0*(vv(1) + vdl(nxa_lel(j)))) cycle
         if(nl >= mz) exit
         nl = nl + 1
@@ -593,9 +602,8 @@ subroutine nx_ovl_cell(temp,nel,x,wg,qb,qv)
         vv(nl) = vdl(nxa_lel(j))
         kk(nl) = kq(j)
         mm(nl) = m
-        tp = max(tp,kq(j))
      enddo
-     if(nl < 2 .or. tp < 1d-6*qmin) cycle
+     if(nl < 2) cycle
      call nx_ovl_zone(nl,uu(1:nl),vv(1:nl),kk(1:nl),1,qb,qv,esc,bet1,pp(1:nl))
      if(bet1 > 0d0) nxo_rho(k) = esc/bet1
      ii = 1
@@ -613,7 +621,7 @@ subroutine nx_ovl_terms(iel,nel,x,wg,jl)
 ! The overlap terms of the lines of element iel for the rates (nx_el_step)
 ! with the current populations x of all elements (level shares wg,
 ! element densities nel) and the incident intensities jl of all lines:
-! nxo_out, nxo_ins, nxo_inw, nxo_jz (zones of nx_ovl_cell).
+! nxo_out, nxo_inw, nxo_oux, nxo_ins, nxo_jz (zones of nx_ovl_cell).
 !-----------------------------------------------------------------------
   integer,intent(in) :: iel
   real*8,intent(in) :: nel(nxa_nel),x(nxa_nst),wg(nxa_nlv),jl(nxa_nlin)
@@ -624,21 +632,23 @@ subroutine nx_ovl_terms(iel,nel,x,wg,jl)
        nxa_ion(nxa_el(iel)%ion(nxa_el(iel)%nion))%nlin
   do k=l0,l1
      nxo_out(k) = 0d0
+     nxo_oux(k) = 0d0
      nxo_ins(k) = 0d0
      nxo_inw(k) = 0d0
      nxo_jz(k) = jl(nxo_jcl(k))
      do m=nxo_ptr(k),nxo_ptr(k+1)-1
-        nxo_out(k) = nxo_out(k) + nxo_p(m)
-        pjk = nxo_p(nxo_rev(m))
-        if(pjk <= 0d0) cycle
         j = nxo_par(m)
         je = nxa_lel(j)
+        nxo_out(k) = nxo_out(k) + nxo_p(m)
+        if(je /= iel) nxo_oux(k) = nxo_oux(k) + nxo_p(m)
+        pjk = nxo_p(nxo_rev(m))
+        if(pjk <= 0d0) cycle
         o = nxa_el(je)%xoff
         ns = nxa_el(je)%ns
         lo = nxa_el(je)%lvoff
         nv = nxa_el(je)%nlv
         nxo_inw(k) = nxo_inw(k) + pjk*max(nx_kq(j,nel(je),x(o+1:o+ns),wg(lo+1:lo+nv)),0d0)
-        nxo_ins(k) = nxo_ins(k) + pjk*nx_ks(j,nel(je),x(o+1:o+ns),wg(lo+1:lo+nv))
+        if(je /= iel) nxo_ins(k) = nxo_ins(k) + pjk*nx_ks(j,nel(je),x(o+1:o+ns),wg(lo+1:lo+nv))
      enddo
   enddo
 end subroutine nx_ovl_terms
@@ -1053,8 +1063,8 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
   integer,intent(out) :: ierr
   integer,intent(in),optional :: ncx,cxf(:),cxt(:)
   real*8,intent(in),optional :: cxr(:),xp(:),dti,sv,etab(0:nx_nbt),wqe(:),jes(:),efar(:)
-  integer :: ns,nl,k,kg,k0,info,ir
-  real*8 :: kq,bes,jle(size(jl)),b0,pin,pw,bjl
+  integer :: ns,nl,k,kg,k0,info,ir,mo
+  real*8 :: kq,bes,jle(size(jl)),b0,pin,pw,bjl,cx
   logical :: les,lesk,lfar,lfark,lovl
   real*8 :: m(nxa_el(iel)%ns,nxa_el(iel)%ns),xn(nxa_el(iel)%ns)
   real*8 :: msv(nxa_el(iel)%ns,nxa_el(iel)%ns)
@@ -1074,9 +1084,11 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
      kq = nx_kq(kg,nel,x,r%w)
      b0 = nx_beta(kq,qb,qv,btab)
 !-- overlapping lines (nxo_use; nx_ovl_terms): escape from the zone
-!-- rho beta, absorption by the partners sum_j P(k,j), the partners'
-!-- photons absorbed, and the zone's incident intensity with the factor of
-!-- detailed balance (LTE gives J = S); beta and beta*J of the rates
+!-- rho beta and absorption by the partners of other elements sum_j P(k,j),
+!-- their photons absorbed, and the zone's incident intensity with the
+!-- factor of detailed balance over all partners (LTE gives J = S); beta
+!-- and beta*J of the rates.  The exchange with the partners of the element
+!-- is in its rate matrix (below).
      lovl = nxo_use
      if(lovl) lovl = nxo_out(kg) > 0d0 .or. nxo_inw(kg) > 0d0
      if(lovl) then
@@ -1086,8 +1098,8 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
            pin = nxo_ins(kg)/kq
            pw = nxo_inw(kg)/kq
         endif
-        beta(k) = nxo_rho(kg)*b0 + nxo_out(kg)
-        bjl = max(beta(k) - pw,0d0)*nxo_jz(kg) + pin
+        beta(k) = nxo_rho(kg)*b0 + nxo_oux(kg)
+        bjl = max(nxo_rho(kg)*b0 + nxo_out(kg) - pw,0d0)*nxo_jz(kg) + pin
      else
         beta(k) = b0
         bjl = b0*jl(k)
@@ -1109,6 +1121,22 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
      jle(k) = bjl/max(beta(k),1d-300)
   enddo
   call nx_el_matrix(iel,ne,r,jle,beta,nti,ntx,m)
+!-- overlapping lines of the element: the photons of line k absorbed by its
+!-- partner j, n_u(k) A_k P(k,j), de-excite k and excite j (linear in the
+!-- population of k's upper state, so the exchange is implicit)
+  if(nxo_use) then
+     do k=1,nl
+        kg = k0 + k
+        do mo=nxo_ptr(kg),nxo_ptr(kg+1)-1
+           if(nxa_lel(nxo_par(mo)) /= iel .or. nxo_p(mo) <= 0d0) cycle
+           cx = nxa_la(kg)*nxo_p(mo)*r%w(nxa_luv(kg)-nxa_el(iel)%lvoff)
+           m(nxa_lsl(kg),nxa_lsu(kg)) = m(nxa_lsl(kg),nxa_lsu(kg)) + cx
+           m(nxa_lsu(kg),nxa_lsu(kg)) = m(nxa_lsu(kg),nxa_lsu(kg)) - cx
+           m(nxa_lsu(nxo_par(mo)),nxa_lsu(kg)) = m(nxa_lsu(nxo_par(mo)),nxa_lsu(kg)) + cx
+           m(nxa_lsl(nxo_par(mo)),nxa_lsu(kg)) = m(nxa_lsl(nxo_par(mo)),nxa_lsu(kg)) - cx
+        enddo
+     enddo
+  endif
   ldump = nx_dump
   if(ldump) msv = m
   if(present(ncx)) then
@@ -1248,7 +1276,8 @@ subroutine nx_solve_cell(temp,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx
   real*8,intent(in),optional :: xprev(nxa_nst),dtinv
   real*8,intent(in),optional :: efar(nxa_nlin) !absorption in the line cores (nx_el_step)
   integer :: iel,ns,o,l0,l1,it,ie,k,ncx,mit
-  logical :: lovl
+  logical :: lovl,lz
+  real*8 :: xz(nxa_nst)
   real*8 :: dtol
   real*8 :: neold,nenew,d,dmax,dne,dold,jl(nxa_nlin),btab(0:nx_nbt),wg(nxa_nlv)
   real*8 :: etab(0:nx_nbt),sv,wq(nxa_nlin),jes(nxa_nlin)
@@ -1298,11 +1327,17 @@ subroutine nx_solve_cell(temp,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx
   lovl = nxo_npair > 0
   do it=1,mit
      dmax = 0d0
-!-- overlapping lines: the zones at the first two iterations and every
-!-- tenth (unless the caller keeps its own), the terms of each element
-!-- with the populations of the moment
-     if(lovl .and. .not.nx_ovl_keep .and. (it<=2 .or. mod(it,10)==0)) &
-          call nx_ovl_cell(temp,nel,x,wg,qb,qv)
+!-- overlapping lines: the zones at the first iteration, and every tenth
+!-- while a population has moved by more than 10 % since they were made
+!-- (unless the caller keeps its own: nx_ovl_keep); the terms of each
+!-- element with the populations of the moment
+     lz = lovl .and. .not.nx_ovl_keep .and. it==1
+     if(lovl .and. .not.nx_ovl_keep .and. it>1 .and. mod(it,10)==0) &
+          lz = any(abs(x - xz) > 0.1d0*xz .and. xz > 1d-10)
+     if(lz) then
+        call nx_ovl_cell(temp,nel,x,wg,qb,qv)
+        xz = x
+     endif
      nxo_use = lovl
      do iel=1,nxa_nel
         if(nel(iel) <= 0d0 .or. .not.lsol(iel)) cycle
@@ -1356,6 +1391,7 @@ subroutine nx_solve_cell(temp,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx
      if(dmax < dtol .and. abs(dne) < 1d-2*dtol) exit
   enddo
   nxo_use = .false.
+  nx_nits = min(it,mit)
   if(it>mit) ierr = 2
 contains
   real*8 function chg(xx)
