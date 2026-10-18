@@ -712,7 +712,7 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
   real*8,intent(in),optional :: cxr(:),xp(:),dti,sv,etab(0:nx_nbt),wqe(:),jes(:),efar(:)
   integer :: ns,nl,k,kg,k0,info,ir
   real*8 :: kq,bes,jle(size(jl))
-  logical :: les,lesk,lfar
+  logical :: les,lesk,lfar,lfark
   real*8 :: m(nxa_el(iel)%ns,nxa_el(iel)%ns),xn(nxa_el(iel)%ns)
   integer :: ipiv(nxa_el(iel)%ns)
   logical :: ltd
@@ -734,7 +734,10 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
      if(lesk .and. allocated(nx_esm)) lesk = nx_esm(kg)
      if(lesk) then
         bes = nx_bes(kq,sv,wqe(k),beta(k),qb,qv,etab)
-        if(lfar .and. efar(k) >= 0d0) then
+!-- (efar is read only when present: no short-circuit evaluation)
+        lfark = lfar
+        if(lfark) lfark = efar(k) >= 0d0
+        if(lfark) then
            jle(k) = (beta(k)*jl(k) + efar(k))/(beta(k) + bes)
         elseif(bes > 0d0) then
            jle(k) = (beta(k)*jl(k) + bes*jes(k))/(beta(k) + bes)
