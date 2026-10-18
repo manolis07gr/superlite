@@ -83,7 +83,7 @@ module nltexmod
 !-- step of nx_el_step
   logical,public :: nx_dump = .false.
   integer,public :: nx_dns = 0
-  real*8,public :: nx_dflow(64) = 0d0,nx_dcx = 0d0,nx_dlya(4) = 0d0
+  real*8,public :: nx_dflow(64) = 0d0,nx_dcx = 0d0,nx_dlya(8,6) = 0d0
 !-- and per element and ion stage j: the flows from ion j to ion j+1 (or the
 !-- top state) and back without charge exchange, and the net charge exchange
 !-- from j to j+1 [1/s per particle of the element]
@@ -1063,8 +1063,8 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
   integer,intent(out) :: ierr
   integer,intent(in),optional :: ncx,cxf(:),cxt(:)
   real*8,intent(in),optional :: cxr(:),xp(:),dti,sv,etab(0:nx_nbt),wqe(:),jes(:),efar(:)
-  integer :: ns,nl,k,kg,k0,info,ir,mo
-  real*8 :: kq,bes,jle(size(jl)),b0,pin,pw,bjl,cx
+  integer :: ns,nl,k,kg,k0,info,ir,mo,j
+  real*8 :: kq,bes,jle(size(jl)),b0,pin,pw,bjl,cx,dlb(3,size(jl)),wl,wu,gr
   logical :: les,lesk,lfar,lfark,lovl
   real*8 :: m(nxa_el(iel)%ns,nxa_el(iel)%ns),xn(nxa_el(iel)%ns)
   real*8 :: msv(nxa_el(iel)%ns,nxa_el(iel)%ns)
@@ -1079,6 +1079,7 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
   les = present(sv) .and. present(etab) .and. present(wqe) .and. present(jes)
   if(les) les = sv > 0d0
   lfar = present(efar)
+  ldump = nx_dump
   do k=1,nl
      kg = k0 + k
      kq = nx_kq(kg,nel,x,r%w)
@@ -1104,6 +1105,7 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
         beta(k) = b0
         bjl = b0*jl(k)
      endif
+     if(ldump) dlb(:,k) = [beta(k),0d0,0d0]
      lesk = les
      if(lesk .and. allocated(nx_esm)) lesk = nx_esm(kg)
      if(lesk) then
@@ -1113,10 +1115,13 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
         if(lfark) lfark = efar(k) >= 0d0
         if(lfark) then
            bjl = bjl + efar(k)
+           if(ldump) dlb(3,k) = efar(k)
         else
            bjl = bjl + bes*jes(k)
+           if(ldump) dlb(3,k) = bes*jes(k)
         endif
         beta(k) = beta(k) + bes
+        if(ldump) dlb(2,k) = bes
      endif
      jle(k) = bjl/max(beta(k),1d-300)
   enddo
@@ -1137,7 +1142,6 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
         enddo
      enddo
   endif
-  ldump = nx_dump
   if(ldump) msv = m
   if(present(ncx)) then
      do k=1,ncx
@@ -1181,14 +1185,27 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
            if(cxf(k)==1) nx_dcx = nx_dcx - cxr(k)*xn(1)
         enddo
      endif
-!-- Lyman alpha: the element's first line, between the first two states
-     kg = k0 + 1
-     i1 = nxa_el(iel)%ion(1)
-     nx_dlya(1) = beta(1)
-     nx_dlya(2) = jle(1)
-     nx_dlya(3) = 2d0*hh*nxa_lnu(kg)**3/cc**2/ &
-          max(nxa_ion(i1)%g(2)/nxa_ion(i1)%g(1)*xn(1)/max(xn(2),1d-300) - 1d0,1d-300)
-     nx_dlya(4) = beta(1)*((nxa_la(kg) + nxa_lbul(kg)*jle(1))*xn(2) - nxa_lblu(kg)*jle(1)*xn(1))
+!-- the Lyman lines (the element's lines from the first state, at most six):
+!-- wavelength [A], escape probability without and with the trapped-photon
+!-- e.s. (bes), the incident intensities of the resonance estimator and of
+!-- the e.s. term (per bes) and the one in the rates, S from the
+!-- populations, and the net radiative rate u -> 1 per particle
+     nx_dlya = 0d0
+     j = 0
+     do k=1,nl
+        kg = k0 + k
+        if(nxa_lsl(kg) /= 1) cycle
+        j = j + 1
+        if(j > size(nx_dlya,2)) exit
+        i1 = nxa_lion(kg)
+        wl = r%w(nxa_llv(kg)-nxa_el(iel)%lvoff)*xn(1)
+        wu = r%w(nxa_luv(kg)-nxa_el(iel)%lvoff)*xn(nxa_lsu(kg))
+        gr = nxa_ion(i1)%g(nxa_ion(i1)%lu(nxa_lloc(kg)))/nxa_ion(i1)%g(nxa_ion(i1)%ll(nxa_lloc(kg)))
+        nx_dlya(:,j) = [1d8*cc/nxa_lnu(kg),dlb(1,k),dlb(1,k)+dlb(2,k),jl(k), &
+             dlb(3,k)/max(dlb(2,k),1d-300),jle(k), &
+             2d0*hh*nxa_lnu(kg)**3/cc**2/max(gr*wl/max(wu,1d-300) - 1d0,1d-300), &
+             beta(k)*((nxa_la(kg) + nxa_lbul(kg)*jle(k))*wu - nxa_lblu(kg)*jle(k)*wl)]
+     enddo
   endif
   if(it<=3) then
      x = xn

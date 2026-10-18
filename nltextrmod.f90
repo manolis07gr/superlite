@@ -785,8 +785,12 @@ subroutine nxt_gas_solve(it,gncell,temp,trad,nelv,neoth,qb,qv,icell1,edep,kap,fc
         open(lu,file=fname,position='append')
         write(lu,'(a,i4,a,i5,a,es11.4,a,es11.4,a,es11.4,a,2es11.4)') '# iteration',it,' cell',l, &
              ' T',temp(i),' n_H',nelv(1,i),' n_e',neoth(i)+free_el(nelv(:,i),x),' x_1, x_2',x(1),x(2)
-        write(lu,'(a,4es12.4)') '# Lya: beta, J used in the rates, S from the populations, '// &
-             'net radiative 2->1 per H particle:',nx_dlya
+        write(lu,'(a)') '# Lyman lines: lambda [A], beta, beta + bes (trapped-photon e.s.), J of the '// &
+             'resonance estimator, J of the e.s. term, J in the rates, S from the populations, '// &
+             'net radiative u->1 per H particle'
+        do k=1,size(nx_dlya,2)
+           if(nx_dlya(1,k) > 0d0) write(lu,'(a,f9.2,7es12.4)') '#  ',nx_dlya(:,k)
+        enddo
         write(lu,'(a,es12.4)') '# charge exchange into the ground state:',nx_dcx
         write(lu,'(a)') '# state  net flow into the ground state [1/s per H particle], charge exchange apart'
         do k=2,nx_dns
