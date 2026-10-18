@@ -83,13 +83,16 @@ contains
        ptcl2%stat = 'flux'
        return
     endif
-    if(kind==em_line .and. nxt_isrt(idx)>0) then
+!-- (idx is a line only for em_line: Fortran's .and. need not short-circuit)
+    if(kind==em_line) then
+       if(nxt_isrt(idx)>0) then
 !-- the packet sits on the (active) line it was emitted in
-       ptcl2%iline = nxt_isrt(idx)
-       dvdrl = (grd_vxarr(ix+1)-grd_vxarr(ix))/(grd_xarr(ix+1)-grd_xarr(ix))
-       qn = ((mu-vx*cinv)/(1d0-mu*vx*cinv))**2
-       qn = qn*dvdrl + (1d0-qn)*vx/x
-       ptcl2%ilside = merge(1,-1,qn>=0d0)
+          ptcl2%iline = nxt_isrt(idx)
+          dvdrl = (grd_vxarr(ix+1)-grd_vxarr(ix))/(grd_xarr(ix+1)-grd_xarr(ix))
+          qn = ((mu-vx*cinv)/(1d0-mu*vx*cinv))**2
+          qn = qn*dvdrl + (1d0-qn)*vx/x
+          ptcl2%ilside = merge(1,-1,qn>=0d0)
+       endif
     endif
     wl = wlc*(1d0-vx*mu*cinv)
 !-- DDMC in the new group

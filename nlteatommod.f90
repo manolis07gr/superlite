@@ -825,7 +825,9 @@ subroutine milne(ion,k,temp,alpha,rc)
 !-- next node in y: table nodes, then geometric steps beyond the table
      if(i < i1) then
         yb = (ion%pu(i+1) - 1d0)*ykt
-        sl = (ion%ps(i+1) - ion%ps(i))/(ion%pu(i+1) - ion%pu(i))
+!-- (a node repeated in frequency gives an interval of zero width, skipped)
+        sl = 0d0
+        if(ion%pu(i+1) > ion%pu(i)) sl = (ion%ps(i+1) - ion%ps(i))/(ion%pu(i+1) - ion%pu(i))
      else
         yb = max(ya*1.2d0, ya + 1d0)
         sl = 0d0

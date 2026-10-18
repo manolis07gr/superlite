@@ -270,11 +270,12 @@ c-- meta !nebular approximation
         call mpi_bcast(vecl(1),n,MPI_LOGICAL,
      &    impi0,MPI_COMM_WORLD,ierr)
         if(impi/=impi0) ion_el(iz)%i(ii)%meta = vecl(:n)
-c-- zval !nebular approximation
+c-- zval !nebular approximation (ntemp values: with the number of levels
+c-- n the other ranks had only the first n, and read beyond them)
         if(lmpi0) vec(:ntemp) = ion_el(iz)%i(ii)%zval
-        call mpi_bcast(vec(1),n,MPI_REAL8,
+        call mpi_bcast(vec(1),ntemp,MPI_REAL8,
      &    impi0,MPI_COMM_WORLD,ierr)
-        if(impi/=impi0) ion_el(iz)%i(ii)%zval = vec(:n)
+        if(impi/=impi0) ion_el(iz)%i(ii)%zval = vec(:ntemp)
        enddo !ii
       enddo !iz
 c-- temperature array for zeta values !nebular approximation
