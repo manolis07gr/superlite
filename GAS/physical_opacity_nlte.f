@@ -25,6 +25,7 @@ c$    use omp_lib
      &  nxd_ga,nxd_gb,nxd_z,nxd_numin,nxd_gint
       use gridmod, only:grd_xarr,grd_vxarr
       use bbsobmod
+      use rayleighmod, only:ray_groups
       implicit none
       ! integer,intent(in) :: it
 ************************************************************************
@@ -72,6 +73,8 @@ c-- bfxs
       integer :: l,ll,iln
       logical :: dirty
       real*8 :: en,xs,wl
+c-- Rayleigh scattering: subgroup boundaries [Hz] and mean cross-sections
+      real*8 :: nusub(grp_ng*grp_ngs+1),rsub(grp_ng*grp_ngs)
 c-- bbxs
       real*8 :: phi,ocggrnd,wl0,dwl
       real*8 :: expfac(gas_ncell)
@@ -729,14 +732,26 @@ c-- core shells
        deallocate(capn,emn,sinn)
       endif
 c
-c-- Rayleigh scattering by H I in the ground state (Kurucz 1970, ATLAS9
-c-- HRAYOP: Dalgarno's fit, frequency capped at Lyman alpha), in the
-c-- scattering opacity: cool dense H I gas in the blue and UV
-      if(bbs_on) then
+c-- Rayleigh scattering by H I in the ground state, in the scattering
+c-- opacity: cool dense H I gas in the blue and UV, and the Lorentz wings
+c-- of Lyman alpha (in_rayleigh = 'lyman': rayleighmod, the subgroup means
+c-- of the cross-section with the Lyman resonances; 'kurucz': Kurucz 1970,
+c-- ATLAS9 HRAYOP, Dalgarno's fit with the frequency capped at Lyman alpha)
+      if(bbs_on .and. in_rayleigh/='none') then
+       if(in_rayleigh=='lyman') then
+        do igs=1,ngsub+1
+         nusub(igs) = pc_c/wlsub(igs)
+        enddo
+        call ray_groups(ngsub+1,nusub,rsub)
+       endif
        do igs=1,ngsub
-        wl = max(0.5d8*(wlsub(igs)+wlsub(igs+1)),1217.2d0)
-        en = wl*wl
-        xs = (5.799d-13 + 1.422d-6/en + 2.784d0/(en*en))/(en*en)
+        if(in_rayleigh=='lyman') then
+         xs = cthomson*rsub(igs)
+        else
+         wl = max(0.5d8*(wlsub(igs)+wlsub(igs+1)),1217.2d0)
+         en = wl*wl
+         xs = (5.799d-13 + 1.422d-6/en + 2.784d0/(en*en))/(en*en)
+        endif
         do i=1,gas_ncell
          if(gas_mass(i)<=0d0) cycle
          if(nxt_isel(1)) then

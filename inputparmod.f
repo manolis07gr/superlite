@@ -242,6 +242,12 @@ c-- de-excitation (van Regemorter) against Sobolev escape), the rest is
 c-- coherent scattering in the comoving frame
       logical :: in_bbsobolev = .false.
       real*8 :: in_bbeps = 1d0
+c-- Rayleigh scattering by H I in the scattering part of the group opacity:
+c-- 'lyman' with the resonances of the Lyman lines (rayleighmod, as CMFGEN's
+c-- RAYLEIGH_SCAT; the Lorentz wings of Lyman alpha), 'kurucz' the
+c-- far-from-resonance fit with the frequency capped at Lyman alpha
+c-- (Kurucz's HRAYOP), 'none'
+      character(6) :: in_rayleigh = 'kurucz'
 c-- electron temperature from the thermal balance of the gas with the
 c-- Monte Carlo radiation field (requires in_nlteh), mixed with the old one
 c-- with weight in_te_damp per iteration; the LTE elements are ionized and
@@ -321,7 +327,8 @@ c-- runtime parameter namelist
      & in_fi_doppler,in_fi_only,in_fi_nes,in_fi_nesdv,
      & in_xray_table,in_xray_ff1,in_xray_ff2,in_xray_t1,in_xray_t2,
      & in_xray_v1,in_xray_v2,in_xray_smooth,
-     & in_bbsobolev,in_bbeps,in_tesolve,in_te_damp,in_te_zsolve,
+     & in_bbsobolev,in_bbeps,in_rayleigh,in_tesolve,in_te_damp,
+     & in_te_zsolve,
      & in_tion,
      & in_nt_emin,in_fflegacy,
 !phys opac
@@ -670,6 +677,8 @@ c
       if(in_srctype/='surf' .and. in_srctype/='lumg')
      &  stop 'in_srctype must be surf or lumg'
       if(in_bbeps>1d0) stop 'in_bbeps > 1'
+      if(in_rayleigh/='lyman'.and.in_rayleigh/='kurucz'.and.
+     &  in_rayleigh/='none') stop 'in_rayleigh: lyman|kurucz|none'
       if(in_tesolve.and..not.in_nltex) stop 'in_tesolve: NLTE ions'
       if(in_tion/='hydr'.and.in_tion/='elec'.and.in_tion/='nebu')
      &  stop 'in_tion: hydr|elec|nebu'
