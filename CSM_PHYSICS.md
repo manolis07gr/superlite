@@ -40,6 +40,7 @@ behaviour except for the bug fixes in rows 4 (exact Doppler, switch back with
 | `in_nlteh = t` (+ `in_nlte = t`) | NLTE hydrogen, n-resolved atom (`in_nlteh_nlev` = 30): Johnson (1972) f-values and Gaunt factors, Milne-relation recombination, collision rates from `Atoms/data.nlte.h1`, Seaton ionization, three-body recombination, 2s–1s two-photon decay. Photoionization by the Monte Carlo J_ν; line rates in the Sobolev approximation with the **direction-dependent** gradient Q(μ) = μ²dv/dr + (1−μ²)v/r and the resonance estimator of the incident intensity. | `nltehmod.f90`, `GAS/nlteh_gas_update.f90` |
 | (with `in_nlteh`) | H lines are Sobolev resonance events in the transport (found with the exact crossing, so a line can be met several times in a non-monotonic flow), interaction probability 1−e^{−τ(μ)}. Lucy's macro-atom with k-packets for the energy flow through H (recombination cascades, fluorescence, collisional excitation of hot gas), solved per cell as an absorbing Markov chain. H bound-free opacity from all levels (Balmer, Paschen continua). | `nltehtrmod.f90`, `transport11.f90` |
 | `in_srctype = 'lumg'` | Energy injected where the hydro L(r) grows outward (`lum` column), plus L at the inner boundary; emitted isotropically with the local emissivity (k-packets). The inner-boundary packets have a Planck spectrum at the input radiation temperature of the innermost cell (or `in_srcmax`), held fixed: following the Monte Carlo radiation temperature of that cell fed back on itself (harder injection → more trapping near the boundary → higher T_rad), +18 % in four iterations in the CMFGEN benchmark. | `SOURCE/sourceenergy.f90`, `interior_source.f90`, `boundary_source.f90` |
+| `in_innerbc` (`refl`, `thrm`, `absb`) | The inner boundary of a grid with a hollow core (r_in > 0) is a surface of the innermost cell: a packet that reaches it is reflected with a Lambertian direction (`refl`, default), re-emitted with a Lambertian direction and the Planck spectrum at `in_srcmax` or the input T_rad of the innermost cell (`thrm`, comoving energy conserved), or absorbed (`absb`). Before (released code), the inward rays of the innermost cell crossed the core as part of the cell, with its opacity and their path in its J, and the reflection had a uniform μ: the J of the thin innermost cell of the CMFGEN benchmark (1.3×10¹¹ cm) was 2.1–2.8 times CMFGEN's; it now follows its neighbour, and no other cell or the spectrum changes by more than 2 %. Homologous flows hardly saw it: an inward photon met a group boundary inside the core. | `TRANSPORT1/transport11.f90` |
 | `in_shock_dvmin`, `in_shock_tmax` | Shock cells (velocity drop > 50 km/s and 2 % per cell, ≥ `in_shock_dvmin` per shock) emit their injected energy as a radiatively cooling flow: T uniform between T_gas and min(T_postshock, `in_shock_tmax`) (isobaric cooling releases the same energy per unit T), bremsstrahlung shape. Its EUV/X-rays photoionize the CSM and the dense shell. | `SOURCE/shock_temperatures.f90` |
 | `in_shock_cie` | At each T of the cooling flow the photons follow the spectrum of gas in collisional ionization equilibrium of the cell's composition (lines, free-free, free-bound, two-photon; 10^4.5–10^8 K) instead of bremsstrahlung: at 10⁵–10⁷ K line cooling exceeds bremsstrahlung 10–100 times and comes out in the EUV/soft X-rays and the UV/optical coronal lines. Per-element tables from CHIANTI 11 (Dere et al. 1997; Del Zanna et al. 2021) made with `Tools/chianti_cie_spectra.py` (ChiantiPy; the table is not distributed). The shock cells' emission per group (`shc_group_frac`: the cooling flow over T, CIE or bremsstrahlung, as the source draws it) is part of the emissivity of their source functions, so the photoionizations in their thick groups (local detailed balance) take the shock's EUV photons, as with the X-ray source (`in_xray_*`). | `shockciemod.f90`, `SOURCE/interior_source.f90`, `superlite.f90` (`shock_emnbf`) |
 | tools | `Tools/stella2superlite_csm.py`: STELLA profile → `input.str` with `lum`, whole CSM, shock-preserving zone merging, recommended `input.par`. `Tools/make_wlgrid.py`: 100 km/s groups and flux bins in the optical, coarse elsewhere, with group boundaries at the main bound-free edges (H, He, abundant metals; `--from` adds them to an existing grid): in a group across an edge the cross-section is the group average, so the photons of the lines that converge on the edge from the red photoionize. In the H/He benchmark the n = 4 edge (14 588 Å) inside a 1000 km/s group lowered b₅ by up to 40 % below CMFGEN's in the inner wind (Pβ forms there); with the edge as a boundary b₅ agrees within 5 % (§4.4). Use edge-aligned grids for line work. | `Tools/` |
@@ -160,7 +161,7 @@ for H, He and the abundant metals), charge exchange, core-shell X-ray opacity.
 8. Time-dependent radiation transport (SuperNu's IMC with census) with light-travel time, for interaction phases where t_diff ≈ t_dyn.
 9. 2D/3D CSM (disks, clumps, asymmetric shells) with the SuperNu 2D/3D transport.
 9a. Continuum absorption of trapped line photons (Hummer & Rybicki 1985 line-photon destruction: the same trapped path as `in_nltex_vturb`, with the absorption opacity at the line, to the bound-free macro-atom or the thermal pool, and the photoionization it drives in the rates). In the H/He benchmark it matters only below 1.07×10¹⁵ cm, in the near-LTE layer above the photosphere (trapped Lyα photoionizing n = 2: β_abs/β > 1), and is below 0.2 % of β in the wind. Partial redistribution and pressure broadening of the Lorentz wings (only radiative damping now blocks the escape of scattered photons, as for Lyα).
-9b. Formal integral as CMFGEN's `cmf_flux`: ~~Doppler line profiles~~ (`in_fi_doppler`), ~~electron scattering with the J of the formal solution~~ (`in_fi_nes`, Ng's extrapolation every third pass). Still: an accelerated lambda operator for the scattering passes (the inner wind of a IIn, τ_es ≈ 5, converges slowly), the same scattering J in the statistical equilibrium (CMFGEN's incoherent scattering in its iterations), and the depth of the narrow P-Cygni trough of the H/He benchmark (0.7 of the continuum against CMFGEN's 0.25: CMFGEN's intensities on those rays fall below its own outer-wind source function, §4.4).
+9b. Formal integral as CMFGEN's `cmf_flux`: ~~Doppler line profiles~~ (`in_fi_doppler`), ~~electron scattering with the J of the formal solution~~ (`in_fi_nes`, Ng's extrapolation every third pass). Still: an accelerated lambda operator for the scattering passes (the inner wind of a IIn, τ_es ≈ 5, converges slowly), the same scattering J in the statistical equilibrium (CMFGEN's incoherent scattering in its iterations), and the depth of the narrow P-Cygni trough of the H/He benchmark (0.7 of the continuum against CMFGEN's 0.25: CMFGEN's intensities on those rays fall below its own outer-wind source function, §4.4). Stark profiles of the H and He lines (CMFGEN's `LIST_VGT`) and the dissolution of the high levels of H and hydrogenic ions (Hummer & Mihalas 1988 occupation probabilities, bound-free opacity redward of the edges; CMFGEN's `DO_DIS`), in the rates as well: they merge the high Balmer lines near 3646 Å, where SuperLite is 4–7 % faint at 3650–4000 Å in both benchmarks (§4.4).
 9c. Comoving-frame line transfer in slow flows: static Doppler profiles of the metal lines in the Monte Carlo (`in_nltex_dopmc`, experimental) with ~~the electron scattering of their trapped photons~~ (`in_nltex_dopes`: without it the photons scattered into the static cores were all converted, §4.4). Still: the noise of the static incident intensities (2–5 % per iteration against 0.6 % with resonances), static H and He lines (b₁ of the outer H/He wind 2.5–4 times CMFGEN's), and the outer wind of the full-metal benchmark, where CMFGEN's comoving-frame lines make H fourteen times more neutral than its Sobolev lines at 3.5×10¹⁵ cm and the hybrid four times: CMFGEN's J between Fe III 1214.56 Å and Lyα, which pumps n = 2, lies 4–13 times below the neighbouring continuum and below SuperLite's incident intensity of Lyα. CMFGEN's own incoherent scattering in its iterations makes H three times more neutral at 2×10¹⁵ cm (b₁ 13 against 4.0) and less neutral further out; the trapped-photon scattering of all lines in SuperLite's rates (`in_nltex_esrates`, four iterations from the hybrid) moves b₁ the other way (4.5 → 3.8).
 
 **Stage 4 — validation and production**
@@ -584,6 +585,48 @@ iterations, and of the formal integral):
   included, gave nearly the same far-UV J but took Hβ to 8 Å and Pβ to
   30 Å (the H/He benchmark, below). With DDMC only from τ = 30 the iterations are 2.5 times faster (fewer
   DDMC–IMC swaps) with the same populations.
+* The Balmer jump of the full-metal wind. Against the optical continuum
+  (4000–8300 Å), SuperLite's Balmer continuum (3000–3646 Å) is 11–16 %
+  too bright with Sobolev lines (against CMFGEN's Sobolev model) and
+  14–20 % with the hybrid (against `ies`), and 3650–4000 Å is 4–6 % too
+  faint: L(3300–3646)/L(3650–4000) is 1.35 against 1.14 and 1.29 against
+  1.03. In formal integrals of 2400–4600 Å (`fi_bj_coh`, `fi_bj_dm11`)
+  SuperLite's Sobolev flux falls across the edge (5.8 → 4.6×10³⁸
+  erg s⁻¹ Å⁻¹) where CMFGEN's rises (5.2 → 5.5). The excess is the H
+  Balmer continuum itself: the ratio of the two codes' J steps at 3646 Å
+  (hybrid, 1.07–1.6×10¹⁵ cm: 1.24–1.28 blueward, 0.97–1.00 redward). In
+  the layers where it forms (1.03–1.13×10¹⁵ cm, τ_es 8 → 1) SuperLite's
+  photoionization rate per n = 2 atom is 6–28 % above CMFGEN's and b₂
+  5–24 % below (Sobolev: 2–14 % and 1–11 %), their product within 4 %
+  inside 1.11×10¹⁵ cm: in both codes the Balmer continuum ionizes n = 2,
+  and the brighter continuum and the smaller b₂ (S ∝ 1/b₂) hold each
+  other up. In the H/He wind the emergent Balmer continuum agrees within
+  6 % and b₂ within 3 %, so the metals start it: Fe II and Fe III shield
+  the far UV and Lyα, which feed n = 1 and 2, differently in the two
+  codes (above). Two causes are ruled out. The inner boundary
+  (SuperLite: a reflecting surface, the injected luminosity with a Planck
+  spectrum; CMFGEN: the diffusion approximation): a thermalizing boundary
+  at CMFGEN's core temperature (`in_innerbc = 'thrm'`, 17 027 K;
+  `cmf_m002re_dm13t`, two iterations) changes J in the two innermost
+  cells only and the spectrum not at all. And energy redistribution at the
+  fixed T_e (the Monte Carlo re-emits what the gas absorbs, CMFGEN emits
+  at its T_e): T_e from SuperLite's thermal balance with the hybrid's J
+  (`cmf_m002re_dm13e`) is within +0.6 % of CMFGEN's from the base to the
+  photosphere (one cell +1.9 %) and 0.5–5 % below it beyond
+  2.5×10¹⁵ cm. The deficit at 3650–4000 Å is in the H/He wind as well
+  (7 %): CMFGEN dissolves the high levels of H (occupation probabilities,
+  `DO_DIS`: the bound-free opacity and emission continue redward of the
+  edge) and gives the H and He lines Stark profiles in its observer's
+  spectrum (`LIST_VGT`), which merge the high Balmer lines near the edge;
+  SuperLite has neither (roadmap 9b). Deep inside (τ_es = 10–30)
+  SuperLite's radiation field is not thermalized at CMFGEN's T_e: J is
+  0.89–0.98 of B(T_e) (bolometric), 0.70 at 912–2000 Å, 1.07–1.14 at
+  5000–8300 Å, and b₁ of H 1.3 (the Lyman continuum in local detailed
+  balance holds S = B/b₁), where CMFGEN has J = B(T) within 1 % in every
+  band and b₁ = 1.00: its diffusion boundary sets J = B(T) at the core,
+  while SuperLite carries the luminosity with its own opacities (J/H at
+  τ_es = 15–30 is 4–9 % below that of CMFGEN's Sobolev model). These
+  layers lie below the photosphere of every band.
 
 Line profiles of the H/He wind (Hα; EW in Å of −2700…−300, ±300 and
 +300…+2700 km/s against the continuum fitted at 4000–6000 km/s on both

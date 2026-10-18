@@ -125,8 +125,12 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
   far = 2d0*abs(sqrt(grd_xarr(ix+1)**2-grd_xarr(ix)**2))
 
 !
-!-- boundary distances
-  if(ix==1 .or. mu>=-sqrt(1d0-(grd_xarr(ix)/x)**2)) then
+!-- boundary distances (the innermost cell of a grid with a hollow core,
+!-- grd_xarr(1) > 0, has the inner boundary as a surface: before, its
+!-- inward rays crossed the core as part of the cell, with the cell's
+!-- opacity and their path in its J)
+  if((ix==1 .and. grd_xarr(1)<=0d0) .or. &
+       mu>=-sqrt(max(0d0,1d0-(grd_xarr(ix)/x)**2))) then
 !-- outer boundary
      db = abs(sqrt(grd_xarr(ix+1)**2-(1d0-mu**2)*x**2)-mu*x)
      ixnext = ix+1
@@ -349,7 +353,7 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
 
 !
 !-- instantiate new particle at inner boundary
-  if(x < grd_xarr(1)) then
+  if(x < grd_xarr(1) .or. (d==db .and. ixnext<1)) then
      if(trn_innerbc=='absb') then
 !-- absorbed by the boundary
         ptcl2%stat = 'dead'
@@ -376,8 +380,10 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
         e = e/(1d0-mu*vx*cinv)
         e0 = e0/(1d0-mu*vx*cinv)
      else
-     !-- forward scattering 0 <= mu <=1
-        mu = 1d0 - r1
+!-- diffuse reflection: Lambertian direction, as the surface source emits
+!-- (a uniform mu, as before, put an isotropic field's reflected packets on
+!-- near-tangent rays and raised the J of a thin innermost cell)
+        mu = sqrt(r1)
      endif
      return
   endif
