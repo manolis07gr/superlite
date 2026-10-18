@@ -168,7 +168,7 @@ for H, He and the abundant metals), charge exchange, core-shell X-ray opacity.
 9c. Comoving-frame line transfer in slow flows: static Doppler profiles of the metal lines in the Monte Carlo (`in_nltex_dopmc`, experimental) with ~~the electron scattering of their trapped photons~~ (`in_nltex_dopes`: without it the photons scattered into the static cores were all converted, §4.4). Still: the noise of the static incident intensities (2–5 % per iteration against 0.6 % with resonances), static H and He lines (b₁ of the outer H/He wind 2.5–4 times CMFGEN's), and the outer wind of the full-metal benchmark, where CMFGEN's comoving-frame lines make H fourteen times more neutral than its Sobolev lines at 3.5×10¹⁵ cm and the hybrid four times: CMFGEN's J between Fe III 1214.56 Å and Lyα, which pumps n = 2, lies 4–13 times below the neighbouring continuum and below SuperLite's incident intensity of Lyα. CMFGEN's own incoherent scattering in its iterations makes H three times more neutral at 2×10¹⁵ cm (b₁ 13 against 4.0) and less neutral further out; the trapped-photon scattering of all lines in SuperLite's rates (`in_nltex_esrates`, four iterations from the hybrid) moves b₁ the other way (4.5 → 3.8). On CMFGEN's own populations SuperLite's J follows CMFGEN's in every band but the Lyα region (1200–1240 Å: 1.3–9 times CMFGEN's at 1.05–1.13×10¹⁵ cm), and leaving out the line-list lines beyond the model atoms (`in_nltex_bbext`) leaves the outer wind as it was (§4.4): the Lyα transport in the line forest (where CMFGEN's Fe III 1214.56 Å shadows Lyα) is what remains.
 
 **Stage 4 — validation and production**
-9d. Thermal balance at sharp ionization fronts: in the H/He benchmark two cells of the H recombination front run 13 % hot and ionize fully while their neighbours stay 10–20 % neutral (§4.4); their Lyman continuum stays in local detailed balance (J = S of the cell, 2000–3000 times their neighbours'), and raising the threshold of local detailed balance to τ = 100 moves the hot cell instead of removing it. The balance of a cell with the J of the previous iteration behaves there as if it had a cold, partly neutral and a hot, ionized root (not checked directly); a linearization of T with the populations and the response of J (as CMFGEN's), or a continuation that keeps each cell on the branch of its neighbours, would be needed.
+9d. ~~Thermal balance at sharp ionization fronts~~: the root search of the balance warm-started each trial temperature from another trial's statistical equilibrium, which at an H recombination front with the Lyman continuum in local detailed balance has a neutral and an ionized solution besides the continuing one; every trial now starts from the cell's populations (§4.4). Still: a linearization of T with the populations and the response of J, as CMFGEN's, would converge in fewer iterations.
 10. The observed-line-metric harness (EW, decrement, absorption share, peak velocity on a common ±5000 km/s window; `balmer_validation`) as regression tests; grids for the A/B/C model series; comparison with CMFGEN/ARTIS spectra of the same hydro snapshots.
 
 ## 4. Results
@@ -437,8 +437,8 @@ option; Doppler profiles and 12 scattering passes in the formal
 integral) Hα, Hβ and Pβ are 105.9, 22.6 and 55.0 Å against `ies`'
 100.9, 21.1 and 55.2 (+5, +7, 0 %), with level dissolution 108.0, 23.0
 and 54.2. Its T_e from the thermal balance stays within 0.5 % of
-CMFGEN's radiative-equilibrium T_e in 59 of 69 cells (two cells at the
-H recombination front run 13 % hot, roadmap 9d). Open: the incoherent
+CMFGEN's radiative-equilibrium T_e in 64 of 69 cells and within 1.8 %
+in all, the H recombination front included. Open: the incoherent
 scattering of CMFGEN's iterations, which ionizes H just above the
 photosphere (`in_nltex_esrates`, experimental, does part of it).
 
@@ -769,24 +769,24 @@ iterations, and of the formal integral):
   of `blk`'s inside 1.07×10¹⁵ cm, 7–27 % below it outside).
 * SuperLite's thermal balance against CMFGEN's radiative equilibrium
   (H/He, Sobolev lines in both; `cmf_hhe_teS`: T_e from `in_tesolve`, eight
-  iterations from CMFGEN's T_e of `sob`). T_e stays within 0.5 % of
-  CMFGEN's in 59 of the 69 cells, from the base (17 000 K, −0.4 %) to the
-  outer edge (7400 K, +0.4 %). At the H recombination front just above
-  the photosphere (1.065–1.24×10¹⁵ cm, x_HI 0.02–0.2) eight cells drift up
-  by 1–3 %, and two (1.090 and 1.098×10¹⁵ cm) by 13 %, where they ionize
-  fully (x_HI 10⁻⁴ against 0.1–0.2 in the cells between them): in every
-  iteration their root lies about 5 % above the last. SuperLite solves the
-  balance of each cell with the J of the previous iteration; CMFGEN
-  linearizes T together with the populations and the radiation field. In
-  both cells the Lyman continuum stays in local detailed balance
-  (`in_nltex_ldb`: J = S of the cell), 2000–3000 times that of their
-  neighbours once they are hot and ionized; but with local detailed
-  balance only from τ = 100 per cell (`cmf_hhe_teL`) another cell runs
-  10 % hot and ionizes, so the front behaves as bistable for the lagged J
-  rather than held by that treatment (roadmap 9d). The
-  emergent bands change by < 2 % (relative to the total), Hα, Hβ, Pβ of
-  the formal integral with the Monte Carlo J by +13, +2, +8 % (91.3, 17.3,
-  55.4 → 103.6, 17.7, 59.7 Å, Monte Carlo noise of J included). In A4's and
+  iterations from CMFGEN's T_e of `sob`, `cmf_hhe_teF`). T_e stays within
+  0.5 % of CMFGEN's in 64 of the 69 cells and within 1.8 % in all (the
+  innermost cell −1.8 %, the outer wind at 3.7–4.4×10¹⁵ cm −0.7 to −1.4 %),
+  the H recombination front just above the photosphere (1.065–1.24×10¹⁵ cm,
+  x_HI 0.02–0.2) included. Before (`cmf_hhe_teS`) two cells of the front
+  ran 13 % hot and ionized fully: the root search of the balance
+  warm-started the statistical equilibrium of each trial temperature from
+  another trial's, and with the Lyman continuum in local detailed balance
+  (J = S of the cell) the equations of a front cell have a nearly neutral
+  (x_HII 0.01) and a fully ionized solution besides the one that continues
+  its state (0.8): f(T) alternated between them from one trial to the
+  next (`SL_TESCAN`, §5), and the roots were spurious. Every trial now
+  starts from the cell's populations. The bands of the spectrum stay
+  within 1–6 % of `sob`'s, as with CMFGEN's T_e. The
+  two hot cells had changed the bands by < 2 % (relative to the total)
+  and Hα, Hβ, Pβ of the formal integral with the Monte Carlo J by +13,
+  +2, +8 % (91.3, 17.3, 55.4 → 103.6, 17.7, 59.7 Å, Monte Carlo noise of J
+  included). In A4's and
   A7's CSM (ionized, x_HI ≤ 10⁻³) T_e varies by 4–8 % from cell to cell, as
   the noise of the heating rates. CMFGEN with T released from `ies`
   (`sn_iin_hhe_iesT`, 50 iterations; its linearization had to be rebuilt
@@ -1079,4 +1079,6 @@ Outputs: `output.flx_luminos` (spectrum per iteration), `output.nltex` (ion frac
 of every NLTE element and n_e per cell), `output.nlteh` (H populations,
 departure coefficients, Sobolev optical depths, escape probabilities per cell),
 `output.tebal_<rank>` with `in_tesolve` (heating and cooling terms per cell at the last
-iteration).  Unit tests: `Tests/unit/run_tests.sh`.
+iteration; with the environment variable `SL_TESCAN=<cell>,<cell>,...` also
+`output.tescan_<cell>`, the balance function f(T) around the old T_e in every
+iteration, with n_e and the top-state fraction of the first element).  Unit tests: `Tests/unit/run_tests.sh`.
