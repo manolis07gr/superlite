@@ -691,6 +691,42 @@ iterations, and of the formal integral):
   included, gave nearly the same far-UV J but took Hβ to 8 Å and Pβ to
   30 Å (the H/He benchmark, below). With DDMC only from τ = 30 the iterations are 2.5 times faster (fewer
   DDMC–IMC swaps) with the same populations.
+* What sets the H ionization of the outer full-metal wind (roadmap 9c).
+  Two pieces were missing. (1) Rayleigh scattering by H I in the Lorentz
+  wing of Lyα (CMFGEN's `INC_RAY`): 1732 σ_T per H I atom within
+  ≈ 1500 km/s of Lyα, a scattering depth of 25–40 above the photosphere
+  (electrons: 0.1–3.5). On CMFGEN's own populations (`rayE_hold`,
+  `in_rayleigh = 'lyman'`) SuperLite's J at 1210–1220 Å goes from 7.0,
+  5.0, 2.4 and 1.5 times CMFGEN's to 1.6, 1.2, 1.05 and 0.86 times at
+  1.10, 1.13, 1.65 and 3.6×10¹⁵ cm. The dip of CMFGEN's J between Fe III
+  1214.56 Å and Lyα was this scattering, not the Fe III line. With its own
+  populations (`rayF_nb`, six iterations) b₁ rises from 1.45 to 2.0 at
+  1.65×10¹⁵ cm (CMFGEN 2.7), and the outer wind does not move. In the H/He
+  wind (`rayG_hhe`) b₁ is within 1.05–2.6 times `ies`'. Redistributing the
+  scattered photons with the electrons as CMFGEN's incoherent scattering
+  does (`'lymes'`) brings that to 5–33 % (`rayG2_hhe_es`), and changes the
+  full-metal wind by ≈ 10 % (`rayF2_nb_es`).
+  (2) Overlapping lines. The rates of the outer wind (`SL_RATEDUMP`,
+  against CMFGEN's `HIPRRR`) feed SuperLite's ground state of H with Lyα
+  and drain it by charge exchange with O II (6.5×10⁻⁸ s⁻¹ per H atom at
+  3.4×10¹⁵ cm), whose O I is photoionized from excited levels.
+  CMFGEN's own models disagree with each other there: with Sobolev lines
+  (`re`) b₁ = 38 at 3.6×10¹⁵ cm, half of SuperLite's, and with comoving-
+  frame lines 663 (`blk`) and 364 (`ies`). In the H/He wind the three
+  agree within 15 %, so the effect comes with the metals. In CMFGEN's
+  comoving-frame models the Lyman lines feed the ground state 2.5–6 times
+  more per H atom than in its Sobolev model, with 10–17 times more H I:
+  25–100 times the Sobolev escape. And O I 3d ³D° is 10–100 times more
+  populated, relative to the O I ground level, than in SuperLite (5–15
+  times more than in CMFGEN's Sobolev model). O I 1025.76 Å lies 11.7 km/s
+  to the red of Lyβ, inside its Doppler core, and absorbs the trapped Lyβ
+  photons: the Bowen fluorescence of O I 8446 and 11 287 Å, which CMFGEN's
+  spectrum shows in emission (EW 0.3 and 1.4 Å; SuperLite without
+  the overlap −0.9 and −0.9 Å). With χ(O I)/χ(Lyβ) ≈ 1.3×10⁻⁴, O I takes a trapped Lyβ
+  photon long before it escapes (β ≈ 1–4×10⁻⁷), and n = 3 empties into
+  the ground state, with SuperLite's n₃ ≈ 10⁻⁶ s⁻¹ per H atom, ten times
+  its Lyα flow. Point resonances keep each line's trapped photons to
+  itself; `in_nltex_overlap` (§2) shares the zone.
 * The Balmer jump of the full-metal wind. Against the optical continuum
   (4000–8300 Å), SuperLite's Balmer continuum (3000–3646 Å) is 11–16 %
   too bright with Sobolev lines (against CMFGEN's Sobolev model) and
