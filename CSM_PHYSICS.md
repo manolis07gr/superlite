@@ -381,17 +381,19 @@ Carlo J and its trapped-photon term, and with 12 scattering passes as
 | `in_nltex_esrates` (`s10_A7y`, four more iterations) | 187 | 209 | | 1.47 |
 | `in_nltex_esrates`, four more (`s10_A7y2`) | 176 | 216 | 253.6 | 1.62, 1.71 |
 | static Doppler profiles of all lines in the slow cells (`in_nltex_dopmc` 2, `in_nltex_dopz` 1, with `in_nltex_dopes`; `s10_A7s`, six more iterations) | 209 | 300 | 222.5 | 1.45, 1.73 |
+| the same with level dissolution and 2¹⁸ packets, eight more iterations (`s12_A7`, the recommended configuration of §5) | 236 | 290 | 232.7 | 1.47, 1.61 |
 
 With static profiles the single-pass formal integral adds the
 trapped-photon scattering of the Sobolev escape on top of the profiles'
 own (300 Å); the 12 passes, which take the scattering from the J of the
-formal solution, follow the Monte Carlo within 6 %. With
+formal solution, follow the Monte Carlo within 6 % (1.5 % after eight
+more iterations with 2¹⁸ packets). With
 `in_nltex_esrates` (Sobolev resonances that absorb the scattered photons
 in their profiles) the single pass came close to the Monte Carlo, but the
-12 passes give 1.44 times its Hα. A7's Hα is thus 210–225 Å with a flat
+12 passes give 1.44 times its Hα. A7's Hα is thus 220–235 Å with a flat
 decrement (R5 1.45–1.75; the observed median is
-≈ 100 Å and 3.6), and the populations still change by 15–17 % per
-iteration (median over the cells). For dense, slow CSM the static profiles
+≈ 100 Å and 3.6), and the populations still change by 10–12 % per
+iteration (median over the cells; 15–17 % with 2¹⁶ packets). For dense, slow CSM the static profiles
 of all lines are needed; the default Sobolev lines are consistent where
 the flow is fast (A4's formal integral follows its Monte Carlo within 3 %).
 
