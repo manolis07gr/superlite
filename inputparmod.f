@@ -138,6 +138,11 @@ c-- statistical equilibrium: the transport and the formal integral on
 c-- given populations, e.g. those of a CMFGEN model
 c-- (Tools/cmfgen2superlite_state.py)
       logical :: in_nltex_hold = .false.
+c-- lines of the line list of NLTE ions whose upper level lies above the
+c-- model atom, and of the top ions, in the Sobolev expansion opacity
+c-- (lower level from the highest model level below it, Boltzmann above);
+c-- f: only the lines of the model atoms (as a CMFGEN model with them)
+      logical :: in_nltex_bbext = .true.
 c-- accelerated lambda iteration of the NLTE bound-free transitions (local
 c-- operator of each cell and group; nltexmod)
       logical :: in_nltex_ali = .false.
@@ -295,6 +300,7 @@ c-- runtime parameter namelist
      & in_nlteh_tau0,in_nltex_atoms,in_nltex_dir,in_nltex_chgexch,
      & in_srctype,in_shock_dvmin,in_shock_tmax,in_shock_cie,
      & in_nltex_prev,in_nltex_dtprev,in_nltex_init,in_nltex_hold,
+     & in_nltex_bbext,
      & in_nltex_ali,
      & in_nltex_ldb,in_nltex_vturb,in_nltex_vturbmax,in_nltex_esrates,
      & in_nltex_esdamp,in_nltex_dopmc,in_nltex_dopz,in_nltex_dopes,
@@ -440,6 +446,7 @@ c
       call insertr(in_nltex_vturbmax,in_r,ir)
       call insertl(in_nltex_esrates,in_l,il)
       call insertl(in_nltex_hold,in_l,il)
+      call insertl(in_nltex_bbext,in_l,il)
       call insertl(in_nltex_esdamp,in_l,il)
       call insertr(in_nltex_dopmc,in_r,ir)
       call inserti(in_nltex_dopz,in_i,ii)

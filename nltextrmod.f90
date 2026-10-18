@@ -149,6 +149,9 @@ module nltextrmod
   integer,public :: nxt_she1 = 0, nxt_she2 = 0, nxt_shec = 0   !He I ground, excitation target, continuum
   integer,public :: nxt_elh = 0, nxt_elhe = 0
   logical,public :: nxt_isel(0:99) = .false. !element (Z) in NLTE
+!-- (in_nltex_bbext) the line-list lines of NLTE ions beyond the model atoms,
+!-- and of the top ions, in the Sobolev expansion opacity
+  logical,public :: nxt_bbext = .true.
   integer,public :: nxt_elz(0:99) = 0         !NLTE element index of Z, 0 if none
 !-- NLTE ion of (Z, stage); -1: the top ion of an NLTE element; 0: none
   integer,public :: nxt_ionzs(0:99,30) = 0

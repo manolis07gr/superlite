@@ -213,6 +213,9 @@ program superlite
      endif
      nxt_damp = in_nlteh_damp
      nxt_ldbtau = in_nltex_ldb
+     nxt_bbext = in_nltex_bbext
+     if(lmpi0 .and. .not.nxt_bbext) write(6,'(1x,a)') &
+          'NLTE elements: only the lines of the model atoms (in_nltex_bbext = f)'
 !-- electron scattering of line photons trapped in their resonance zones
 !-- (the electrons' Doppler shifts: thermal Thomson scattering)
      nxt_estrap = in_nltex_vturb>=0d0 .and. in_thm_thermal

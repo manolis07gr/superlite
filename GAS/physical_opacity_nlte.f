@@ -19,7 +19,7 @@ c$    use omp_lib
      &  nxa_lvphi,nxa_lvnu0,nxa_g1,nxa_sgm,nxa_lvcl,nxa_weights,
      &  nxa_sgo
       use nltextrmod, only:nxt_xloc,nxt_nelloc,nxt_neloc,gas_capnbf,
-     &  nxt_isel,nxt_elz,nxt_ionzs,nxt_etop,gas_emnbf
+     &  nxt_isel,nxt_elz,nxt_ionzs,nxt_etop,gas_emnbf,nxt_bbext
       use nlteatommod, only:nxa_ion,nxa_nion
       use gridmod, only:grd_xarr,grd_vxarr
       use bbsobmod
@@ -427,7 +427,7 @@ c$omp& shared(ngsub,gas_mass,gas_temp,grndlev,hckt,hckti,wlsub,bb_xs,
 c$omp&   bb_nline,gas_ncell,nlte_nelem,nlte_ndens,nlte_data,
 c$omp&   cap,capemit,emiss,capsc,qarr,warr,qavg,qmin,qmax,nearr,
 c$omp&   bbs_on,bbs_sobolev,bbs_eps,nxt_isel,nxt_ionzs,nxt_etop,
-c$omp&   nxa_ion,nxa_el,nxt_xloc,nxt_nelloc,wlv,nxt_elz)
+c$omp&   nxa_ion,nxa_el,nxt_xloc,nxt_nelloc,wlv,nxt_elz,nxt_bbext)
        iigs = 0
        dirty = .true.
        phi = 0d0
@@ -446,6 +446,9 @@ c-- at T_e above that level.  Other stages are not populated.
 c-- Line-list and model-atom energies of a level agree to ~1e-4.
         jion = 0
         if(nxt_isel(iz)) then
+c-- (in_nltex_bbext = f: only the model atoms' lines, as CMFGEN with the
+c-- same atoms)
+         if(.not.nxt_bbext) cycle
          jion = nxt_ionzs(iz,ii)
          if(jion==0) cycle
          iel = nxt_elz(iz)
