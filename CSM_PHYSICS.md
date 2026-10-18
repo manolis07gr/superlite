@@ -782,7 +782,10 @@ iterations, and of the formal integral):
   its state (0.8): f(T) alternated between them from one trial to the
   next (`SL_TESCAN`, §5), and the roots were spurious. Every trial now
   starts from the cell's populations. The bands of the spectrum stay
-  within 1–6 % of `sob`'s, as with CMFGEN's T_e. The
+  within 1–6 % of `sob`'s, as with CMFGEN's T_e, and the formal integral
+  (12 passes, `fi_teF_q12`) gives Hα, Hβ, Pβ, He I 10830 108.3, 22.9, 54.5,
+  −3.0 Å against `sob`'s 96.3, 21.2, 49.4, −3.2 (+12, +8, +10 %; `ies`
+  100.9, 21.1, 55.2, −3.7). The
   two hot cells had changed the bands by < 2 % (relative to the total)
   and Hα, Hβ, Pβ of the formal integral with the Monte Carlo J by +13,
   +2, +8 % (91.3, 17.3, 55.4 → 103.6, 17.7, 59.7 Å, Monte Carlo noise of J
