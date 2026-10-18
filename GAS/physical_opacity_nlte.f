@@ -86,6 +86,8 @@ c-- Sobolev (expansion) line opacity and line scattering
       real*8 :: qarr(bbs_nq,gas_ncell),qavg(gas_ncell),qmin(gas_ncell)
       real*8 :: qmax(gas_ncell),nearr(gas_ncell),warr(bbs_nq,gas_ncell)
       real*8,allocatable :: capsc(:,:) !(gas_ncell,grp_ng*grp_ngs)
+c-- its Rayleigh part (gas_fray)
+      real*8,allocatable :: capry(:,:) !(gas_ncell,grp_ng*grp_ngs)
 c-- temporary cap array in the right order
       real*8,allocatable :: cap(:,:) !(gas_ncell,grp_ng*grp_ngs)
       real*8,allocatable :: capemit(:,:) !(gas_ncell,grp_ng*grp_ngs)
@@ -147,6 +149,8 @@ c-- initialize
       emiss = 0d0
       allocate(capsc(gas_ncell,ngsub)) !line scattering
       capsc = 0d0
+      allocate(capry(gas_ncell,ngsub)) !Rayleigh scattering
+      capry = 0d0
 c
 c-- velocity gradients and electron densities for the Sobolev lines
 c-- (microclumping: gradients over f, so that the Sobolev depths of the
@@ -738,14 +742,14 @@ c-- of Lyman alpha (in_rayleigh = 'lyman': rayleighmod, the subgroup means
 c-- of the cross-section with the Lyman resonances; 'kurucz': Kurucz 1970,
 c-- ATLAS9 HRAYOP, Dalgarno's fit with the frequency capped at Lyman alpha)
       if(bbs_on .and. in_rayleigh/='none') then
-       if(in_rayleigh=='lyman') then
+       if(in_rayleigh/='kurucz') then
         do igs=1,ngsub+1
          nusub(igs) = pc_c/wlsub(igs)
         enddo
         call ray_groups(ngsub+1,nusub,rsub)
        endif
        do igs=1,ngsub
-        if(in_rayleigh=='lyman') then
+        if(in_rayleigh/='kurucz') then
          xs = cthomson*rsub(igs)
         else
          wl = max(0.5d8*(wlsub(igs)+wlsub(igs+1)),1217.2d0)
@@ -763,6 +767,7 @@ c-- ATLAS9 HRAYOP, Dalgarno's fit with the frequency capped at Lyman alpha)
          else
           nl = 0d0
          endif
+         capry(i,igs) = nl*xs
          capsc(i,igs) = capsc(i,igs) + nl*xs
         enddo !i
        enddo !igs
@@ -877,11 +882,18 @@ c-- emissivity
      &    help
 c-- line scattering
         capsc(:,ig) = sum(capsc(:,i:j), dim=2)*help
+        capry(:,ig) = sum(capry(:,i:j), dim=2)*help
        enddo !ig
       endif
 c
 c-- save
       if(bbs_on) gas_capsc = transpose(sngl(capsc(:,:grp_ng)))
+c-- (the Rayleigh share of the scattering opacity)
+      if(bbs_on) then
+       where(capsc(:,:grp_ng)>0d0) capry(:,:grp_ng) =
+     &   min(capry(:,:grp_ng)/capsc(:,:grp_ng),1d0)
+       gas_fray = transpose(sngl(capry(:,:grp_ng)))
+      endif
       gas_cap = transpose(sngl(cap(:,:grp_ng)))
       gas_capemit = transpose(sngl(capemit(:,:grp_ng)))
       gas_emiss = transpose(sngl(emiss(:,:grp_ng)))
@@ -990,7 +1002,7 @@ c
       deallocate(cap)
       deallocate(capemit)
       deallocate(emiss)
-      deallocate(capsc)
+      deallocate(capsc,capry)
 c
       t4 = t_time()
 c-- register timing

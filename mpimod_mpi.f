@@ -682,7 +682,7 @@ c     -----------------------------
       use inputparmod, only:in_nltex
       use nlteatommod, only:nxa_nst,nxa_nel
       use nltextrmod
-      use bbsobmod, only:bbs_on,gas_capsc,grd_capsc
+      use bbsobmod, only:bbs_on,gas_capsc,grd_capsc,gas_fray,grd_fray
       implicit none
 ************************************************************************
 * Broadcast the data that changes with time/temperature.
@@ -764,6 +764,9 @@ c-- line scattering opacity
       if(bbs_on) then
        call mpi_allgatherv(gas_capsc,grp_ng*gas_ncell,MPI_REAL,
      &   grd_capsc,grp_ng*counts,grp_ng*displs,MPI_REAL,
+     &   MPI_COMM_WORLD,ierr)
+       call mpi_allgatherv(gas_fray,grp_ng*gas_ncell,MPI_REAL,
+     &   grd_fray,grp_ng*counts,grp_ng*displs,MPI_REAL,
      &   MPI_COMM_WORLD,ierr)
       endif
 c

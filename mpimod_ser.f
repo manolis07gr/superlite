@@ -98,7 +98,7 @@ c
       use particlemod
       use inputparmod, only:in_nltex
       use nltextrmod
-      use bbsobmod, only:bbs_on,gas_capsc,grd_capsc
+      use bbsobmod, only:bbs_on,gas_capsc,grd_capsc,gas_fray,grd_fray
 ************************************************************************
 * Broadcast the data that changes with time.
 * - stub
@@ -128,6 +128,7 @@ c-- NLTE hydrogen
       endif
 c-- line scattering opacity
       if(bbs_on) grd_capsc = gas_capsc
+      if(bbs_on) grd_fray = gas_fray
 c
       src_nvacantall(1) = count(prt_isvacant)
       end subroutine bcast_nonpermanent

@@ -16,7 +16,7 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
   use nlteatommod, only:nxa_lnu,nxa_lwl
   use nltextrmod
   use nxemitmod
-  use bbsobmod, only:bbs_on,grd_capsc
+  use bbsobmod, only:bbs_on,grd_capsc,grd_fray
   implicit none
 !
   type(packet),target,intent(inout) :: ptcl
@@ -338,6 +338,14 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
   if(d<0d0) then
      ierr = 4
      return
+  endif
+!-- (in_rayleigh = 'lymes', benchmark: a scattering by H I is redistributed
+!-- by the thermal electrons, as CMFGEN's iterations with incoherent electron
+!-- scattering treat their Rayleigh opacity: the event becomes a Thomson
+!-- scattering, by its share of the scattering opacity of the group)
+  if(trn_raythm .and. d==dsc) then
+     call rnd_r(r1,rndstate)
+     if(r1 < grd_fray(ig,ic)) dthm = d
   endif
 
 !-- the flight for the incident intensity of the lines of a slow cell

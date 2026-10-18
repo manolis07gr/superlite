@@ -16,6 +16,7 @@ c
       logical :: trn_thm_aniso !experimental !evaluates anisotropic scattering angle for Thomson scattering
       logical :: trn_dopexact = .true. !exact comoving group crossings, lab wavelength conserved in free flight
       logical :: trn_thm_thermal = .false. !Thomson scattering off thermal electrons (non-coherent)
+      logical :: trn_raythm = .false. !Rayleigh scattering redistributed as thermal-electron scattering (benchmark)
       character(4) :: trn_innerbc = 'refl' !inner boundary: refl|thrm|absb
       real*8 :: trn_tinner = 0d0 !temperature of a thermalizing inner boundary [K]
 c

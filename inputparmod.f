@@ -246,7 +246,10 @@ c-- Rayleigh scattering by H I in the scattering part of the group opacity:
 c-- 'lyman' with the resonances of the Lyman lines (rayleighmod, as CMFGEN's
 c-- RAYLEIGH_SCAT; the Lorentz wings of Lyman alpha), 'kurucz' the
 c-- far-from-resonance fit with the frequency capped at Lyman alpha
-c-- (Kurucz's HRAYOP), 'none'
+c-- (Kurucz's HRAYOP), 'none'; 'lymes' (benchmark) the Lyman resonances
+c-- with the Rayleigh-scattered photons redistributed by the thermal
+c-- electrons, as CMFGEN's iterations with incoherent electron scattering
+c-- (COH_ES = F) treat its Rayleigh opacity
       character(6) :: in_rayleigh = 'kurucz'
 c-- electron temperature from the thermal balance of the gas with the
 c-- Monte Carlo radiation field (requires in_nlteh), mixed with the old one
@@ -678,7 +681,10 @@ c
      &  stop 'in_srctype must be surf or lumg'
       if(in_bbeps>1d0) stop 'in_bbeps > 1'
       if(in_rayleigh/='lyman'.and.in_rayleigh/='kurucz'.and.
-     &  in_rayleigh/='none') stop 'in_rayleigh: lyman|kurucz|none'
+     &  in_rayleigh/='lymes'.and.in_rayleigh/='none')
+     &  stop 'in_rayleigh: lyman|kurucz|lymes|none'
+      if(in_rayleigh=='lymes'.and..not.in_thm_thermal)
+     &  stop 'in_rayleigh = lymes: needs in_thm_thermal'
       if(in_tesolve.and..not.in_nltex) stop 'in_tesolve: NLTE ions'
       if(in_tion/='hydr'.and.in_tion/='elec'.and.in_tion/='nebu')
      &  stop 'in_tion: hydr|elec|nebu'
@@ -761,6 +767,7 @@ c
       trn_thm_aniso = in_thm_aniso
       trn_dopexact = .not.in_trn_doplegacy
       trn_thm_thermal = in_thm_thermal
+      trn_raythm = in_rayleigh=='lymes'
       trn_innerbc = in_innerbc
       trn_tinner = in_srcmax
       trn_errorfatal = in_trn_errorfatal

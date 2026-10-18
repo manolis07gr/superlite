@@ -31,6 +31,9 @@ module bbsobmod
 !-- line scattering part of the bound-bound opacity
   real*4,allocatable,public :: grd_capsc(:,:)  !(ng,ncell)
   real*4,allocatable,public :: gas_capsc(:,:)  !(ng,gas_ncell)
+!-- the share of Rayleigh scattering by H I in it
+  real*4,allocatable,public :: grd_fray(:,:)   !(ng,ncell)
+  real*4,allocatable,public :: gas_fray(:,:)   !(ng,gas_ncell)
   public :: bbs_init,bbs_quad,bbs_fq,bbs_epsl,bbs_pvr
 !-- van Regemorter (1962) effective Gaunt factor at y = dE/kT
   real*8,parameter :: ytab(10) = [.01d0,.02d0,.04d0,.1d0,.2d0,.4d0,1d0,2d0,4d0,10d0]
@@ -45,6 +48,9 @@ subroutine bbs_init(ng,ncell,gncell)
   allocate(grd_capsc(ng,ncell),gas_capsc(ng,gncell))
   grd_capsc = 0.
   gas_capsc = 0.
+  allocate(grd_fray(ng,ncell),gas_fray(ng,gncell))
+  grd_fray = 0.
+  gas_fray = 0.
 end subroutine bbs_init
 
 
