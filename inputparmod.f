@@ -64,6 +64,13 @@ c-- packets crossing the inner boundary inward: 'refl' re-enter outward at
 c-- the same wavelength (legacy), 'thrm' are re-emitted with the boundary
 c-- blackbody (T = in_srcmax or the inner cell's T_rad), 'absb' are absorbed
       character(4) :: in_innerbc = 'refl'
+c-- the luminosity of the inner boundary ('lumg') injected with the
+c-- spectrum of the diffusion approximation, as CMFGEN's inner boundary:
+c-- dB/dT over the extinction of the innermost cell (Rosseland weighting),
+c-- instead of the Planck spectrum, which has (x/4)e^x/(e^x - 1) times less
+c-- flux for a grey opacity (x = h nu/kT: 2.1 times less at 1000 A and
+c-- 17 000 K, 2 times more at 6000 A)
+      logical :: in_srcdiff = .false.
       logical :: in_thm_thermal = .false. !Thomson scattering off thermal (Maxwellian) electrons:
 !                                          line broadening and Comptonization by electron scattering
       logical :: in_trn_doplegacy = .false. !legacy Doppler shifts: divergence-based distance and
@@ -323,6 +330,7 @@ c-- runtime parameter namelist
      & in_trn_noamp,
      & in_trn_tauddmc,in_taulump,
      & in_thm_aniso,in_thm_thermal,in_trn_doplegacy,in_innerbc,
+     & in_srcdiff,
 !gas
      & in_noeos,
      & in_nebular,in_R_phot,
@@ -433,6 +441,7 @@ c
       call insertl(in_trn_doplegacy,in_l,il)
       call insertl(in_thm_thermal,in_l,il)
       call insertc(in_innerbc,in_c,ic)
+      call insertl(in_srcdiff,in_l,il)
       call inserti(in_grp_ng,in_i,ii)
       call inserti(in_grp_ngs,in_i,ii)
       call insertr(in_grp_wlmin,in_r,ir)

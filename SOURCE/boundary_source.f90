@@ -13,10 +13,11 @@ subroutine boundary_source
   use totalsmod
   use inputparmod
   use miscmod
+  use bbsobmod, only:grd_capsc
   implicit none
 
   integer :: ipart, ivac, ig, iig, i,j,k,l
-  real*8 :: r1, r2, mu0, esurfpart, wl0
+  real*8 :: r1, r2, mu0, esurfpart, wl0, x, chi
   real*8 :: denom2!, wl1, wl2
   real*8 :: srftemp = 1d4
   type(packet) :: ptcl
@@ -51,6 +52,17 @@ subroutine boundary_source
     ! wl2 = pc_h*pc_c*grp_wlinv(ig)/(pc_kb*srftemp)
     emitsurfprobg(ig) = specint0(1d0/srftemp,ig)!15d0*specint(wl1,wl2,3)/pc_pi**4
   enddo
+!-- (in_srcdiff: the flux of the diffusion approximation, as CMFGEN's inner
+!-- boundary, H_nu ~ (dB_nu/dT)/chi_nu with the extinction of the innermost
+!-- cell: dB_nu/dT = B_nu x e^x/(e^x - 1)/T, x = h nu/kT)
+  if(in_srcdiff) then
+    do ig = 1, grp_ng
+      x = pc_h*pc_c*0.5d0*(grp_wlinv(ig)+grp_wlinv(ig+1))/(pc_kb*srftemp)
+      chi = grd_cap(ig,l) + grd_capsc(ig,l) + grd_sig(l)
+      emitsurfprobg(ig) = emitsurfprobg(ig)*x/(1d0 - exp(-min(x,300d0)))/max(chi,1d-300)
+    enddo
+    emitsurfprobg = emitsurfprobg/max(sum(emitsurfprobg),1d-300)
+  endif
 
 
 !-- instantiating surface particles:
