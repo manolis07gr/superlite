@@ -728,6 +728,29 @@ iterations, and of the formal integral):
   the ground state, with SuperLite's n₃ ≈ 10⁻⁶ s⁻¹ per H atom, ten times
   its Lyα flow. Point resonances keep each line's trapped photons to
   itself; `in_nltex_overlap` (§2) shares the zone.
+* The far-UV radiation field of the IIn wind (925–1200 Å). It pumps the
+  higher Lyman lines (Lyβ–Lyζ are in net absorption in the outer wind of
+  both codes, from the continuum on their blue side, 16–1000 times their
+  source functions), so it enters the ground-state balance of H.
+  SuperLite's Monte Carlo J there is 0.68–0.90 times that of CMFGEN's
+  model with incoherent electron scattering (`ies`) at 925–1020 Å and
+  0.63–1.0 times at 1030–1190 Å (H/He wind; 0.55–0.86 times `blk`'s,
+  whose coherent scattering keeps the far-UV photons out of the Lyman
+  lines: with thermal electrons they random-walk in frequency and land in
+  the lines). The innermost cell has J/B(T) = 0.7 at 950–1300 Å against
+  CMFGEN's 1.02–1.07. Ruled out, each with one iteration on the same
+  populations (`bcG_*`): the spectrum of the injected luminosity
+  (`in_srcdiff`, the diffusion flux: ≤ 4 % in any cell), a thermalizing
+  inner boundary (`in_innerbc = 'thrm'`: 2–10 %), and the lumping of the
+  thick DDMC groups (`in_taulump` = 10³⁰: no change). The CMFGEN
+  `EDDFACTOR` J of `ies` is not consistent with its own populations to
+  ~1 %: every Lyman line and the Lyman continuum have the same J/S − 1 at
+  a given radius (+0.012 to +0.017 at 1.1–1.65×10¹⁵ cm), which a
+  thick line cannot have; the Lyman continuum is not over-ionizing the
+  inner wind there. CMFGEN's own rates (`HIPRRR`) have P₁ = R₁ in the
+  H/He wind (in both models), as SuperLite's local detailed balance, and
+  P₁ − R₁ = 1–2×10⁻⁶ s⁻¹ per H particle in the full-metal wind (both
+  models: the metal continua in the Lyman continuum).
 * The Balmer jump of the full-metal wind. Against the optical continuum
   (4000–8300 Å), SuperLite's Balmer continuum (3000–3646 Å) is 11–16 %
   too bright with Sobolev lines (against CMFGEN's Sobolev model) and
