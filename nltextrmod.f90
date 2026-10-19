@@ -106,6 +106,10 @@ module nltextrmod
 !-- tally of the radiation from elsewhere: Lambda* = 1)
   logical,public :: nxt_ldbone = .false.
   real*8,allocatable,public :: nxt_jxsum(:,:) !(ng,ncell)
+!-- (the J of the groups without the emission of the NLTE lines inside them,
+!-- which the lines themselves see: in the groups in local detailed
+!-- balance with DDMC Lambda* S_c + J_ext, elsewhere nxt_jg; nxt_ldb)
+  real*8,allocatable,public :: nxt_jgc(:,:)  !(ng,ncell)
 !-- tally of the photons of NLTE lines on IMC steps in the line's group with
 !-- their comoving frequency history (packet%ilem): not incident on the line
   real*8,allocatable,public :: nxt_jlosum(:,:) !(ng,ncell)
@@ -344,7 +348,7 @@ subroutine nxt_init(ncell,gncell,ng,wlg,nfile,files,hnlev)
   allocate(nxt_x(nst,ncell),nxt_nel(nxa_nel,ncell),nxt_ne(ncell),nxt_w(nxa_nlv,ncell))
   nxt_w = 1d0
   allocate(nxt_kq(nxa_nlin,ncell),nxt_beta(nxa_nlin,ncell),nxt_bes(nxa_nlin,ncell),nxt_pc(nxa_nlin,ncell))
-  allocate(nxt_jg(ng,ncell),nxt_jb(nxa_nlin,ncell),nxt_ljb(nxa_nlin,ncell))
+  allocate(nxt_jg(ng,ncell),nxt_jgc(ng,ncell),nxt_jb(nxa_nlin,ncell),nxt_ljb(nxa_nlin,ncell))
   allocate(nxt_jbsum(nxa_nlin,ncell),nxt_jbcnt(nxa_nlin,ncell))
   allocate(nxt_jwsum(nxa_nlin,ncell),nxt_jwsq(nxa_nlin,ncell),nxt_haem(ncell),nxt_haab(ncell))
   nxt_haem = 0d0; nxt_haab = 0d0
@@ -360,7 +364,7 @@ subroutine nxt_init(ncell,gncell,ng,wlg,nfile,files,hnlev)
   allocate(nxt_act(nxa_nlin),nxt_wlact(nxa_nlin),nxt_tmact(nxa_nlin))
   nxt_tmact = 1d99
   nxt_x = 0d0; nxt_nel = 0d0; nxt_ne = 0d0; nxt_kq = 0d0; nxt_beta = 1d0; nxt_bes = 0d0; nxt_pc = 0d0
-  nxt_jg = 0d0; nxt_jb = 0d0; nxt_ljb = .false.; nxt_jbsum = 0d0; nxt_jbcnt = 0d0
+  nxt_jg = 0d0; nxt_jgc = 0d0; nxt_jb = 0d0; nxt_ljb = .false.; nxt_jbsum = 0d0; nxt_jbcnt = 0d0
   grd_capnbf = 0.; gas_capnbf = 0.; grd_emnbf = 0.; gas_emnbf = 0.
   nxt_xloc = 0d0; nxt_neloc = 0d0; nxt_nelloc = 0d0; nxt_neothloc = 0d0
 !
@@ -566,7 +570,7 @@ end subroutine nxt_init
 !
 subroutine nxt_dealloc
 !-- free the cell arrays and tables (set up again by nxt_init)
-  if(allocated(nxt_x)) deallocate(nxt_x,nxt_nel,nxt_ne,nxt_kq,nxt_beta,nxt_bes,nxt_pc,nxt_jg,nxt_jb,nxt_ljb, &
+  if(allocated(nxt_x)) deallocate(nxt_x,nxt_nel,nxt_ne,nxt_kq,nxt_beta,nxt_bes,nxt_pc,nxt_jg,nxt_jgc,nxt_jb,nxt_ljb, &
        nxt_jbsum,nxt_jbcnt,nxt_jxsum,nxt_jlsum,nxt_jlosum,grd_capnbf,nxt_xloc,nxt_neloc,nxt_nelloc,nxt_neothloc,gas_capnbf, &
        grd_emnbf,gas_emnbf,nxt_jwsum,nxt_jwsq,nxt_haem,nxt_haab,nxt_efsum,nxt_efcnt, &
        nxt_lgrp,nxt_isrt,nxt_nug,nxt_dnug,nxt_act,nxt_wlact,nxt_w,nxt_tmact)
@@ -771,6 +775,12 @@ subroutine nxt_gas_solve(it,gncell,temp,trad,nelv,neoth,qb,qv,icell1,edep,kap,fc
         nx_kcg = kap(:,i)
         nx_pc_vtb = nxt_vturb(1)
         if(present(vel)) nx_pc_vtb = nxt_vturbv(vel(i))
+        if(allocated(nx_jcg)) then
+           if(size(nx_jcg)/=nxt_ng) deallocate(nx_jcg)
+        endif
+        if(.not.allocated(nx_jcg)) allocate(nx_jcg(nxt_ng))
+        nx_jcg = jg
+        if(it>1 .and. nxt_have_mc) nx_jcg = nxt_jgc(:,l)
      elseif(allocated(nx_kcg)) then
         deallocate(nx_kcg)
      endif
@@ -920,6 +930,9 @@ subroutine nxt_store_jg(ncell,ng,jrad,vol)
   do i=1,ncell
      nxt_jg(:,i) = jrad(:,i)/(4d0*pi*vol(i)*nxt_dnug)
   enddo
+  if(allocated(nxt_jgc)) then
+     if(size(nxt_jgc,1)==ng .and. size(nxt_jgc,2)==ncell) nxt_jgc = nxt_jg
+  endif
 end subroutine nxt_store_jg
 !
 !
@@ -977,9 +990,9 @@ subroutine nxt_ldb(ncell,ng,vol,dr,tempinv,cap,capemit,planck,spk,nlump,glump)
 !-- (the lines' terms need the populations and escape probabilities of the cells)
   lln = nxt_ldbone .and. nxt_ldbtau>0d0
   if(lln) lln = allocated(nxt_x) .and. allocated(nxt_nel) .and. allocated(nxt_w) .and. allocated(nxt_beta) &
-       .and. allocated(nxt_pc)
+       .and. allocated(nxt_pc) .and. allocated(nxt_jgc)
   if(lln) lln = size(nxt_x,2)==ncell .and. size(nxt_w,2)==ncell .and. size(nxt_beta,2)==ncell &
-       .and. size(nxt_pc,2)==ncell
+       .and. size(nxt_pc,2)==ncell .and. size(nxt_jgc,2)==ncell
   if(allocated(nxt_ldbd)) then
      if(size(nxt_ldbd,3)/=ncell) deallocate(nxt_ldbd)
   endif
@@ -1025,12 +1038,15 @@ subroutine nxt_ldb(ncell,ng,vol,dr,tempinv,cap,capemit,planck,spk,nlump,glump)
         tau = cap(ig,i)*dr(i)
         if(tau<nxt_ldbtau) cycle
         s = (planck(ig,i)*capemit(ig,i) + grd_emnbf(ig,i))/cap(ig,i)*u/nxt_dnug(ig)
-        if(eml(ig)>0d0) s = (cap(ig,i)*s + eml(ig))/max(cap(ig,i) + abl(ig),0.5d0*cap(ig,i))
         if(nxt_ldbone) then
            ls = 1d0
         else
            ls = nxt_lsldb(tau)
         endif
+!-- (the lines see the continuum's own radiation: their photons that the
+!-- continuum absorbs are their escape, not their incident intensity)
+        if(lln) nxt_jgc(ig,i) = ls*s + nxt_jxsum(ig,i)/(4d0*pi*vol(i)*nxt_dnug(ig))
+        if(eml(ig)>0d0) s = (cap(ig,i)*s + eml(ig))/max(cap(ig,i) + abl(ig),0.5d0*cap(ig,i))
         jx = nxt_jxsum(ig,i)/(4d0*pi*vol(i)*nxt_dnug(ig))
         ib = 0
         if(ldiag) then
@@ -1129,7 +1145,7 @@ subroutine nxt_tally_finish(ncell,vol)
         if(nxt_ljb(k,i)) cycle
         g = nxt_lgrp(k)
         if(g<1) cycle
-        nxt_jb(k,i) = max(nxt_jg(g,i) - nxt_jlosum(g,i)/(4d0*pi*vol(i)*nxt_dnug(g)),0d0)
+        nxt_jb(k,i) = max(nxt_jgc(g,i) - nxt_jlosum(g,i)/(4d0*pi*vol(i)*nxt_dnug(g)),0d0)
         nxt_ljb(k,i) = .true.
      enddo
 !-- (the far-side core absorption of the electron-scattered photons,
@@ -1165,7 +1181,7 @@ subroutine nxt_tables(ncell,tempinv,radtemp,capemitgrey,xarr,vxarr)
   real*8 :: bnd(nxa_nlv),bnb(nxa_nlv) !bound-free weights and their bounds in a block of groups
   integer :: ixb(nxa_nlv)
   real*8 :: jg(nxt_ng),jb(nxa_nlin),jl(nxa_nlin),btab(0:nx_nbt),etab(0:nx_nbt),ewtab(0:nx_nbt),sig,vt,bu(nxa_nlin)
-  real*8 :: bj(nxa_nlin),besp(nxa_nlin),ovw(max(nxo_npair,1)),kc,pc
+  real*8 :: bj(nxa_nlin),besp(nxa_nlin),ovw(max(nxo_npair,1)),kc,pc,jgcl(nxt_ng)
   logical :: ljb(nxa_nlin),lst
   real*8 :: kw(nxt_nko)            !k-packet: non-returning flows
   type(nxrt) :: r
@@ -1276,6 +1292,8 @@ subroutine nxt_tables(ncell,tempinv,radtemp,capemitgrey,xarr,vxarr)
 !-- share added to the escape, for nxt_ldb)
      nxt_pc(:,ic) = 0d0
      if(nx_pc_on .and. nxt_tau0<=0d0) then
+        jgcl = jg
+        if(nxt_have_mc) jgcl = nxt_jgc(:,ic)
         vt = nxt_vturbv(0.5d0*(vxarr(ic)+vxarr(ic+1)))
         do k=1,nxa_nlin
            if(nxt_kq(k,ic) <= 0d0) cycle
@@ -1286,7 +1304,7 @@ subroutine nxt_tables(ncell,tempinv,radtemp,capemitgrey,xarr,vxarr)
            pc = (1d0 - min(bu(k),1d0))*nx_pcont(kc*sqrt(pi)*nx_vdop(nxa_lel(k),t,vt)/nxt_kq(k,ic))
            nxt_pc(k,ic) = pc
            bu(k) = bu(k) + pc
-           bj(k) = bj(k) + pc*jg(ig)
+           bj(k) = bj(k) + pc*jgcl(ig)
         enddo
      endif
      do k=1,nxa_nlin
@@ -3027,6 +3045,7 @@ subroutine nxt_read_jmc(fname,ncell,mass,lprint)
         w = (mp(a) - mext(ic))/(mp(a) - mp(b))
      endif
      nxt_jg(:,ic) = (1d0-w)*jgn(:,a) + w*jgn(:,b)
+     nxt_jgc(:,ic) = nxt_jg(:,ic)
      do k=1,nxa_nlin
         if(jbp(k,a)>=0d0 .and. jbp(k,b)>=0d0) then
            nxt_jb(k,ic) = (1d0-w)*jbp(k,a) + w*jbp(k,b)

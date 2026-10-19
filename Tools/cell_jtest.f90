@@ -73,6 +73,14 @@ program cell_jtest
      call get_command_argument(7,arg)
      ldmp = trim(arg)=='dump'
   endif
+!-- (dump: the flows into one state, element and state index of the
+!-- element as the 8th and 9th arguments)
+  if(command_argument_count() >= 9) then
+     call get_command_argument(8,arg)
+     read(arg,*) nx_dump_el
+     call get_command_argument(9,arg)
+     read(arg,*) nx_dump_st
+  endif
 !-- the run's model atoms, charge exchange, overlap and microturbulence
   adir = ''
   atoms = ''
@@ -280,17 +288,16 @@ contains
     do kk=2,nx_dns
        write(lu,'(i6,es14.5)') kk,nx_dflow(kk)
     enddo
-!-- metal lines inside the H Lyman continuum: their net radiative rate
-!-- n_u A beta (1 - J_l/S) per volume, which H I absorbs (the Fe III
-!-- 3d6-3d5 4p lines at 800-870 A in a dense wind)
-    write(lu,'(a)') '# lines (Z > 2) inside the Lyman continuum: net radiative u->l [cm^-3 s^-1] '// &
+!-- lines inside the H Lyman continuum: their net radiative rate
+!-- n_u A beta (1 - J_l/S) per volume, which H I absorbs (He I 584, the
+!-- Fe III 3d6-3d5 4p lines at 800-870 A in a dense wind)
+    write(lu,'(a)') '# lines inside the Lyman continuum: net radiative u->l [cm^-3 s^-1] '// &
          'per ion, and the largest lines (lambda [A], net, beta, J_l, S)'
     call nxa_weights(hdr(4,ic),wlv)
     netl = 0d0
     do kk=1,nxa_nlin
        if(cl/nxa_lnu(kk) >= 911.76d-8) cycle
        jj = nxa_lel(kk)
-       if(nxa_el(jj)%z <= 2) cycle
        pl = nel(jj)*x(nxa_el(jj)%xoff+nxa_lsl(kk))*wlv(nxa_llv(kk))
        pu = nel(jj)*x(nxa_el(jj)%xoff+nxa_lsu(kk))*wlv(nxa_luv(kk))
        jlk = nx_jline(kk,ng,nxt_nug,merge(nxt_jg(:,ic),jg,jv==1),merge(nxt_jb(kk,ic),jb(kk),jv==1), &
@@ -315,6 +322,16 @@ contains
             pu*nxa_la(kk)/max(pl*nxa_lblu(kk) - pu*nxa_lbul(kk),1d-300)
        netl(kk) = 0d0
     enddo
+    if(nx_dump_el > 0 .and. allocated(nx_dflx)) then
+       write(lu,'(a,i3,a,i4,a,es12.4,a)') '# element',nx_dump_el,' state',nx_dump_st,' (fraction', &
+            x(nxa_el(nx_dump_el)%xoff+nx_dump_st),'): net flows into it from each state [1/s per particle], largest'
+       do jj=1,12
+          kk = maxloc(abs(nx_dflx),1)
+          if(nx_dflx(kk) == 0d0) exit
+          write(lu,'(a,i5,es14.5)') '#   ',kk,nx_dflx(kk)
+          nx_dflx(kk) = 0d0
+       enddo
+    endif
     write(lu,'(a)') '# H states: fraction of H'
     write(lu,'(5es13.5)') x(nxa_el(1)%xoff+1:nxa_el(1)%xoff+nxa_el(1)%ns)
     write(lu,'(a)') '# per element and ion stage [1/s per particle of the element]: up, down, net charge exchange up'

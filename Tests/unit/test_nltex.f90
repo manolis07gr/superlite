@@ -388,7 +388,8 @@ contains
 !-- (and the net emission of a line inside a thick group is part of its
 !-- source function: Lyman beta in a thick group, S = (kappa S_c + eta_l)/
 !-- (kappa + kappa_l) from the populations and the escape probability)
-    allocate(nxt_x(nxa_nst,1), nxt_nel(nxa_nel,1), nxt_w(nxa_nlv,1), nxt_beta(nxa_nlin,1), nxt_pc(nxa_nlin,1))
+    allocate(nxt_x(nxa_nst,1), nxt_nel(nxa_nel,1), nxt_w(nxa_nlv,1), nxt_beta(nxa_nlin,1), nxt_pc(nxa_nlin,1), &
+         nxt_jgc(ng,1))
     nxt_pc = 0d0
     nxt_x = 0d0
     nxt_x(1,1) = 1d-3; nxt_x(2,1) = 1d-9; nxt_x(3,1) = 2d-10; nxt_x(nxa_nst,1) = 1d0 - 1.0000012d-3
@@ -411,12 +412,14 @@ contains
     da = da*1d9*2d-10*nxa_la(k)
     jw = (cap1(ig,1)*sg + da)/(cap1(ig,1) + db) + nxt_jxsum(ig,1)/(4d0*pi_*vol1(1)*dnug(ig))
     dsl = nxt_jg(ig,1)/jw - 1d0
+!-- (and the lines see the continuum alone: nxt_jgc = S_c + J_ext)
+    dsl = max(abs(dsl), abs(nxt_jgc(ig,1)/(sg + nxt_jxsum(ig,1)/(4d0*pi_*vol1(1)*dnug(ig))) - 1d0))
 !-- (J moves from S_c towards the line's source function da/db)
     w0 = nxt_jg(ig,1) - nxt_jxsum(ig,1)/(4d0*pi_*vol1(1)*dnug(ig))
-    write(*,'(a,es10.3,a,es10.3,a,es10.3)') '  line inside a thick DDMC group: J/(S_c + line terms) - 1 =', dsl, &
+    write(*,'(a,es10.3,a,es10.3,a,es10.3)') '  line inside a thick DDMC group: J/(S_c + line terms) - 1 and J_c/S_c - 1 to', dsl, &
          '; (J - J_ext)/S_c =', w0/sg,', S_line/S_c =', da/db/sg
     if(abs(dsl) > 1d-12 .or. (w0 - sg)*(da/db - sg) <= 0d0) nfail = nfail + 1
-    deallocate(nxt_x, nxt_nel, nxt_w, nxt_beta, nxt_pc)
+    deallocate(nxt_x, nxt_nel, nxt_w, nxt_beta, nxt_pc, nxt_jgc)
     nxt_ldbone = .false.
     nxt_ldbtau = 0d0
     deallocate(plk, spk1, cap1, cape1, gl1)

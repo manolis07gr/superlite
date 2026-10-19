@@ -84,6 +84,11 @@ module nltexmod
   logical,public :: nx_dump = .false.
   integer,public :: nx_dns = 0
   real*8,public :: nx_dflow(64) = 0d0,nx_dcx = 0d0,nx_dlya(9,7) = 0d0
+!-- (and with nx_dump_el > 0: the flows into state nx_dump_st of that element
+!-- from each of its states, charge exchange apart [1/s per particle of
+!-- the element], nx_dflx(1:ns))
+  integer,public :: nx_dump_el = 0, nx_dump_st = 0
+  real*8,allocatable,public :: nx_dflx(:)
 !-- and per element and ion stage j: the flows from ion j to ion j+1 (or the
 !-- top state) and back without charge exchange, and the net charge exchange
 !-- from j to j+1 [1/s per particle of the element]
@@ -140,6 +145,9 @@ module nltexmod
   logical,public :: nx_pc_on = .false.
   real*8,allocatable,public :: nx_kcg(:)     !(ng)
   real*8,public :: nx_pc_vtb = 0d0           !microturbulence [cm/s] of the Doppler widths
+!-- (the J of the groups without the lines' own emission, which the lines
+!-- see, set by the caller per cell; not allocated: jg)
+  real*8,allocatable,public :: nx_jcg(:)     !(ng)
   logical :: nx_pc_use = .false.
   real*8,allocatable :: nx_pkc(:),nx_pjc(:)  !(nlin)
 !-- y(tau) = tau G(tau) of nx_ytrap at log10(tau) = -2, -1.75, ..., 10
@@ -1338,6 +1346,14 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
   d = maxval(abs(xn-x)/(xn+1d-30),mask=xn>1d-20)
 !-- (diagnostics: flows with the new populations, charge exchange apart)
   if(ldump) call dump_flows
+  if(ldump .and. iel == nx_dump_el .and. nx_dump_st >= 1 .and. nx_dump_st <= ns) then
+     if(allocated(nx_dflx)) deallocate(nx_dflx)
+     allocate(nx_dflx(ns))
+     do k=1,ns
+        nx_dflx(k) = msv(nx_dump_st,k)*xn(k) - msv(k,nx_dump_st)*xn(nx_dump_st)
+     enddo
+     nx_dflx(nx_dump_st) = 0d0
+  endif
   if(ldump .and. nxa_el(iel)%z==1) then
      nx_dns = min(ns,size(nx_dflow))
      nx_dflow = 0d0
@@ -1524,6 +1540,9 @@ subroutine nx_solve_cell(temp,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx
      do k=1,nxa_nlin
         nx_pkc(k) = max(nx_kcg(nxa_lgn(k)),0d0)*sqrt(pi)*nx_vdop(nxa_lel(k),temp,nx_pc_vtb)
         nx_pjc(k) = jg(nxa_lgn(k))
+        if(allocated(nx_jcg)) then
+           if(size(nx_jcg)==ng) nx_pjc(k) = nx_jcg(nxa_lgn(k))
+        endif
      enddo
   endif
   if(nx_vtb >= 0d0) then
