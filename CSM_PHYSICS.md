@@ -754,7 +754,7 @@ iterations, and of the formal integral):
 * The H ionization of the inner full-metal wind (1.3–2.5×10¹⁵ cm),
   where SuperLite's x(H I) was 3–16 times CMFGEN's (`blk`) after the
   overlap runs (`rayFo1b`). SuperLite's statistical equilibrium of those
-  cells in CMFGEN's radiation field (a cell harness: CMFGEN's comoving J
+  cells in CMFGEN's radiation field (`Tools/cell_jtest.f90` with `Tools/cmfgen_j_cells.py`: CMFGEN's comoving J
   averaged over the groups, the incident intensity of each Sobolev line
   CMFGEN's J five Doppler widths to its blue, the Lyman continuum in
   detailed balance with the current populations) gives x(H I) within
