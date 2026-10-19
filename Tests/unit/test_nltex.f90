@@ -314,8 +314,13 @@ contains
 !--     changes sign over directions, thin to very thick lines;
 !--  c) a core seen in a constant-velocity wind with a thick line: the
 !--     mean weight over the cone of the core is beta_c/(beta_bar W'),
-!--     here (1 - mu_c)(2 + mu_c)/2 for beta ~ |Q|/K (0.145 at mu_c = 0.9)
-    real*8 :: qq(2,5), kk(5), dw1, dw2, dw3, mu, wsum, qmu, tau, wc, ex
+!--     here (1 - mu_c)(2 + mu_c)/2 for beta ~ |Q|/K (0.145 at mu_c = 0.9);
+!--  d) the continuum fallback weighted by the radiation's shares in the
+!--     bins of |mu| (nx_bfac) for the same core, thin to thick
+    real*8 :: qq(2,5), kk(5), dw1, dw2, dw3, mu, wsum, qmu, tau, wc, ex, dk1, dk2, dk3, qd(2), muc, fb(nx_nmub)
+    real*8,allocatable :: bbt(:,:)
+    integer :: jc, kb
+    real*8,parameter :: kd(5) = [1d-9, 1d-7, 1d-6, 1d-5, 1d-2]
     integer :: iq, ik, im
     integer,parameter :: nm = 20000
     qq(:,1) = [1d-6, 1d-6]; qq(:,2) = [0d0, 1d-6]; qq(:,3) = [3d-6, 1d-6]
@@ -363,11 +368,52 @@ contains
     enddo
     ex = ex/wsum
     dw3 = abs(wc/ex - 1d0)
-    deallocate(nxt_kq, nxt_btab, nxt_qbq)
-    write(*,'(a,es9.2,a,es9.2,a,f7.4,a,f7.4,a)') '  resonance-estimator weights beta(mu)/beta_bar: homologous max |w-1| =', &
-         dw1, ', isotropic field max |<w>-1| =', dw2, '; core cone of a constant-velocity wind', wc, &
-         ' (expected', ex, ')'
-    if(dw1 > 1d-3 .or. dw2 > 2d-3 .or. dw3 > 1d-2) nfail = nfail + 1
+!-- d) the same core seen through the continuum fallback (nx_bfac, the
+!--    radiation's shares in the bins of |mu|): a uniform cone mu > mu_c at
+!--    a bin edge (0.97) and inside a bin (0.9), against the exact
+!--    <beta>_cone/beta_bar, for dv/dr = 0 and 0.05 v/r, thin to thick;
+!--    an isotropic field: 1
+    allocate(bbt(0:nx_nbt,nx_nmub))
+    dk1 = 0d0; dk2 = 0d0; dk3 = 0d0
+    do iq = 1, 2
+       qd = [0d0, 0.05d-6]
+       call nx_betab_table(qd(iq), 1d-6, bbt)
+       do ik = 1, 5
+          do jc = 1, 2
+             muc = merge(0.97d0, 0.9d0, jc == 1)
+             wsum = 0d0; wc = 0d0
+             do im = 1, nm
+                mu = (im - 0.5d0)/nm
+                qmu = max(abs(mu*mu*qd(iq) + (1d0 - mu*mu)*1d-6), 1d-9)
+                tau = kd(ik)/qmu
+                wsum = wsum + merge((1d0 - exp(-tau))/tau, 1d0 - 0.5d0*tau, tau > 1d-4)/nm
+                mu = muc + (1d0 - muc)*(im - 0.5d0)/nm
+                qmu = max(abs(mu*mu*qd(iq) + (1d0 - mu*mu)*1d-6), 1d-9)
+                tau = kd(ik)/qmu
+                wc = wc + merge((1d0 - exp(-tau))/tau, 1d0 - 0.5d0*tau, tau > 1d-4)/nm
+             enddo
+             ex = wc/wsum
+!-- the cone's shares in the bins
+             do kb = 1, nx_nmub
+                fb(kb) = max(0d0, nx_mub(kb) - max(nx_mub(kb-1), muc))/(1d0 - muc)
+             enddo
+             wc = nx_bfac(kd(ik), qd(iq), 1d-6, bbt, fb)
+             if(jc == 1) then
+                dk1 = max(dk1, abs(wc/ex - 1d0))
+             else
+                dk2 = max(dk2, abs(wc/ex - 1d0))
+             endif
+          enddo
+          fb = nx_mub(1:nx_nmub) - nx_mub(0:nx_nmub-1)
+          dk3 = max(dk3, abs(nx_bfac(kd(ik), qd(iq), 1d-6, bbt, fb) - 1d0))
+       enddo
+    enddo
+    deallocate(nxt_kq, nxt_btab, nxt_qbq, bbt)
+    write(*,'(a,es9.2,a,es9.2,a,es9.2)') '  resonance-estimator weights beta(mu)/beta_bar: homologous max |w-1| =', &
+         dw1, ', isotropic field max |<w>-1| =', dw2, '; core cone of a constant-velocity wind: rel. error', dw3
+    write(*,'(a,es9.2,a,es9.2,a,es9.2)') '  continuum weighting by the bins of |mu| (nx_bfac): a core cone at a bin edge, max rel. error', &
+         dk1, ', inside a bin', dk2, '; isotropic', dk3
+    if(dw1 > 1d-3 .or. dw2 > 2d-3 .or. dw3 > 1d-2 .or. dk1 > 2d-2 .or. dk2 > 0.15d0 .or. dk3 > 1d-12) nfail = nfail + 1
   end subroutine jbw_tests
 !
   subroutine ldb_tests

@@ -100,3 +100,13 @@ least 100 events:
 
 (errors from the number of events; the plain estimator's terms are large
 for the rare crossings with small |Q|, so it scatters more than that.)
+
+Where a cell has fewer than 30 events the rates take the J of the line's
+group instead, weighted by its shares in eight bins of |mu| (the Monte Carlo
+tallies them) with the bin means of the escape probability.  `compare_s.py
+--rates` compares the incident intensity the rates take (Jb_Ha, estimator
+or weighted group J) with S in every cell.  Constant velocity, tau0 = 30
+(100 cells, 0-311 events each): 0.82-1.22 times S out to 9x10^15 cm with
+the weighting; before, the plain estimator and the plain group J were 1.06
+times S at the core, 2.4-3.6 at 1.2-2x10^15 cm, 6-13 at 2.3-3.5x10^15 and
+22-93 beyond 4x10^15 cm.

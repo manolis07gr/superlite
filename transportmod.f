@@ -26,9 +26,10 @@ c
 c-- transport
       pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,
      &  rndstate,eraddens,eamp,jrad,totevelo,ierr,jbk,jbval,stl,stk,
-     &  swl)
+     &  swl,jmub)
       use randommod
       use particlemod
+      use nltexmod, only:nx_nmub
       type(packet),target,intent(inout) :: ptcl
       type(packet2),target,intent(inout) :: ptcl2
       real*8,intent(inout) :: vx,vy,vz
@@ -42,6 +43,7 @@ c-- transport
       real*8,intent(out) :: stl(4)
       integer,intent(out) :: stk
       real*8,intent(out) :: swl(3)
+      real*8,intent(out) :: jmub(nx_nmub)
       end subroutine transport11
 c
 c-- diffusion
@@ -74,10 +76,11 @@ c     -------------------------------------------
 c
       pure subroutine transport_(ptcl,ptcl2,vx,vy,vz,
      &  rndstate,eraddens,eamp,jrad,totevelo,ierr,jbk,jbval,stl,stk,
-     &  swl)
+     &  swl,jmub)
       use randommod
       use groupmod
       use particlemod
+      use nltexmod, only:nx_nmub
       type(packet),target,intent(inout) :: ptcl
       type(packet2),target,intent(inout) :: ptcl2
       real*8,intent(inout) :: vx,vy,vz
@@ -91,6 +94,7 @@ c
       real*8,intent(out) :: stl(4)
       integer,intent(out) :: stk
       real*8,intent(out) :: swl(3)
+      real*8,intent(out) :: jmub(nx_nmub)
       end subroutine transport_
 c
       pure subroutine diffusion_(ptcl,ptcl2,vx,vy,vz,

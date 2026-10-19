@@ -18,8 +18,9 @@ subroutine particle_advance
   use countersmod
   use fluxmod
   use sourcemod
+  use nltexmod, only:nx_nmub,nx_mub
   use nltextrmod, only:nxt_on,nxt_jbsum,nxt_jbcnt,nxt_jxsum,nxt_jlsum,nxt_jlosum,nxt_lgrp,nxt_static_tally, &
-       nxt_jwsum,nxt_jwsq,nxt_window_tally,nxt_haem,nxt_haab,nxt_kha,nxt_efsum,nxt_efcnt
+       nxt_jwsum,nxt_jwsq,nxt_window_tally,nxt_haem,nxt_haab,nxt_kha,nxt_efsum,nxt_efcnt,nxt_jmsum
   implicit none
 !
 !##################################################
@@ -43,7 +44,7 @@ subroutine particle_advance
   integer :: icold, igold, ixold, ierr
   logical :: limc
   real*8 :: eraddens, eamp
-  real*8 :: jrad
+  real*8 :: jrad,jmub(nx_nmub)
   integer :: jbk
   real*8 :: jbval
   integer :: stk
@@ -104,9 +105,9 @@ subroutine particle_advance
 !$omp    specarr,glumps,llumps, &
 !$omp    x,y,z,mu,om,wl,e,e0,ix,iy,iz,ic,ig,icold,igold,ixold,limc, &
 !$omp    vx,vy,vz,help1,help2,vhelp1,vhelp2, &
-!$omp    i,t0,t1,help,tau,labfact,jrad, &
+!$omp    i,t0,t1,help,tau,labfact,jrad,jmub, &
 !$omp    rndstate,eraddens,eamp,ierr,iomp,jbk,jbval,stl,stk,swl) &
-!$omp reduction(+:grd_tally,grd_jrad,nxt_jbsum,nxt_jbcnt,nxt_jxsum,nxt_jlsum,nxt_jlosum, &
+!$omp reduction(+:grd_tally,grd_jrad,nxt_jbsum,nxt_jbcnt,nxt_jxsum,nxt_jlsum,nxt_jlosum,nxt_jmsum, &
 !$omp    nxt_jwsum,nxt_jwsq,nxt_haem,nxt_haab,nxt_efsum,nxt_efcnt, &
 !$omp    tot_evelo,tot_eout,tot_sflux, &
 !$omp    npckt,nflux, &
@@ -234,7 +235,7 @@ subroutine particle_advance
         if(limc) then
            nstepimc = nstepimc + 1
            call transport(ptcl,ptcl2,vx,vy,vz,rndstate, &
-                eraddens,eamp,jrad,tot_evelo,ierr,jbk,jbval,stl,stk,swl)
+                eraddens,eamp,jrad,tot_evelo,ierr,jbk,jbval,stl,stk,swl,jmub)
 !-- NLTE line resonance estimator
            if(jbk>0) then
               nxt_jbsum(jbk,icold) = nxt_jbsum(jbk,icold) + jbval
@@ -278,6 +279,7 @@ subroutine particle_advance
            grd_jrad(igold,icold) = grd_jrad(igold,icold) + jrad
         elseif(limc) then
            grd_jrad(igold,icold) = grd_jrad(igold,icold) + jrad
+           nxt_jmsum(:,igold,icold) = nxt_jmsum(:,igold,icold) + jmub
 !-- (radiation from elsewhere: outside the cell of the last emission that
 !-- is part of the cell's source function; nxt_ldb)
            if(ptcl%icem/=icold) nxt_jxsum(igold,icold) = nxt_jxsum(igold,icold) + jrad
@@ -290,6 +292,8 @@ subroutine particle_advance
            nxt_jlsum(icold) = nxt_jlsum(icold) + jrad
         else
            grd_jrad(igold,icold) = grd_jrad(igold,icold) + jrad
+!-- (DDMC: isotropic)
+           nxt_jmsum(:,igold,icold) = nxt_jmsum(:,igold,icold) + jrad*(nx_mub(1:nx_nmub) - nx_mub(0:nx_nmub-1))
         endif
 !
 !-- verify position

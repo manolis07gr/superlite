@@ -85,6 +85,14 @@ module nltextrmod
 !-- for the weights of the resonance estimator (nxt_jbw)
   real*8,allocatable,public :: nxt_btab(:,:)  !(0:nx_nbt,ncell)
   real*8,allocatable,public :: nxt_qbq(:,:)   !(2,ncell)
+!-- the bin means of the escape probability over |mu| (nx_betab_table), and
+!-- the angular distribution of each group's radiation over the same bins
+!-- (path-length tally), for the Sobolev weighting of the continuum that
+!-- stands in for a starved resonance estimator (nxt_bfac); the share of
+!-- each group's J that is isotropic (DDMC, local detailed balance)
+  real*8,allocatable,public :: nxt_bbtab(:,:,:) !(0:nx_nbt,nx_nmub,ncell)
+  real*8,allocatable,public :: nxt_jmsum(:,:,:) !(nx_nmub,ng,ncell) tally: sum e d in each bin
+  real*8,allocatable,public :: nxt_fiso(:,:)    !(ng,ncell)
 !-- incident intensity of the Sobolev lines from the flights in a window next
 !-- to each line (nxt_window_tally; 0: off): its width [cm/s], the tallies
 !-- (sum of the contributions and of their squares), and the widths to the
@@ -311,7 +319,7 @@ module nltextrmod
   public :: nxt_write_state,nxt_read_prev,nxt_read_init,nxt_release,nxt_activate_rel
   public :: nxt_ali_cell,nxt_ali_off,nxt_ldb,nxt_lsldb,nxt_vtb,nxt_vturbv
   public :: nxt_static_line,nxt_static_tally,nxt_sobolev_neighbors,nxt_act_lookup,nxt_window_tally,nxt_esfar
-  public :: nxt_useb,nxt_es_cell,nxt_jbw
+  public :: nxt_useb,nxt_es_cell,nxt_jbw,nxt_bfac
 !
 contains
 !
@@ -355,8 +363,10 @@ subroutine nxt_init(ncell,gncell,ng,wlg,nfile,files,hnlev)
   allocate(nxt_kq(nxa_nlin,ncell),nxt_beta(nxa_nlin,ncell),nxt_bes(nxa_nlin,ncell),nxt_pc(nxa_nlin,ncell))
   allocate(nxt_jg(ng,ncell),nxt_jgc(ng,ncell),nxt_jb(nxa_nlin,ncell),nxt_ljb(nxa_nlin,ncell))
   allocate(nxt_jbsum(nxa_nlin,ncell),nxt_jbcnt(nxa_nlin,ncell))
-  allocate(nxt_btab(0:nx_nbt,ncell),nxt_qbq(2,ncell))
-  nxt_btab = 1d0; nxt_qbq = 1d0
+  allocate(nxt_btab(0:nx_nbt,ncell),nxt_qbq(2,ncell),nxt_bbtab(0:nx_nbt,nx_nmub,ncell))
+  nxt_btab = 1d0; nxt_qbq = 1d0; nxt_bbtab = 1d0
+  allocate(nxt_jmsum(nx_nmub,ng,ncell),nxt_fiso(ng,ncell))
+  nxt_jmsum = 0d0; nxt_fiso = 1d0
   allocate(nxt_jwsum(nxa_nlin,ncell),nxt_jwsq(nxa_nlin,ncell),nxt_haem(ncell),nxt_haab(ncell))
   nxt_haem = 0d0; nxt_haab = 0d0
   allocate(nxt_efsum(nxa_nlin,ncell),nxt_efcnt(nxa_nlin,ncell))
@@ -581,7 +591,7 @@ subroutine nxt_dealloc
        nxt_jbsum,nxt_jbcnt,nxt_jxsum,nxt_jlsum,nxt_jlosum,grd_capnbf,nxt_xloc,nxt_neloc,nxt_nelloc,nxt_neothloc,gas_capnbf, &
        grd_emnbf,gas_emnbf,nxt_jwsum,nxt_jwsq,nxt_haem,nxt_haab,nxt_efsum,nxt_efcnt, &
        nxt_lgrp,nxt_isrt,nxt_nug,nxt_dnug,nxt_act,nxt_wlact,nxt_w,nxt_tmact)
-  if(allocated(nxt_btab)) deallocate(nxt_btab,nxt_qbq)
+  if(allocated(nxt_btab)) deallocate(nxt_btab,nxt_qbq,nxt_bbtab,nxt_jmsum,nxt_fiso)
   if(allocated(nxt_lch)) deallocate(nxt_lch,nxt_bch,nxt_2pch)
   if(allocated(nxt_och)) deallocate(nxt_och)
   if(allocated(nxt_inl)) deallocate(nxt_inl)
@@ -937,6 +947,15 @@ subroutine nxt_store_jg(ncell,ng,jrad,vol)
   integer :: i
   do i=1,ncell
      nxt_jg(:,i) = jrad(:,i)/(4d0*pi*vol(i)*nxt_dnug)
+!-- (the Monte Carlo radiation has its tallied angular distribution;
+!-- isotropic without flights)
+     if(allocated(nxt_fiso)) then
+        where(jrad(:,i) > 0d0)
+           nxt_fiso(:,i) = 0d0
+        elsewhere
+           nxt_fiso(:,i) = 1d0
+        endwhere
+     endif
   enddo
   if(allocated(nxt_jgc)) then
      if(size(nxt_jgc,1)==ng .and. size(nxt_jgc,2)==ncell) nxt_jgc = nxt_jg
@@ -1017,10 +1036,15 @@ subroutine nxt_ldb(ncell,ng,vol,dr,tempinv,cap,capemit,planck,spk,nlump,glump)
         do k=1,nlump(i)
            ig = glump(k,i)
            if(w>0d0) then
-              nxt_jg(ig,i) = nxt_jg(ig,i) + nxt_jlsum(i)*spk(ig,i)/w/(4d0*pi*vol(i)*nxt_dnug(ig))
+              jx = nxt_jlsum(i)*spk(ig,i)/w/(4d0*pi*vol(i)*nxt_dnug(ig))
            else
-              nxt_jg(ig,i) = nxt_jg(ig,i) + nxt_jlsum(i)/dble(nlump(i))/(4d0*pi*vol(i)*nxt_dnug(ig))
+              jx = nxt_jlsum(i)/dble(nlump(i))/(4d0*pi*vol(i)*nxt_dnug(ig))
            endif
+!-- (the DDMC radiation is isotropic)
+           if(allocated(nxt_fiso)) then
+              if(nxt_jg(ig,i) + jx > 0d0) nxt_fiso(ig,i) = (nxt_fiso(ig,i)*nxt_jg(ig,i) + jx)/(nxt_jg(ig,i) + jx)
+           endif
+           nxt_jg(ig,i) = nxt_jg(ig,i) + jx
         enddo
      endif
 !-- local detailed balance
@@ -1064,6 +1088,7 @@ subroutine nxt_ldb(ncell,ng,vol,dr,tempinv,cap,capemit,planck,spk,nlump,glump)
         endif
         if(ib>0) nxt_ldbd(:,ib,i) = nxt_ldbd(:,ib,i) + 4d0*pi*nxt_dnug(ig)*[ls*s,jx,nxt_jg(ig,i)]
         nxt_jg(ig,i) = ls*s + jx
+        if(allocated(nxt_fiso)) nxt_fiso(ig,i) = 1d0
      enddo
   enddo
 end subroutine nxt_ldb
@@ -1107,6 +1132,7 @@ end function nxt_e3
 !
 subroutine nxt_tally_reset
   nxt_jbsum = 0d0
+  nxt_jmsum = 0d0
   nxt_jbcnt = 0d0
   nxt_jxsum = 0d0
   nxt_jlsum = 0d0
@@ -1147,6 +1173,29 @@ pure function nxt_jbw(k,ic,tau) result(w)
 end function nxt_jbw
 !
 !
+pure function nxt_bfac(k,ic,g) result(f)
+!-----------------------------------------------------------------------
+! Sobolev's weighting of the radiation of group g, which stands in for the
+! incident intensity of line k in cell ic where its resonance estimator is
+! starved (nxt_jbbeta): <beta(mu) I(mu)>/(beta_bar J) from the shares of
+! the group's J in the bins of |mu| (Monte Carlo flights, nxt_jmsum; the
+! DDMC and local-detailed-balance part isotropic) and the bin means of
+! the escape probability (nx_bfac).  The radiation of a core comes along
+! the directions of small |Q| in a wind of nearly constant velocity, which
+! the plain mean took for isotropic.
+!-----------------------------------------------------------------------
+  integer,intent(in) :: k,ic,g
+  real*8 :: f,fb(nx_nmub),t
+  f = 1d0
+  if(nxt_kq(k,ic) <= 0d0) return
+  if(.not.allocated(nxt_jmsum)) return
+  t = sum(nxt_jmsum(:,g,ic))
+  fb = nxt_fiso(g,ic)*(nx_mub(1:nx_nmub) - nx_mub(0:nx_nmub-1))
+  if(t > 0d0) fb = fb + (1d0 - nxt_fiso(g,ic))*nxt_jmsum(:,g,ic)/t
+  f = nx_bfac(nxt_kq(k,ic),nxt_qbq(1,ic),nxt_qbq(2,ic),nxt_bbtab(:,:,ic),fb)
+end function nxt_bfac
+!
+!
 subroutine nxt_tally_finish(ncell,vol)
 !-----------------------------------------------------------------------
 ! Mean intensity incident on each NLTE line (after nxt_store_jg and
@@ -1181,6 +1230,8 @@ subroutine nxt_tally_finish(ncell,vol)
         g = nxt_lgrp(k)
         if(g<1) cycle
         nxt_jb(k,i) = max(nxt_jgc(g,i) - nxt_jlosum(g,i)/(4d0*pi*vol(i)*nxt_dnug(g)),0d0)
+!-- (nxt_jbbeta: Sobolev's weighting of the anisotropic continuum)
+        if(nxt_jbbeta) nxt_jb(k,i) = nxt_jb(k,i)*nxt_bfac(k,i,g)
         nxt_ljb(k,i) = .true.
      enddo
 !-- (the far-side core absorption of the electron-scattered photons,
@@ -1255,6 +1306,7 @@ subroutine nxt_tables(ncell,tempinv,radtemp,capemitgrey,xarr,vxarr)
      call nx_beta_table(qb,qv,btab)
      nxt_btab(:,ic) = btab
      nxt_qbq(:,ic) = [qb,qv]
+     call nx_betab_table(qb,qv,nxt_bbtab(:,:,ic))
 !-- level dissolution: the cell's parameters, the dissolved shares, the
 !-- lowest frequency of each level's dissolved continuum
      nx_dis = 0d0

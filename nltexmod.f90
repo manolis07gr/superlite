@@ -38,7 +38,7 @@ module nltexmod
   real*8,parameter :: cc = 2.99792458d10, hh = 6.6260693d-27, kb = 1.3806505d-16
 !
   public :: nx_el_rates,nx_el_matrix,nx_el_step,nx_solve_cell,nx_lte,nx_kq,nx_jline
-  public :: nx_beta_table,nx_beta,nx_cx_rates,nx_cx_heat
+  public :: nx_beta_table,nx_beta,nx_betab_table,nx_bfac,nx_cx_rates,nx_cx_heat
   public :: nx_ytrap,nx_es_table,nx_bes,nx_vdop,nx_jes,nx_wq,nx_wwin,nx_bew,nx_pcont
   public :: nx_ovl_init,nx_ovl_zone,nx_ovl_cell,nx_ovl_terms,nx_ks
 !-- rates of one element at a temperature (nx_el_rates); s: element-local
@@ -68,6 +68,11 @@ module nltexmod
   real*8,allocatable,public :: nx_ali_lst(:),nx_ali_kap(:) !(ng)
   real*8,parameter :: nx_blt0 = -16.1180957d0          !ln 1e-7
   real*8,parameter :: nx_bdlt = (20.7232658d0 - nx_blt0)/(nx_nbt-1)   !to ln 1e9
+!-- bins of |mu| (the cosine of the direction to the radius) for the
+!-- angular distribution of the radiation of each group (nxt_jmsum), finer
+!-- toward mu = 1, where a core is seen from far out
+  integer,parameter,public :: nx_nmub = 8
+  real*8,parameter,public :: nx_mub(0:nx_nmub) = [0d0,0.5d0,0.75d0,0.88d0,0.94d0,0.97d0,0.985d0,0.995d0,1d0]
 !-- electron scattering of line photons trapped in their Sobolev resonance
 !-- zones (nx_bes), set by the caller per cell: the microturbulent velocity
 !-- [cm/s] added in quadrature to the thermal velocity for the Doppler width
@@ -256,6 +261,75 @@ pure function nx_beta(kq,qb,qv,tab) result(beta)
      beta = exp((1d0-w)*log(tab(i)) + w*log(tab(i+1)))
   endif
 end function nx_beta
+!
+!
+subroutine nx_betab_table(qb,qv,tab)
+!-----------------------------------------------------------------------
+! Means of the escape probability over the bins of |mu| (nx_mub; 16-point
+! midpoint rule in each, the floor of nlteh_beta), tabulated against
+! ln(K/qs) as nx_beta_table; tab(0,b) holds the large-depth limit
+! <|Q|>_b/qs.  With the share of each bin in the incident radiation they
+! give Sobolev's <beta(mu) I(mu)> (nx_bfac).
+!-----------------------------------------------------------------------
+  real*8,intent(in) :: qb,qv
+  real*8,intent(out) :: tab(0:nx_nbt,nx_nmub)
+  integer :: i,j,b
+  real*8 :: qs,mu,q(16),qmin,kq,t
+  integer,parameter :: nmu = 16
+  qs = max(abs(qb),abs(qv),1d-30)
+  qmin = 1d-3*qs
+  do b=1,nx_nmub
+     do j=1,nmu
+        mu = nx_mub(b-1) + (j-0.5d0)/nmu*(nx_mub(b) - nx_mub(b-1))
+        q(j) = max(abs(mu*mu*qb + (1d0-mu*mu)*qv),qmin)
+     enddo
+     tab(0,b) = sum(q)/nmu/qs
+     do i=1,nx_nbt
+        kq = exp(nx_blt0 + (i-1)*nx_bdlt)*qs
+        tab(i,b) = 0d0
+        do j=1,nmu
+           t = kq/q(j)
+           if(t < 1d-6) then
+              tab(i,b) = tab(i,b) + (1d0 - 0.5d0*t)
+           else
+              tab(i,b) = tab(i,b) + (1d0 - exp(-t))/t
+           endif
+        enddo
+        tab(i,b) = tab(i,b)/nmu
+     enddo
+  enddo
+end subroutine nx_betab_table
+!
+!
+pure function nx_bfac(kq,qb,qv,tab,fb) result(f)
+!-----------------------------------------------------------------------
+! Sobolev's weighting of an incident radiation field whose shares in the
+! bins of |mu| (nx_mub) are fb (sum 1): <beta(mu) I(mu)>/(beta_bar J) =
+! sum_b fb beta_b / sum_b dmu_b beta_b, beta_b the bin means of the escape
+! probability (nx_betab_table).  1 for an isotropic field (fb = dmu_b) or
+! a thin line; for a thick line in a wind of constant velocity lit by a
+! core within mu > 0.97, 0.045.
+!-----------------------------------------------------------------------
+  real*8,intent(in) :: kq,qb,qv,tab(0:nx_nbt,nx_nmub),fb(nx_nmub)
+  real*8 :: f,qs,lt,w,bb(nx_nmub)
+  integer :: i,b
+  f = 1d0
+  if(kq <= 0d0) return
+  qs = max(abs(qb),abs(qv),1d-30)
+  lt = log(kq/qs)
+  if(lt <= nx_blt0) return
+  if(lt >= nx_blt0 + (nx_nbt-1)*nx_bdlt) then
+     bb = tab(0,:)
+  else
+     w = (lt - nx_blt0)/nx_bdlt
+     i = min(int(w) + 1,nx_nbt-1)
+     w = w - (i-1)
+     do b=1,nx_nmub
+        bb(b) = exp((1d0-w)*log(tab(i,b)) + w*log(tab(i+1,b)))
+     enddo
+  endif
+  f = sum(fb*bb)/max(sum((nx_mub(1:nx_nmub) - nx_mub(0:nx_nmub-1))*bb),1d-300)
+end function nx_bfac
 !
 !
 pure function nx_ytrap(tau) result(y)

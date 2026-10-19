@@ -23,6 +23,9 @@ def main():
     ap.add_argument('run'); ap.add_argument('ref')
     ap.add_argument('--every', type=int, default=5)
     ap.add_argument('--beta', action='store_true', help='the estimator is beta-weighted (in_nltex_jbbeta)')
+    ap.add_argument('--rates', action='store_true',
+                    help='the J_b of the rates (Jb_Ha/B: the estimator, or the weighted continuum where it has '
+                         'fewer than 30 events) against S, all cells')
     a = ap.parse_args()
     par = open(os.path.join(a.run, 'input.par')).read()
     lbol = float(re.search(r'in_L_bol\s*=\s*([\d.eEdD+-]+)', par).group(1).replace('d', 'e'))
@@ -31,6 +34,9 @@ def main():
     rc = s[0, 0]
     h = np.loadtxt(os.path.join(a.run, 'output.nlteh'), usecols=range(22))
     jres, nres = h[:, 21], h[:, 20]
+    if a.rates:
+        jres = h[:, 17]
+        a.beta = True
     # J_b/B with B at the cell temperature: in units of I_c (both Planck at T_src = T_cell)
     tcell = s[:, 6]
     if np.any(np.abs(tcell/tsrc - 1) > 1e-6):
@@ -48,6 +54,9 @@ def main():
     # noise of the estimator from the number of resonance events
     err = smc/np.sqrt(np.maximum(nres, 1))
     ok = nres >= 100
+    if a.rates:
+        ok = np.ones(len(nres), bool)
+        err = np.full(len(nres), np.inf)
     chi = (smc - target)/np.where(err > 0, err, 1)
     what = '<beta I_inc>/beta_bar' if a.beta else '<I_inc>'
     print(f'{a.run}: estimator against {what}, {ok.sum()} cells with >= 100 events: chi2/dof = '

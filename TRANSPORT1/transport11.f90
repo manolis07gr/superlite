@@ -1,7 +1,7 @@
 !This file is part of SuperLite. SuperLite is released under the terms of the GNU GPLv3, see COPYING.
 !Copyright (c) 2023 Gururaj A. Wagle.  All rights reserved.
 pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
-  eraddens,eamp,jrad,totevelo,ierr,jbk,jbval,stl,stk,swl)
+  eraddens,eamp,jrad,totevelo,ierr,jbk,jbval,stl,stk,swl,jmub)
 
   use randommod
   use miscmod
@@ -14,6 +14,7 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
   use dopplermod
   use comptonmod
   use nlteatommod, only:nxa_lnu,nxa_lwl
+  use nltexmod, only:nx_nmub,nx_mub
   use nltextrmod
   use nxemitmod
   use bbsobmod, only:bbs_on,grd_capsc,grd_fray
@@ -32,6 +33,7 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
   real*8,intent(out) :: stl(4)    !flight in a slow cell (nxt_dopmc): comoving wavelength, comoving energy times length (0: none), projected velocity gradient, comoving length
   integer,intent(out) :: stk      !the packet's own line on that flight (nxt_static_tally)
   real*8,intent(out) :: swl(3)    !the flight for the window estimator of the line incident intensity (nxt_jbwin): comoving wavelength at its start and end, comoving energy times length (0: none)
+  real*8,intent(out) :: jmub(nx_nmub) !jrad shared among the bins of |mu| the flight passes (nxt_jmsum)
 !##################################################
 !This subroutine passes particle parameters as input and modifies
 !them through one IMC transport event (Fleck&Cummings, 1971).  If
@@ -47,7 +49,8 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
   real*8 :: qsl, mus
   real*8 :: darr(7)
   real*8 :: elabfact,elabfactold
-  real*8 :: xold, muold
+  real*8 :: xold, muold, pimp, fz0, fz1, fzl, fzh
+  integer :: kb
   real*8 :: help
 !-- distance out of physical reach
   real*8 :: far
@@ -104,6 +107,7 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
   eraddens = 0d0
   eamp = 0d0
   jrad = 0d0
+  jmub = 0d0
   jbk = 0
   jbval = 0d0
   stl = 0d0
@@ -378,6 +382,27 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
 
 !-- updating raditation intensity
   jrad = pc_c*eraddens
+!-- (shared among the bins of |mu| by the path in each: on the straight
+!-- flight of impact parameter p from z0 = xold muold, mu = z/sqrt(p^2+z^2))
+  if(nxt_on .and. d>0d0) then
+     pimp = xold*sqrt(max(1d0-muold**2,0d0))
+     if(pimp > 1d-12*max(xold,x)) then
+        fz0 = xold*muold
+        fz1 = fz0 + d
+        fzl = 0d0
+        do kb=1,nx_nmub
+           if(kb < nx_nmub) then
+              fzh = pimp*nx_mub(kb)/sqrt(1d0-nx_mub(kb)**2)
+           else
+              fzh = huge(1d0)
+           endif
+           jmub(kb) = jrad*(max(0d0,min(fz1,fzh)-max(fz0,fzl)) + max(0d0,min(fz1,-fzl)-max(fz0,-fzh)))/d
+           fzl = fzh
+        enddo
+     else
+        jmub(nx_nmub) = jrad
+     endif
+  endif
 !
 !-- updating transformation factors
   elabfact = 1d0 - mu*vx*cinv
