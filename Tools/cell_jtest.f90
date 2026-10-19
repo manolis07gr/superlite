@@ -49,7 +49,7 @@ program cell_jtest
   real*4,allocatable :: kap(:)
   logical,allocatable :: ljb(:)
   real*8 :: qb,qv,ne,nu1,nu2,s,w,nu0,dr,xo(2),wlmax,ovl,vturb
-  logical :: lg,ll,ldmp
+  logical :: lg,ll,ldmp,cdest
 !
   call get_command_argument(1,run)
   call get_command_argument(2,arg)
@@ -79,6 +79,7 @@ program cell_jtest
   cxfile = 'chgexch.dat'
   ovl = 0d0
   vturb = 0d0
+  cdest = .true.
   open(9,file=trim(run)//'/input.par',status='old')
   do
      read(9,'(a)',iostat=ios) line
@@ -92,6 +93,8 @@ program cell_jtest
      if(index(line,'in_nltex_chgexch') > 0) cxfile = quoted(line)
      if(index(line,'in_nltex_overlap') > 0) ovl = value(line)
      if(index(line,'in_nltex_vturb ') > 0 .or. index(line,'in_nltex_vturb=') > 0) vturb = value(line)
+     if(index(line,'in_nltex_cdest') > 0) cdest = index(line,'= t') > 0 .or. index(line,'=t') > 0 .or. &
+          index(line,'.true.') > 0
   enddo
   close(9)
   nf = 0
@@ -157,6 +160,12 @@ program cell_jtest
   nx_ovl_vtb = vturb*1d5
   nxt_ldbtau = 30d0
   nxt_ldbone = .true.
+!-- continuum destruction of the trapped line photons (in_nltex_cdest, on by
+!-- default) with the bound-free opacity of the ground states as the
+!-- continuum (the Lyman continuum inside it; the excited levels' continua
+!-- are left out)
+  nx_pc_on = cdest
+  nx_pc_vtb = vturb*1d5
   write(*,'(a)') ' cell        r       x(H 1) own J   x(H 1) ext. J    x(H 2) own J  x(H 2) ext. J'
   do i=1,nc
      ic = cells(i)
@@ -177,6 +186,10 @@ program cell_jtest
            enddo
         enddo
      enddo
+     if(nx_pc_on) then
+        if(.not.allocated(nx_kcg)) allocate(nx_kcg(ng))
+        nx_kcg = kap
+     endif
 !-- the external J at the cell
      write(fname,'(a,a,i0,a)') trim(jdir),'/cmfj_',ic,'.dat'
      open(9,file=trim(fname),status='old')

@@ -29,7 +29,7 @@ program superlite
   use nltextrmod
   use xraysrcmod
   use formalmod, only:fi_spectrum
-  use nltexmod, only:nx_esdamp,nx_ovl_dv,nxo_npair
+  use nltexmod, only:nx_esdamp,nx_ovl_dv,nxo_npair,nx_pc_on
   use nltedismod, only:nxd_on,nxd_setup
   use bbsobmod
   use tebalmod, only:te_damp,te_ntemin,te_zsolve
@@ -226,6 +226,8 @@ program superlite
      nxt_bbext = in_nltex_bbext
      if(lmpi0 .and. .not.nxt_bbext) write(6,'(1x,a)') &
           'NLTE elements: only the lines of the model atoms (in_nltex_bbext = f)'
+     nx_pc_on = in_nltex_cdest
+     if(lmpi0) write(6,'(1x,a,l2)') 'NLTE lines: continuum destruction of the trapped photons (in_nltex_cdest):',nx_pc_on
 !-- level dissolution (occupation probabilities, CMFGEN's DO_DIS)
      nxd_on = in_nltex_dis
      if(nxd_on) then

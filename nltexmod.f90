@@ -39,7 +39,7 @@ module nltexmod
 !
   public :: nx_el_rates,nx_el_matrix,nx_el_step,nx_solve_cell,nx_lte,nx_kq,nx_jline
   public :: nx_beta_table,nx_beta,nx_cx_rates,nx_cx_heat
-  public :: nx_ytrap,nx_es_table,nx_bes,nx_vdop,nx_jes,nx_wq,nx_wwin,nx_bew
+  public :: nx_ytrap,nx_es_table,nx_bes,nx_vdop,nx_jes,nx_wq,nx_wwin,nx_bew,nx_pcont
   public :: nx_ovl_init,nx_ovl_zone,nx_ovl_cell,nx_ovl_terms,nx_ks
 !-- rates of one element at a temperature (nx_el_rates); s: element-local
 !-- state, k: element-local level
@@ -128,6 +128,20 @@ module nltexmod
   logical,public :: nx_ovl_keep = .false.
 !-- (diagnostics: iterations of the last nx_solve_cell)
   integer,public :: nx_nits = 0
+!-- continuum destruction of the trapped photons of the lines (nx_pcont):
+!-- with nx_pc_on and the absorption opacity of the cell's groups nx_kcg
+!-- [cm^-1] (set by the caller per cell, of the populations' volume as K),
+!-- a photon emitted in a line is absorbed by the continuum before the line
+!-- takes it back with the probability P(kappa_c sqrt(pi) v_D/K); the
+!-- escape probability of the rates is beta + (1 - beta) P and their
+!-- incident intensity takes P times the J of the line's group.  Per global
+!-- line, while a cell is solved: kappa_c sqrt(pi) v_D [1/s] (0: none) and
+!-- the J of its group
+  logical,public :: nx_pc_on = .false.
+  real*8,allocatable,public :: nx_kcg(:)     !(ng)
+  real*8,public :: nx_pc_vtb = 0d0           !microturbulence [cm/s] of the Doppler widths
+  logical :: nx_pc_use = .false.
+  real*8,allocatable :: nx_pkc(:),nx_pjc(:)  !(nlin)
 !-- y(tau) = tau G(tau) of nx_ytrap at log10(tau) = -2, -1.75, ..., 10
   integer,parameter :: nx_nyt = 49
   real*8,parameter :: nx_yt(nx_nyt) = [ &
@@ -147,6 +161,22 @@ module nltexmod
        8.10018d+00, 8.18791d+00, 8.27346d+00, 8.35697d+00, 8.43859d+00, 8.51843d+00, 8.59660d+00, &
        8.67321d+00, 8.74834d+00, 8.82207d+00, 8.89449d+00, 8.96564d+00, 9.03561d+00, 9.10443d+00, &
        9.17217d+00, 9.23887d+00, 9.30457d+00, 9.36930d+00, 9.43307d+00, 9.49590d+00, 9.55775d+00]
+!-- ln(P/(1-P)) of nx_pcont at log10(r) = -12, -11.75, ..., 6
+  integer,parameter :: nx_npt = 73
+  real*8,parameter :: nx_pt(nx_npt) = [ &
+       -25.8513112278d0, -25.2862151137d0, -24.7213469578d0, -24.1567168547d0, -23.5923355866d0, -23.0282146876d0, &
+       -22.4643665150d0, -21.9008043306d0, -21.3375423907d0, -20.7745960490d0, -20.2119818723d0, -19.6497177726d0, &
+       -19.0878231575d0, -18.5263191018d0, -17.9652285453d0, -17.4045765209d0, -16.8443904178d0, -16.2847002885d0, &
+       -15.7255392073d0, -15.1669436901d0, -14.6089541900d0, -14.0516156836d0, -13.4949783686d0, -12.9390984953d0, &
+       -12.3840393634d0, -11.8298725176d0, -11.2766791819d0, -10.7245519796d0, -10.1735969815d0, -9.6239361216d0, &
+       -9.0757099931d0, -8.5290809834d0, -7.9842366029d0, -7.4413926674d0, -6.9007956607d0, -6.3627230630d0, &
+       -5.8274795785d0, -5.2953859598d0, -4.7667554634d0, -4.2418510358d0, -3.7208146919d0, -3.2035606436d0, &
+       -2.6896284485d0, -2.1780068829d0, -1.6669704561d0, -1.1540228318d0, -0.6360979226d0, -0.1101543363d0, &
+       0.4259185815d0, 0.9725574047d0, 1.5285208350d0, 2.0916324587d0, 2.6596586923d0, 3.2308142121d0, &
+       3.8038648502d0, 4.3780282288d0, 4.9528330587d0, 5.5280037303d0, 6.1033817803d0, 6.6788769750d0, &
+       7.2544382127d0, 7.8300366422d0, 8.4056560032d0, 8.9812871401d0, 9.5569249008d0, 10.1325663868d0, &
+       10.7082099679d0, 11.2838547272d0, 11.8595001491d0, 12.4351459436d0, 13.0107919477d0, 13.5864380695d0, &
+       14.1620842575d0]
   real*8,parameter :: sigt = 6.6524587d-25, amu = 1.66053907d-24, me = 9.1093826d-28
 !
 contains
@@ -281,6 +311,39 @@ pure function nx_wwin(t) result(w)
      w = exp((1d0-f)*log(nx_wt(i)) + f*log(nx_wt(i+1)))
   endif
 end function nx_wwin
+!
+!
+pure function nx_pcont(r) result(p)
+!-----------------------------------------------------------------------
+! Continuum destruction (Hummer & Rybicki 1985): the probability that a
+! photon emitted in a line with a Doppler profile is absorbed by the
+! continuum before the line takes it back, for r = kappa_c/kappa_0 the
+! ratio of the continuum's absorption opacity to the line's at its centre
+! (kappa_0 = K/(sqrt(pi) v_D)):
+!   P(r) = (1/sqrt(pi)) int r e^{-x^2}/(r + e^{-x^2}) dx = -r Li_1/2(-1/r),
+! tabulated as ln(P/(1-P)) (small r: (2/sqrt(pi)) r sqrt(ln(1/r)); large
+! r: 1 - 1/(sqrt(2) r)).  The lines of the metals inside the Lyman continuum of a
+! dense wind (Fe III 858, r ~ 5; C II 858, r ~ 0.3) give their photons to
+! H I this way within a few scatterings, where their escape from the
+! resonance zone is ~1e-6.
+!-----------------------------------------------------------------------
+  real*8,intent(in) :: r
+  real*8 :: p,l,f
+  integer :: i
+  p = 0d0
+  if(r <= 0d0) return
+  l = 4d0*(log10(r) + 12d0)
+  if(l <= 0d0) then
+     p = (r*1d12)*sqrt(log(1d0/r)/log(1d12))/(1d0 + exp(-nx_pt(1)))
+  elseif(l >= nx_npt-1) then
+     p = 1d0 - 1d0/(sqrt(2d0)*r)
+  else
+!-- (linear in the logit ln(P/(1-P)): to 7e-4)
+     i = int(l) + 1
+     f = l - (i-1)
+     p = 1d0/(1d0 + exp(-((1d0-f)*nx_pt(i) + f*nx_pt(i+1))))
+  endif
+end function nx_pcont
 !
 !
 subroutine nx_es_table(qb,qv,tab,wtab)
@@ -1149,7 +1212,7 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
   integer,intent(in),optional :: ncx,cxf(:),cxt(:)
   real*8,intent(in),optional :: cxr(:),xp(:),dti,sv,etab(0:nx_nbt),wqe(:),jes(:),efar(:),ewtab(0:nx_nbt)
   integer :: ns,nl,k,kg,k0,info,ir,mo,j
-  real*8 :: kq,bes,jle(size(jl)),b0,pin,pw,bjl,cx,dlb(4,size(jl)),wl,wu,gr,ees
+  real*8 :: kq,bes,jle(size(jl)),b0,pin,pw,bjl,cx,dlb(4,size(jl)),wl,wu,gr,ees,pc
   logical :: les,lesk,lfar,lfark,lovl,lstv
   real*8 :: m(nxa_el(iel)%ns,nxa_el(iel)%ns),xn(nxa_el(iel)%ns)
   real*8 :: msv(nxa_el(iel)%ns,nxa_el(iel)%ns)
@@ -1215,6 +1278,16 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
         endif
         beta(k) = beta(k) + bes
         if(ldump) dlb(2,k) = bes
+     endif
+!-- (continuum destruction of the trapped photons, nx_pcont: what the
+!-- continuum absorbs leaves the line, and the line takes as much of the
+!-- continuum's J of its group)
+     if(nx_pc_use .and. kq > 0d0) then
+        if(nx_pkc(kg) > 0d0) then
+           pc = (1d0 - min(beta(k),1d0))*nx_pcont(nx_pkc(kg)/kq)
+           beta(k) = beta(k) + pc
+           bjl = bjl + pc*nx_pjc(kg)
+        endif
      endif
      jle(k) = bjl/max(beta(k),1d-300)
   enddo
@@ -1440,6 +1513,19 @@ subroutine nx_solve_cell(temp,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx
   do k=1,nxa_nlin
      jl(k) = nx_jline(k,ng,nug,jg,jb(k),ljb(k))
   enddo
+!-- continuum destruction: kappa_c sqrt(pi) v_D and the J of each line's group
+  nx_pc_use = nx_pc_on .and. allocated(nx_kcg)
+  if(nx_pc_use) nx_pc_use = size(nx_kcg)==ng
+  if(nx_pc_use) then
+     if(allocated(nx_pkc)) then
+        if(size(nx_pkc)/=nxa_nlin) deallocate(nx_pkc,nx_pjc)
+     endif
+     if(.not.allocated(nx_pkc)) allocate(nx_pkc(nxa_nlin),nx_pjc(nxa_nlin))
+     do k=1,nxa_nlin
+        nx_pkc(k) = max(nx_kcg(nxa_lgn(k)),0d0)*sqrt(pi)*nx_vdop(nxa_lel(k),temp,nx_pc_vtb)
+        nx_pjc(k) = jg(nxa_lgn(k))
+     enddo
+  endif
   if(nx_vtb >= 0d0) then
      do k=1,nxa_nlin
         wq(k) = 0d0
@@ -1501,6 +1587,7 @@ subroutine nx_solve_cell(temp,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx
         if(ie/=0) then
            ierr = ie
            nxo_use = .false.
+           nx_pc_use = .false.
            return
         endif
         dmax = max(dmax,d)
@@ -1518,6 +1605,7 @@ subroutine nx_solve_cell(temp,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx
      if(dmax < dtol .and. abs(dne) < 1d-2*dtol) exit
   enddo
   nxo_use = .false.
+  nx_pc_use = .false.
   nx_nits = min(it,mit)
   if(it>mit) ierr = 2
 contains

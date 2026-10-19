@@ -74,6 +74,7 @@ module nltextrmod
   real*8,allocatable,public :: nxt_kq(:,:)    !(nlin,ncell) Sobolev strength K [1/s]
   real*8,allocatable,public :: nxt_beta(:,:)  !(nlin,ncell) escape probability
   real*8,allocatable,public :: nxt_bes(:,:)   !(nlin,ncell) electron scattering of trapped photons (nx_bes)
+  real*8,allocatable,public :: nxt_pc(:,:)    !(nlin,ncell) continuum destruction of trapped photons (nx_pcont)
   real*8,allocatable,public :: nxt_jg(:,:)    !(ng,ncell) MC mean intensity [erg/s/cm^2/Hz/sr]
   real*8,allocatable,public :: nxt_jb(:,:)    !(nlin,ncell) resonance mean intensity
   logical,allocatable,public :: nxt_ljb(:,:)  !(nlin,ncell) jb set (MC; nxt_tally_finish)
@@ -342,7 +343,7 @@ subroutine nxt_init(ncell,gncell,ng,wlg,nfile,files,hnlev)
   nst = nxa_nst
   allocate(nxt_x(nst,ncell),nxt_nel(nxa_nel,ncell),nxt_ne(ncell),nxt_w(nxa_nlv,ncell))
   nxt_w = 1d0
-  allocate(nxt_kq(nxa_nlin,ncell),nxt_beta(nxa_nlin,ncell),nxt_bes(nxa_nlin,ncell))
+  allocate(nxt_kq(nxa_nlin,ncell),nxt_beta(nxa_nlin,ncell),nxt_bes(nxa_nlin,ncell),nxt_pc(nxa_nlin,ncell))
   allocate(nxt_jg(ng,ncell),nxt_jb(nxa_nlin,ncell),nxt_ljb(nxa_nlin,ncell))
   allocate(nxt_jbsum(nxa_nlin,ncell),nxt_jbcnt(nxa_nlin,ncell))
   allocate(nxt_jwsum(nxa_nlin,ncell),nxt_jwsq(nxa_nlin,ncell),nxt_haem(ncell),nxt_haab(ncell))
@@ -358,7 +359,7 @@ subroutine nxt_init(ncell,gncell,ng,wlg,nfile,files,hnlev)
   allocate(nxt_lgrp(nxa_nlin),nxt_isrt(nxa_nlin),nxt_nug(ng),nxt_dnug(ng))
   allocate(nxt_act(nxa_nlin),nxt_wlact(nxa_nlin),nxt_tmact(nxa_nlin))
   nxt_tmact = 1d99
-  nxt_x = 0d0; nxt_nel = 0d0; nxt_ne = 0d0; nxt_kq = 0d0; nxt_beta = 1d0; nxt_bes = 0d0
+  nxt_x = 0d0; nxt_nel = 0d0; nxt_ne = 0d0; nxt_kq = 0d0; nxt_beta = 1d0; nxt_bes = 0d0; nxt_pc = 0d0
   nxt_jg = 0d0; nxt_jb = 0d0; nxt_ljb = .false.; nxt_jbsum = 0d0; nxt_jbcnt = 0d0
   grd_capnbf = 0.; gas_capnbf = 0.; grd_emnbf = 0.; gas_emnbf = 0.
   nxt_xloc = 0d0; nxt_neloc = 0d0; nxt_nelloc = 0d0; nxt_neothloc = 0d0
@@ -565,7 +566,7 @@ end subroutine nxt_init
 !
 subroutine nxt_dealloc
 !-- free the cell arrays and tables (set up again by nxt_init)
-  if(allocated(nxt_x)) deallocate(nxt_x,nxt_nel,nxt_ne,nxt_kq,nxt_beta,nxt_bes,nxt_jg,nxt_jb,nxt_ljb, &
+  if(allocated(nxt_x)) deallocate(nxt_x,nxt_nel,nxt_ne,nxt_kq,nxt_beta,nxt_bes,nxt_pc,nxt_jg,nxt_jb,nxt_ljb, &
        nxt_jbsum,nxt_jbcnt,nxt_jxsum,nxt_jlsum,nxt_jlosum,grd_capnbf,nxt_xloc,nxt_neloc,nxt_nelloc,nxt_neothloc,gas_capnbf, &
        grd_emnbf,gas_emnbf,nxt_jwsum,nxt_jwsq,nxt_haem,nxt_haab,nxt_efsum,nxt_efcnt, &
        nxt_lgrp,nxt_isrt,nxt_nug,nxt_dnug,nxt_act,nxt_wlact,nxt_w,nxt_tmact)
@@ -760,6 +761,19 @@ subroutine nxt_gas_solve(it,gncell,temp,trad,nelv,neoth,qb,qv,icell1,edep,kap,fc
      if(nxd_on) call nxd_cellx(neoth(i)+free_el(nelv(:,i),x),nelv(:,i),x,temp(i),nx_dis)
      nx_vtb = -1d0
      nx_ovl_vtb = nxt_vturb(1)
+!-- (continuum destruction of the trapped line photons: the cell's group
+!-- opacity, per clump volume as the populations; the microturbulence)
+     if(nx_pc_on .and. present(kap)) then
+        if(allocated(nx_kcg)) then
+           if(size(nx_kcg)/=nxt_ng) deallocate(nx_kcg)
+        endif
+        if(.not.allocated(nx_kcg)) allocate(nx_kcg(nxt_ng))
+        nx_kcg = kap(:,i)
+        nx_pc_vtb = nxt_vturb(1)
+        if(present(vel)) nx_pc_vtb = nxt_vturbv(vel(i))
+     elseif(allocated(nx_kcg)) then
+        deallocate(nx_kcg)
+     endif
      if(present(vel)) call nxt_es_cell(l,vel(i))
      nx_dump = any(idump == l)
      if(present(kap) .and. present(fcl) .and. present(dr) .and. it>1 .and. nxt_have_mc) &
@@ -938,8 +952,10 @@ subroutine nxt_ldb(ncell,ng,vol,dr,tempinv,cap,capemit,planck,spk,nlump,glump)
 !   it are DDMC packets of the lump, which J = S would leave out: the
 !   lines' net emission is part of the source function,
 !      S = (kappa S_c + eta_l)/(kappa + kappa_l),
-!   eta_l = sum beta n_u A h nu/(4 pi dnu) and kappa_l = sum beta (n_l B_lu
-!   - n_u B_ul) h nu/(4 pi dnu) over the group's lines (the Fe III, C II
+!   eta_l = sum b n_u A h nu/(4 pi dnu) and kappa_l = sum b (n_l B_lu -
+!   n_u B_ul) h nu/(4 pi dnu) over the group's lines, b = beta + P_c (the
+!   escape from the resonance zone and the continuum destruction of the
+!   trapped photons, nxt_pc) (the Fe III, C II
 !   and O II lines inside the Lyman continuum of a dense wind, whose
 !   photons ionize H I there).  Without DDMC the tally of the radiation
 !   from elsewhere holds them (line packets count in nxt_jxsum).
@@ -960,8 +976,10 @@ subroutine nxt_ldb(ncell,ng,vol,dr,tempinv,cap,capemit,planck,spk,nlump,glump)
   if(ldiag) ldiag = size(nxt_nug)==ng
 !-- (the lines' terms need the populations and escape probabilities of the cells)
   lln = nxt_ldbone .and. nxt_ldbtau>0d0
-  if(lln) lln = allocated(nxt_x) .and. allocated(nxt_nel) .and. allocated(nxt_w) .and. allocated(nxt_beta)
-  if(lln) lln = size(nxt_x,2)==ncell .and. size(nxt_w,2)==ncell .and. size(nxt_beta,2)==ncell
+  if(lln) lln = allocated(nxt_x) .and. allocated(nxt_nel) .and. allocated(nxt_w) .and. allocated(nxt_beta) &
+       .and. allocated(nxt_pc)
+  if(lln) lln = size(nxt_x,2)==ncell .and. size(nxt_w,2)==ncell .and. size(nxt_beta,2)==ncell &
+       .and. size(nxt_pc,2)==ncell
   if(allocated(nxt_ldbd)) then
      if(size(nxt_ldbd,3)/=ncell) deallocate(nxt_ldbd)
   endif
@@ -998,7 +1016,7 @@ subroutine nxt_ldb(ncell,ng,vol,dr,tempinv,cap,capemit,planck,spk,nlump,glump)
            o = nxa_el(iel)%xoff
            pl = nxt_nel(iel,i)*nxt_x(o+nxa_lsl(k),i)*nxt_w(nxa_llv(k),i)
            pu = nxt_nel(iel,i)*nxt_x(o+nxa_lsu(k),i)*nxt_w(nxa_luv(k),i)
-           hv = nxt_beta(k,i)*hh*nxa_lnu(k)/(4d0*pi*nxt_dnug(ig))
+           hv = (nxt_beta(k,i) + nxt_pc(k,i))*hh*nxa_lnu(k)/(4d0*pi*nxt_dnug(ig))
            eml(ig) = eml(ig) + hv*pu*nxa_la(k)
            abl(ig) = abl(ig) + hv*(pl*nxa_lblu(k) - pu*nxa_lbul(k))
         enddo
@@ -1138,6 +1156,7 @@ subroutine nxt_tables(ncell,tempinv,radtemp,capemitgrey,xarr,vxarr)
 ! Sobolev strengths, escape probabilities, macro-atom and k-packet tables
 ! for all cells, from the gathered populations.
 !-----------------------------------------------------------------------
+  use gridmod, only:grd_cap
   integer,intent(in) :: ncell
   real*8,intent(in) :: tempinv(ncell),radtemp(ncell),capemitgrey(ncell)
   real*8,intent(in) :: xarr(ncell+1),vxarr(ncell+1)
@@ -1146,7 +1165,7 @@ subroutine nxt_tables(ncell,tempinv,radtemp,capemitgrey,xarr,vxarr)
   real*8 :: bnd(nxa_nlv),bnb(nxa_nlv) !bound-free weights and their bounds in a block of groups
   integer :: ixb(nxa_nlv)
   real*8 :: jg(nxt_ng),jb(nxa_nlin),jl(nxa_nlin),btab(0:nx_nbt),etab(0:nx_nbt),ewtab(0:nx_nbt),sig,vt,bu(nxa_nlin)
-  real*8 :: bj(nxa_nlin),besp(nxa_nlin),ovw(max(nxo_npair,1))
+  real*8 :: bj(nxa_nlin),besp(nxa_nlin),ovw(max(nxo_npair,1)),kc,pc
   logical :: ljb(nxa_nlin),lst
   real*8 :: kw(nxt_nko)            !k-packet: non-returning flows
   type(nxrt) :: r
@@ -1252,6 +1271,24 @@ subroutine nxt_tables(ncell,tempinv,radtemp,capemitgrey,xarr,vxarr)
      enddo
      ovw = 0d0
      if(nxo_npair > 0 .and. nxt_tau0<=0d0) call ovl_tables
+!-- continuum destruction of the trapped photons (nx_pcont) with the
+!-- absorption opacity of the line's group, as in the rates (nxt_pc: the
+!-- share added to the escape, for nxt_ldb)
+     nxt_pc(:,ic) = 0d0
+     if(nx_pc_on .and. nxt_tau0<=0d0) then
+        vt = nxt_vturbv(0.5d0*(vxarr(ic)+vxarr(ic+1)))
+        do k=1,nxa_nlin
+           if(nxt_kq(k,ic) <= 0d0) cycle
+           ig = nxa_lgn(k)
+           kc = grd_cap(ig,ic)
+           if(allocated(nxt_fcl)) kc = kc*nxt_fcl(ic)
+           if(kc <= 0d0) cycle
+           pc = (1d0 - min(bu(k),1d0))*nx_pcont(kc*sqrt(pi)*nx_vdop(nxa_lel(k),t,vt)/nxt_kq(k,ic))
+           nxt_pc(k,ic) = pc
+           bu(k) = bu(k) + pc
+           bj(k) = bj(k) + pc*jg(ig)
+        enddo
+     endif
      do k=1,nxa_nlin
         jl(k) = bj(k)/max(bu(k),1d-300)
      enddo

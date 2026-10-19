@@ -150,6 +150,12 @@ c-- model atom, and of the top ions, in the Sobolev expansion opacity
 c-- (lower level from the highest model level below it, Boltzmann above);
 c-- f: only the lines of the model atoms (as a CMFGEN model with them)
       logical :: in_nltex_bbext = .true.
+c-- continuum destruction of the trapped photons of the NLTE lines
+c-- (Hummer & Rybicki 1985): the absorption continuum of the line's group
+c-- takes a photon before the line takes it back with the probability
+c-- P(kappa_c sqrt(pi) v_D/K), in the rates, the macro-atom and the source
+c-- function of the groups in local detailed balance (nltexmod nx_pcont)
+      logical :: in_nltex_cdest = .true.
 c-- incident intensity of the Sobolev NLTE lines in the statistical
 c-- equilibrium: path-length estimator of J_nu in a window this wide
 c-- [km/s] next to each line, on the side the comoving frequency of a
@@ -338,7 +344,7 @@ c-- runtime parameter namelist
      & in_nlteh_tau0,in_nltex_atoms,in_nltex_dir,in_nltex_chgexch,
      & in_srctype,in_shock_dvmin,in_shock_tmax,in_shock_cie,
      & in_nltex_prev,in_nltex_dtprev,in_nltex_init,in_nltex_hold,
-     & in_nltex_bbext,in_nltex_jbwin,in_nltex_dis,
+     & in_nltex_bbext,in_nltex_cdest,in_nltex_jbwin,in_nltex_dis,
      & in_nltex_ali,
      & in_nltex_ldb,in_nltex_vturb,in_nltex_vturbmax,in_nltex_esrates,
      & in_nltex_esdamp,in_nltex_dopmc,in_nltex_dopz,in_nltex_dopes,
@@ -488,6 +494,7 @@ c
       call insertl(in_nltex_esrates,in_l,il)
       call insertl(in_nltex_hold,in_l,il)
       call insertl(in_nltex_bbext,in_l,il)
+      call insertl(in_nltex_cdest,in_l,il)
       call insertr(in_nltex_jbwin,in_r,ir)
       call insertl(in_nltex_dis,in_l,il)
       call insertl(in_nltex_esdamp,in_l,il)

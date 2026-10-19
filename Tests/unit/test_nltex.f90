@@ -113,6 +113,7 @@ program test_nltex
         if(ierr /= 0 .or. abs(w/2.86d0 - 1d0) > 0.05d0) nfail = nfail + 1
      endif
   enddo
+  call pc_tests
   call td_tests
   call ali_tests
   call ldb_tests
@@ -249,6 +250,60 @@ contains
     if(d1 > 1d-6 .or. na == 0 .or. nb == 0 .or. nb >= na .or. sl > 1d-4) nfail = nfail + 1
   end subroutine ali_tests
 !
+  subroutine pc_tests
+!-- continuum destruction of the trapped line photons (nx_pcont):
+!--  a) P(r) against a quadrature of (2/sqrt(pi)) int_0^inf r/(1 + r e^{x^2}) dx;
+!--  b) LTE (J = B in the groups and the lines): the populations do not move
+!--     when a continuum takes the trapped photons (P S_c = P S_line);
+!--  c) Case B nebula with a continuum that takes every trapped photon at
+!--     the lines (P -> 1) where J = 0: the lines are as if thin (the same
+!--     solution as with a velocity gradient that makes beta = 1)
+    real*8 :: rr(14), pq, xx, dx, dvp, xa(nxa_nst), xb(nxa_nst), d1, d2
+    integer :: i2, j2
+    rr = [1d-14, 1d-10, 3.3d-7, 1d-6, 1d-3, 0.05d0, 1d-1, 1d0, 2.6d0, 1d1, 3.1d2, 1d3, 1d8, 1d12]
+    dvp = 0d0
+    do i2 = 1, 14
+       pq = 0d0
+       dx = 1d-4
+       do j2 = 1, 200000
+          xx = (j2 - 0.5d0)*dx
+          pq = pq + rr(i2)/(1d0 + rr(i2)*exp(min(xx*xx, 700d0)))*dx
+       enddo
+       pq = 2d0/sqrt(pi_)*pq
+       dvp = max(dvp, abs(nx_pcont(rr(i2))/pq - 1d0))
+    enddo
+!-- b) LTE at 1e4 K, n_H = 1e17 (as H case 2), continuum of 1e-5 /cm in every group
+    t = 1d4; nh = 1d17; t2 = t; q = 1d0/1.7d6
+    do k = 1, ng
+       jg(k) = bplanck(nug(k), t)
+    enddo
+    jb = [(bplanck(nxa_lnu(k), t), k=1,nxa_nlin)]; ljb = .true.; nti = 0d0; ntx = 0d0; nel = nh
+    xa = 0d0; xa(1) = 0.5d0; xa(nxa_nst) = 0.5d0
+    call nx_solve_cell(t, t2, nel, 0d0, q, q, ng, nug, dnug, jg, jb, ljb, nti, ntx, xa, ne, beta, ierr)
+    allocate(nx_kcg(ng)); nx_kcg = 1d-5; nx_pc_vtb = 1d6; nx_pc_on = .true.
+    xb = 0d0; xb(1) = 0.5d0; xb(nxa_nst) = 0.5d0
+    call nx_solve_cell(t, t2, nel, 0d0, q, q, ng, nug, dnug, jg, jb, ljb, nti, ntx, xb, ne, beta, ierr)
+    d1 = maxval(abs(xb/xa - 1d0), mask=xa > 1d-30)
+!-- c) Case B (as H case 4) with P -> 1 at every line, against beta -> 1
+    t = 1d4; nh = 1d4; w = 1d-15; t2 = 5d4; q = 1d-9
+    jg = 0d0
+    do k = 1, ng
+       if(nug(k) > nh_nu0(1)) jg(k) = w*bplanck(nug(k), t2)
+    enddo
+    jb = 0d0; ljb = .true.; nel = nh
+    nx_kcg = 1d10
+    xa = 0d0; xa(1) = 0.5d0; xa(nxa_nst) = 0.5d0
+    call nx_solve_cell(t, t2, nel, 0d0, q, q, ng, nug, dnug, jg, jb, ljb, nti, ntx, xa, ne, beta, ierr)
+    nx_pc_on = .false.
+    xb = 0d0; xb(1) = 0.5d0; xb(nxa_nst) = 0.5d0
+    call nx_solve_cell(t, t2, nel, 0d0, 1d10, 1d10, ng, nug, dnug, jg, jb, ljb, nti, ntx, xb, ne, beta, ierr)
+    d2 = maxval(abs(xb/xa - 1d0), mask=xa > 1d-30)
+    deallocate(nx_kcg); nx_pc_vtb = 0d0
+    write(*,'(a,es9.2,a,es9.2,a,es9.2,a,f8.5)') '  continuum destruction: P(r) against quadrature to', dvp, &
+         '; LTE kept to', d1, '; P -> 1 against thin lines to', d2, ', x(H II)', xa(nxa_nst)
+    if(dvp > 1d-3 .or. d1 > 1d-6 .or. d2 > 1d-4) nfail = nfail + 1
+  end subroutine pc_tests
+!
   subroutine ldb_tests
 !-- local detailed balance in thick groups (nxt_ldb, nxt_ali_cell):
 !--  a) the share Lambda* of its own emission that a slab keeps, against
@@ -333,7 +388,8 @@ contains
 !-- (and the net emission of a line inside a thick group is part of its
 !-- source function: Lyman beta in a thick group, S = (kappa S_c + eta_l)/
 !-- (kappa + kappa_l) from the populations and the escape probability)
-    allocate(nxt_x(nxa_nst,1), nxt_nel(nxa_nel,1), nxt_w(nxa_nlv,1), nxt_beta(nxa_nlin,1))
+    allocate(nxt_x(nxa_nst,1), nxt_nel(nxa_nel,1), nxt_w(nxa_nlv,1), nxt_beta(nxa_nlin,1), nxt_pc(nxa_nlin,1))
+    nxt_pc = 0d0
     nxt_x = 0d0
     nxt_x(1,1) = 1d-3; nxt_x(2,1) = 1d-9; nxt_x(3,1) = 2d-10; nxt_x(nxa_nst,1) = 1d0 - 1.0000012d-3
     nxt_nel = 1d9
@@ -360,7 +416,7 @@ contains
     write(*,'(a,es10.3,a,es10.3,a,es10.3)') '  line inside a thick DDMC group: J/(S_c + line terms) - 1 =', dsl, &
          '; (J - J_ext)/S_c =', w0/sg,', S_line/S_c =', da/db/sg
     if(abs(dsl) > 1d-12 .or. (w0 - sg)*(da/db - sg) <= 0d0) nfail = nfail + 1
-    deallocate(nxt_x, nxt_nel, nxt_w, nxt_beta)
+    deallocate(nxt_x, nxt_nel, nxt_w, nxt_beta, nxt_pc)
     nxt_ldbone = .false.
     nxt_ldbtau = 0d0
     deallocate(plk, spk1, cap1, cape1, gl1)

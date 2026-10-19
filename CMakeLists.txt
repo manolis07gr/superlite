@@ -34,8 +34,9 @@ set (CMAKE_Fortran_MODULE_DIRECTORY ${PROJECT_BINARY_DIR})
 
 #-- create lists of top-level source files
 file (GLOB_RECURSE SuperLite_FILES "*.f" "*.f90")
-#-- unit tests are separate programs
+#-- unit tests and the tools are separate programs
 list (FILTER SuperLite_FILES EXCLUDE REGEX "/Tests/")
+list (FILTER SuperLite_FILES EXCLUDE REGEX "/Tools/")
 
 #-- remove versions of mpimod from .f list
 file (GLOB MPIMOD "mpimod_mpi.f" "mpimod_ser.f")
