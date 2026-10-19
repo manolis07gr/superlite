@@ -39,7 +39,7 @@ module nltexmod
 !
   public :: nx_el_rates,nx_el_matrix,nx_el_step,nx_solve_cell,nx_lte,nx_kq,nx_jline
   public :: nx_beta_table,nx_beta,nx_cx_rates,nx_cx_heat
-  public :: nx_ytrap,nx_es_table,nx_bes,nx_vdop,nx_jes,nx_wq
+  public :: nx_ytrap,nx_es_table,nx_bes,nx_vdop,nx_jes,nx_wq,nx_wwin,nx_bew
   public :: nx_ovl_init,nx_ovl_zone,nx_ovl_cell,nx_ovl_terms,nx_ks
 !-- rates of one element at a temperature (nx_el_rates); s: element-local
 !-- state, k: element-local level
@@ -83,7 +83,7 @@ module nltexmod
 !-- step of nx_el_step
   logical,public :: nx_dump = .false.
   integer,public :: nx_dns = 0
-  real*8,public :: nx_dflow(64) = 0d0,nx_dcx = 0d0,nx_dlya(8,6) = 0d0
+  real*8,public :: nx_dflow(64) = 0d0,nx_dcx = 0d0,nx_dlya(9,7) = 0d0
 !-- and per element and ion stage j: the flows from ion j to ion j+1 (or the
 !-- top state) and back without charge exchange, and the net charge exchange
 !-- from j to j+1 [1/s per particle of the element]
@@ -138,6 +138,15 @@ module nltexmod
        6.20045d+00, 6.37591d+00, 6.54701d+00, 6.71404d+00, 6.87727d+00, 7.03695d+00, 7.19330d+00, &
        7.34652d+00, 7.49678d+00, 7.64425d+00, 7.78908d+00, 7.93140d+00, 8.07133d+00, 8.20900d+00, &
        8.34450d+00, 8.47794d+00, 8.60940d+00, 8.73897d+00, 8.86673d+00, 8.99275d+00, 9.11710d+00]
+!-- W(t) of nx_wwin at log10(t) = -2, -1.75, ..., 10
+  real*8,parameter :: nx_wt(nx_nyt) = [ &
+       4.97707d-02, 8.81906d-02, 1.55836d-01, 2.74024d-01, 4.77711d-01, 8.20344d-01, 1.37261d+00, &
+       2.19866d+00, 3.28489d+00, 4.43746d+00, 5.32069d+00, 5.79788d+00, 6.06356d+00, 6.27177d+00, &
+       6.45448d+00, 6.61969d+00, 6.77171d+00, 6.91330d+00, 7.04633d+00, 7.17220d+00, 7.29193d+00, &
+       7.40634d+00, 7.51607d+00, 7.62164d+00, 7.72349d+00, 7.82199d+00, 7.91743d+00, 8.01009d+00, &
+       8.10018d+00, 8.18791d+00, 8.27346d+00, 8.35697d+00, 8.43859d+00, 8.51843d+00, 8.59660d+00, &
+       8.67321d+00, 8.74834d+00, 8.82207d+00, 8.89449d+00, 8.96564d+00, 9.03561d+00, 9.10443d+00, &
+       9.17217d+00, 9.23887d+00, 9.30457d+00, 9.36930d+00, 9.43307d+00, 9.49590d+00, 9.55775d+00]
   real*8,parameter :: sigt = 6.6524587d-25, amu = 1.66053907d-24, me = 9.1093826d-28
 !
 contains
@@ -243,14 +252,48 @@ pure function nx_ytrap(tau) result(y)
 end function nx_ytrap
 !
 !
-subroutine nx_es_table(qb,qv,tab)
+pure function nx_wwin(t) result(w)
+!-----------------------------------------------------------------------
+! (nxt_esrates) Width [Doppler widths] of the window in which the transport
+! (nxt_esfar) lets a Sobolev line of depth t = K/|Q| absorb the photons
+! that electrons scatter to within five Doppler widths of its centre, where
+! the flow drifts them across the profile before an electron scatters them
+! again: at x Doppler widths (positive on the side they drift in from) the
+! line ahead has the depth t erfc(-x)/2, so
+!   W(t) = int_{-5}^{5} (1 - exp(-t erfc(-x)/2)) dx,
+! tabulated (small t: 5 t; large t: 5 + sqrt(ln(t/(2 sqrt(pi)))) - 0.107,
+! at most 10).  Wider than the core of nx_ytrap: the photons that land
+! ahead of the core drift into it (W/y = 1.7 at t = 200, 1.1 at 1e8).
+!-----------------------------------------------------------------------
+  real*8,intent(in) :: t
+  real*8 :: w,l,f
+  integer :: i
+  w = 0d0
+  if(t <= 0d0) return
+  l = 4d0*(log10(t) + 2d0)
+  if(l <= 0d0) then
+     w = nx_wt(1)*(1d2*t)
+  elseif(l >= nx_nyt-1) then
+     w = min(1d1,5d0 + sqrt(log(t/(2d0*sqrt(pi)))) - 0.107d0)
+  else
+     i = int(l) + 1
+     f = l - (i-1)
+     w = exp((1d0-f)*log(nx_wt(i)) + f*log(nx_wt(i+1)))
+  endif
+end function nx_wwin
+!
+!
+subroutine nx_es_table(qb,qv,tab,wtab)
 !-----------------------------------------------------------------------
 ! <y(K/|Q(mu)|)> over the directions (nx_ytrap) of a cell with gradients
 ! qb = dv/dr, qv = v/r against ln(K/qs) on the grid of nx_beta_table;
-! tab(0) = <|Q|>/qs.  |Q| floored as in nlteh_beta.
+! tab(0) = <|Q|>/qs.  |Q| floored as in nlteh_beta.  wtab (optional): the
+! same for the window of the transport's far-side absorption, <W(K/|Q|)>
+! (nx_wwin; nx_bew), wtab(0) = tab(0).
 !-----------------------------------------------------------------------
   real*8,intent(in) :: qb,qv
   real*8,intent(out) :: tab(0:nx_nbt)
+  real*8,intent(out),optional :: wtab(0:nx_nbt)
   integer,parameter :: nmu = 16
   integer :: i,j
   real*8 :: qs,mu,kq,q(nmu)
@@ -267,6 +310,16 @@ subroutine nx_es_table(qb,qv,tab)
         tab(i) = tab(i) + nx_ytrap(kq/q(j))
      enddo
      tab(i) = tab(i)/nmu
+  enddo
+  if(.not.present(wtab)) return
+  wtab(0) = tab(0)
+  do i=1,nx_nbt
+     kq = exp(nx_blt0 + (i-1)*nx_bdlt)*qs
+     wtab(i) = 0d0
+     do j=1,nmu
+        wtab(i) = wtab(i) + nx_wwin(kq/q(j))
+     enddo
+     wtab(i) = wtab(i)/nmu
   enddo
 end subroutine nx_es_table
 !
@@ -311,6 +364,37 @@ pure function nx_bes(kq,sv,wq,beta,qb,qv,tab) result(bes)
      bes = (1d0-beta)*(1d0-exp(-w))
   endif
 end function nx_bes
+!
+!
+pure function nx_bew(kq,sv,qb,qv,wtab) result(bew)
+!-----------------------------------------------------------------------
+! (nxt_esrates) The expected absorption by a Sobolev line of strength kq,
+! per unit intensity J_es about it (nx_jes), of the photons that electrons
+! scatter into its window (nx_wwin) as the transport absorbs them
+! (nxt_esfar), as a beta-weighted intensity: sigma v_D <W(K/|Q(mu)|)>/K,
+! sv = sigma v_D [1/s], wtab from nx_es_table.  It stands in for the
+! transport's tally (nxt_efsum) where that has too few events: Lyman alpha
+! in the outer wind of a IIn gets a few hundredths of a packet per cell
+! and iteration.
+!-----------------------------------------------------------------------
+  real*8,intent(in) :: kq,sv,qb,qv,wtab(0:nx_nbt)
+  real*8 :: bew,qs,lt,w,ww
+  integer :: i
+  bew = 0d0
+  if(kq <= 0d0 .or. sv <= 0d0) return
+  qs = max(abs(qb),abs(qv),1d-30)
+  lt = log(kq/qs)
+  if(lt <= nx_blt0) return
+  if(lt >= nx_blt0 + (nx_nbt-1)*nx_bdlt) then
+     ww = nx_wwin(kq/(wtab(0)*qs))
+  else
+     w = (lt - nx_blt0)/nx_bdlt
+     i = min(int(w) + 1,nx_nbt-1)
+     w = w - (i-1)
+     ww = exp((1d0-w)*log(max(wtab(i),1d-300)) + w*log(max(wtab(i+1),1d-300)))
+  endif
+  bew = sv*ww/kq
+end function nx_bew
 !
 !
 pure function nx_wq(k,temp) result(wq)
@@ -1032,7 +1116,7 @@ end subroutine nx_el_matrix
 !
 !
 subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
-     ncx,cxf,cxt,cxr,xp,dti,sv,etab,wqe,jes,efar)
+     ncx,cxf,cxt,cxr,xp,dti,sv,etab,wqe,jes,efar,ewtab)
 !-----------------------------------------------------------------------
 ! One iteration for the populations x of element iel (number density nel)
 ! at electron density ne: escape probabilities from x, then the linear
@@ -1051,7 +1135,8 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
 ! (beta Jb + bes Jes)/(beta + bes); only to the lines of nx_esm when it
 ! is allocated.  efar (optional, >= 0 for a line): the absorption of the
 ! photons scattered into its core in the transport (nxt_esfar), as a
-! beta-weighted intensity in place of bes Jes.  With nxo_use the
+! beta-weighted intensity in place of bes Jes; -2 (a tally with too few
+! events): its expectation nx_bew Jes, with ewtab (nx_es_table).  With nxo_use the
 ! overlapping lines' terms of nx_ovl_terms (set by nx_solve_cell).
 !-----------------------------------------------------------------------
   integer,intent(in) :: iel,it
@@ -1062,10 +1147,10 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
   real*8,intent(out) :: beta(:),d
   integer,intent(out) :: ierr
   integer,intent(in),optional :: ncx,cxf(:),cxt(:)
-  real*8,intent(in),optional :: cxr(:),xp(:),dti,sv,etab(0:nx_nbt),wqe(:),jes(:),efar(:)
+  real*8,intent(in),optional :: cxr(:),xp(:),dti,sv,etab(0:nx_nbt),wqe(:),jes(:),efar(:),ewtab(0:nx_nbt)
   integer :: ns,nl,k,kg,k0,info,ir,mo,j
-  real*8 :: kq,bes,jle(size(jl)),b0,pin,pw,bjl,cx,dlb(3,size(jl)),wl,wu,gr
-  logical :: les,lesk,lfar,lfark,lovl
+  real*8 :: kq,bes,jle(size(jl)),b0,pin,pw,bjl,cx,dlb(4,size(jl)),wl,wu,gr,ees
+  logical :: les,lesk,lfar,lfark,lovl,lstv
   real*8 :: m(nxa_el(iel)%ns,nxa_el(iel)%ns),xn(nxa_el(iel)%ns)
   real*8 :: msv(nxa_el(iel)%ns,nxa_el(iel)%ns)
   integer :: ipiv(nxa_el(iel)%ns),i1
@@ -1105,7 +1190,7 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
         beta(k) = b0
         bjl = b0*jl(k)
      endif
-     if(ldump) dlb(:,k) = [beta(k),0d0,0d0]
+     if(ldump) dlb(:,k) = [beta(k),0d0,0d0,0d0]
      lesk = les
      if(lesk .and. allocated(nx_esm)) lesk = nx_esm(kg)
      if(lesk) then
@@ -1113,12 +1198,20 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
 !-- (efar is read only when present: no short-circuit evaluation)
         lfark = lfar
         if(lfark) lfark = efar(k) >= 0d0
+        lstv = lfar .and. present(ewtab)
+        if(lstv) lstv = efar(k) < -1.5d0
         if(lfark) then
-           bjl = bjl + efar(k)
-           if(ldump) dlb(3,k) = efar(k)
+           ees = efar(k)
+        elseif(lstv) then
+!-- (a tally with too few events: its expectation)
+           ees = nx_bew(kq,sv,qb,qv,ewtab)*jes(k)
         else
-           bjl = bjl + bes*jes(k)
-           if(ldump) dlb(3,k) = bes*jes(k)
+           ees = bes*jes(k)
+        endif
+        bjl = bjl + ees
+        if(ldump) then
+           dlb(3,k) = ees
+           if(lfar .and. present(ewtab)) dlb(4,k) = nx_bew(kq,sv,qb,qv,ewtab)*jes(k)
         endif
         beta(k) = beta(k) + bes
         if(ldump) dlb(2,k) = bes
@@ -1185,26 +1278,35 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
            if(cxf(k)==1) nx_dcx = nx_dcx - cxr(k)*xn(1)
         enddo
      endif
-!-- the Lyman lines (the element's lines from the first state, at most six):
-!-- wavelength [A], escape probability without and with the trapped-photon
-!-- e.s. (bes), the incident intensities of the resonance estimator and of
-!-- the e.s. term (per bes) and the one in the rates, S from the
-!-- populations, and the net radiative rate u -> 1 per particle
+!-- the Lyman lines (the element's lines from the first state, at most six)
+!-- and H alpha (states 2 - 3): wavelength [A], escape probability without
+!-- and with the trapped-photon e.s. (bes), the incident intensities of the
+!-- resonance estimator and of the e.s. term (per bes) and the one in the
+!-- rates, S from the populations, the net radiative rate u -> l per
+!-- particle, and the intensity of the e.s. term of the expectation (nx_bew,
+!-- per bes; 0 without esrates), which stands in for a tally with too few events
      nx_dlya = 0d0
      j = 0
      do k=1,nl
         kg = k0 + k
-        if(nxa_lsl(kg) /= 1) cycle
-        j = j + 1
-        if(j > size(nx_dlya,2)) exit
-        i1 = nxa_lion(kg)
-        wl = r%w(nxa_llv(kg)-nxa_el(iel)%lvoff)*xn(1)
+        if(nxa_lsl(kg) == 1) then
+           if(j >= size(nx_dlya,2) - 1) cycle
+           j = j + 1
+           i1 = j
+        elseif(nxa_lsl(kg) == 2 .and. nxa_lsu(kg) == 3) then
+           i1 = size(nx_dlya,2)
+        else
+           cycle
+        endif
+        wl = r%w(nxa_llv(kg)-nxa_el(iel)%lvoff)*xn(nxa_lsl(kg))
         wu = r%w(nxa_luv(kg)-nxa_el(iel)%lvoff)*xn(nxa_lsu(kg))
-        gr = nxa_ion(i1)%g(nxa_ion(i1)%lu(nxa_lloc(kg)))/nxa_ion(i1)%g(nxa_ion(i1)%ll(nxa_lloc(kg)))
-        nx_dlya(:,j) = [1d8*cc/nxa_lnu(kg),dlb(1,k),dlb(1,k)+dlb(2,k),jl(k), &
+        gr = nxa_ion(nxa_lion(kg))%g(nxa_ion(nxa_lion(kg))%lu(nxa_lloc(kg)))/ &
+             nxa_ion(nxa_lion(kg))%g(nxa_ion(nxa_lion(kg))%ll(nxa_lloc(kg)))
+        nx_dlya(:,i1) = [1d8*cc/nxa_lnu(kg),dlb(1,k),dlb(1,k)+dlb(2,k),jl(k), &
              dlb(3,k)/max(dlb(2,k),1d-300),jle(k), &
              2d0*hh*nxa_lnu(kg)**3/cc**2/max(gr*wl/max(wu,1d-300) - 1d0,1d-300), &
-             beta(k)*((nxa_la(kg) + nxa_lbul(kg)*jle(k))*wu - nxa_lblu(kg)*jle(k)*wl)]
+             beta(k)*((nxa_la(kg) + nxa_lbul(kg)*jle(k))*wu - nxa_lblu(kg)*jle(k)*wl), &
+             dlb(4,k)/max(dlb(2,k),1d-300)]
      enddo
   endif
   if(it<=3) then
@@ -1274,7 +1376,8 @@ subroutine nx_solve_cell(temp,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx
 !               the previous model at the same mass coordinate and 1/dt
 !               [1/s] (nx_el_step)
 !  efar         (optional) per global line, the absorption of the photons
-!               scattered into its core in the transport (>= 0; nx_el_step)
+!               scattered into its core in the transport (>= 0; -2: a
+!               tally with too few events, its expectation; nx_el_step)
 ! The escape probabilities, populations and electron density are iterated
 ! together (each iteration: one linear solve per element).  With nx_vtb >=
 ! 0 the escape probabilities include the electron scattering of trapped
@@ -1297,7 +1400,7 @@ subroutine nx_solve_cell(temp,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx
   real*8 :: xz(nxa_nst)
   real*8 :: dtol
   real*8 :: neold,nenew,d,dmax,dne,dold,jl(nxa_nlin),btab(0:nx_nbt),wg(nxa_nlv)
-  real*8 :: etab(0:nx_nbt),sv,wq(nxa_nlin),jes(nxa_nlin)
+  real*8 :: etab(0:nx_nbt),ewtab(0:nx_nbt),sv,wq(nxa_nlin),jes(nxa_nlin)
   integer,parameter :: mcx = 4096
   integer :: cxf(mcx),cxt(mcx)
   real*8 :: cxr(mcx)
@@ -1314,7 +1417,14 @@ subroutine nx_solve_cell(temp,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx
   if(present(maxit)) mit = maxit
   call nx_beta_table(qb,qv,btab)
   etab = 0d0
-  if(nx_vtb >= 0d0) call nx_es_table(qb,qv,etab)
+  ewtab = 0d0
+  if(nx_vtb >= 0d0) then
+     if(present(efar)) then
+        call nx_es_table(qb,qv,etab,ewtab)
+     else
+        call nx_es_table(qb,qv,etab)
+     endif
+  endif
   call nxd_weights(temp,nx_dis,wg)
   ne = neoth + chg(x)
   do iel=1,nxa_nel
@@ -1373,7 +1483,7 @@ subroutine nx_solve_cell(temp,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx
               call nx_el_step(iel,nel(iel),ne,qb,qv,btab,jl(l0:l1),r(iel), &
                    nti(o+1:o+ns),ntx(o+1:o+ns),it,x(o+1:o+ns),beta(l0:l1),d,ie, &
                    ncx,cxf,cxt,cxr,xprev(o+1:o+ns),dtinv,sv=sv,etab=etab,wqe=wq(l0:l1),jes=jes(l0:l1), &
-                   efar=efar(l0:l1))
+                   efar=efar(l0:l1),ewtab=ewtab)
            else
               call nx_el_step(iel,nel(iel),ne,qb,qv,btab,jl(l0:l1),r(iel), &
                    nti(o+1:o+ns),ntx(o+1:o+ns),it,x(o+1:o+ns),beta(l0:l1),d,ie, &
@@ -1382,7 +1492,7 @@ subroutine nx_solve_cell(temp,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx
         elseif(present(efar)) then
            call nx_el_step(iel,nel(iel),ne,qb,qv,btab,jl(l0:l1),r(iel), &
                 nti(o+1:o+ns),ntx(o+1:o+ns),it,x(o+1:o+ns),beta(l0:l1),d,ie, &
-                ncx,cxf,cxt,cxr,sv=sv,etab=etab,wqe=wq(l0:l1),jes=jes(l0:l1),efar=efar(l0:l1))
+                ncx,cxf,cxt,cxr,sv=sv,etab=etab,wqe=wq(l0:l1),jes=jes(l0:l1),efar=efar(l0:l1),ewtab=ewtab)
         else
            call nx_el_step(iel,nel(iel),ne,qb,qv,btab,jl(l0:l1),r(iel), &
                 nti(o+1:o+ns),ntx(o+1:o+ns),it,x(o+1:o+ns),beta(l0:l1),d,ie, &

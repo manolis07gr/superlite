@@ -245,6 +245,10 @@ module nltextrmod
 !-- into the beta-weighted incident intensity E c/(4 pi V nu K) with the K
 !-- of the transport: in the rates it absorbs E K/K_transport)
   real*8,allocatable,public :: nxt_efsum(:,:) !(nlin,ncell)
+!-- (and its number of events: below nxt_njbmin the rates and the macro-atom
+!-- take the expectation of the tally from the J about the line, nx_bew;
+!-- nxt_tally_finish flags those lines with -2)
+  real*8,allocatable,public :: nxt_efcnt(:,:) !(nlin,ncell)
 !-- Doppler-profile lines in the Monte Carlo transport of slow cells
 !-- (in_nltex_dopmc > 0): where the velocity changes across a cell by less
 !-- than nxt_dopmc Doppler widths, a Sobolev resonance would lie further
@@ -343,8 +347,9 @@ subroutine nxt_init(ncell,gncell,ng,wlg,nfile,files,hnlev)
   allocate(nxt_jbsum(nxa_nlin,ncell),nxt_jbcnt(nxa_nlin,ncell))
   allocate(nxt_jwsum(nxa_nlin,ncell),nxt_jwsq(nxa_nlin,ncell),nxt_haem(ncell),nxt_haab(ncell))
   nxt_haem = 0d0; nxt_haab = 0d0
-  allocate(nxt_efsum(nxa_nlin,ncell))
+  allocate(nxt_efsum(nxa_nlin,ncell),nxt_efcnt(nxa_nlin,ncell))
   nxt_efsum = 0d0
+  nxt_efcnt = 0d0
   allocate(nxt_jxsum(ng,ncell),nxt_jlsum(ncell),nxt_jlosum(ng,ncell))
   nxt_jxsum = 0d0; nxt_jlsum = 0d0; nxt_jlosum = 0d0; nxt_jwsum = 0d0; nxt_jwsq = 0d0
   allocate(grd_capnbf(ng,ncell),grd_emnbf(ng,ncell))
@@ -562,7 +567,7 @@ subroutine nxt_dealloc
 !-- free the cell arrays and tables (set up again by nxt_init)
   if(allocated(nxt_x)) deallocate(nxt_x,nxt_nel,nxt_ne,nxt_kq,nxt_beta,nxt_bes,nxt_jg,nxt_jb,nxt_ljb, &
        nxt_jbsum,nxt_jbcnt,nxt_jxsum,nxt_jlsum,nxt_jlosum,grd_capnbf,nxt_xloc,nxt_neloc,nxt_nelloc,nxt_neothloc,gas_capnbf, &
-       grd_emnbf,gas_emnbf,nxt_jwsum,nxt_jwsq,nxt_haem,nxt_haab,nxt_efsum, &
+       grd_emnbf,gas_emnbf,nxt_jwsum,nxt_jwsq,nxt_haem,nxt_haab,nxt_efsum,nxt_efcnt, &
        nxt_lgrp,nxt_isrt,nxt_nug,nxt_dnug,nxt_act,nxt_wlact,nxt_w,nxt_tmact)
   if(allocated(nxt_lch)) deallocate(nxt_lch,nxt_bch,nxt_2pch)
   if(allocated(nxt_och)) deallocate(nxt_och)
@@ -785,11 +790,11 @@ subroutine nxt_gas_solve(it,gncell,temp,trad,nelv,neoth,qb,qv,icell1,edep,kap,fc
         open(lu,file=fname,position='append')
         write(lu,'(a,i4,a,i5,a,es11.4,a,es11.4,a,es11.4,a,2es11.4)') '# iteration',it,' cell',l, &
              ' T',temp(i),' n_H',nelv(1,i),' n_e',neoth(i)+free_el(nelv(:,i),x),' x_1, x_2',x(1),x(2)
-        write(lu,'(a)') '# Lyman lines: lambda [A], beta, beta + bes (trapped-photon e.s.), J of the '// &
-             'resonance estimator, J of the e.s. term, J in the rates, S from the populations, '// &
-             'net radiative u->1 per H particle'
+        write(lu,'(a)') '# Lyman lines and H alpha: lambda [A], beta, beta + bes (trapped-photon e.s.), '// &
+             'J of the resonance estimator, J of the e.s. term, J in the rates, S from the populations, '// &
+             'net radiative u->l per H particle, J of the e.s. term from its expectation (esrates)'
         do k=1,size(nx_dlya,2)
-           if(nx_dlya(1,k) > 0d0) write(lu,'(a,f9.2,7es12.4)') '#  ',nx_dlya(:,k)
+           if(nx_dlya(1,k) > 0d0) write(lu,'(a,f9.2,8es12.4)') '#  ',nx_dlya(:,k)
         enddo
         write(lu,'(a,es12.4)') '# charge exchange into the ground state:',nx_dcx
         write(lu,'(a)') '# state  net flow into the ground state [1/s per H particle], charge exchange apart'
@@ -1038,6 +1043,7 @@ subroutine nxt_tally_reset
   nxt_haem = 0d0
   nxt_haab = 0d0
   nxt_efsum = 0d0
+  nxt_efcnt = 0d0
 end subroutine nxt_tally_reset
 !
 !
@@ -1077,13 +1083,17 @@ subroutine nxt_tally_finish(ncell,vol)
         nxt_jb(k,i) = max(nxt_jg(g,i) - nxt_jlosum(g,i)/(4d0*pi*vol(i)*nxt_dnug(g)),0d0)
         nxt_ljb(k,i) = .true.
      enddo
-!-- (the far-side core absorption of the electron-scattered photons, nxt_esfar)
+!-- (the far-side core absorption of the electron-scattered photons,
+!-- nxt_esfar; -2 where it has fewer than nxt_njbmin events: the rates and
+!-- the macro-atom take its expectation, nx_bew)
      if(nxt_esrates) then
         do k=1,nxa_nlin
-           if(nxt_kq(k,i) > 0d0) then
-              nxt_efsum(k,i) = nxt_efsum(k,i)*cc/(4d0*pi*vol(i)*nxa_lnu(k)*nxt_kq(k,i))
-           else
+           if(nxt_kq(k,i) <= 0d0) then
               nxt_efsum(k,i) = 0d0
+           elseif(nxt_efcnt(k,i) < nxt_njbmin) then
+              nxt_efsum(k,i) = -2d0
+           else
+              nxt_efsum(k,i) = nxt_efsum(k,i)*cc/(4d0*pi*vol(i)*nxa_lnu(k)*nxt_kq(k,i))
            endif
         enddo
      endif
@@ -1104,7 +1114,7 @@ subroutine nxt_tables(ncell,tempinv,radtemp,capemitgrey,xarr,vxarr)
   real*8 :: t,ne,qb,qv,ww,wth
   real*8 :: bnd(nxa_nlv),bnb(nxa_nlv) !bound-free weights and their bounds in a block of groups
   integer :: ixb(nxa_nlv)
-  real*8 :: jg(nxt_ng),jb(nxa_nlin),jl(nxa_nlin),btab(0:nx_nbt),etab(0:nx_nbt),sig,vt,bu(nxa_nlin)
+  real*8 :: jg(nxt_ng),jb(nxa_nlin),jl(nxa_nlin),btab(0:nx_nbt),etab(0:nx_nbt),ewtab(0:nx_nbt),sig,vt,bu(nxa_nlin)
   real*8 :: bj(nxa_nlin),besp(nxa_nlin),ovw(max(nxo_npair,1))
   logical :: ljb(nxa_nlin),lst
   real*8 :: kw(nxt_nko)            !k-packet: non-returning flows
@@ -1172,7 +1182,7 @@ subroutine nxt_tables(ncell,tempinv,radtemp,capemitgrey,xarr,vxarr)
      nxt_bes(:,ic) = 0d0
      besp = 0d0
      if(nxt_estrap .and. nxt_tau0<=0d0) then
-        call nx_es_table(qb,qv,etab)
+        call nx_es_table(qb,qv,etab,ewtab)
         sig = 6.6524587d-25*nxt_ne(ic)
         if(allocated(nxt_fcl)) sig = sig*nxt_fcl(ic)
         vt = nxt_vtb(0.5d0*(vxarr(ic)+vxarr(ic+1)))
@@ -1186,6 +1196,10 @@ subroutine nxt_tables(ncell,tempinv,radtemp,capemitgrey,xarr,vxarr)
            if(nxt_dopmc>0d0 .and. nxt_anystat) lst = nxt_slow(ic) .and. nxt_lstat(k)
            if(nxt_esrates .and. nxt_have_mc .and. .not.lst) then
               besp(k) = nxt_efsum(k,ic)
+!-- (a tally with too few events: its expectation)
+              if(besp(k) < -1.5d0) besp(k) = nx_bew(nxt_kq(k,ic),sig*nx_vdop(nxa_lel(k),t,vt),qb,qv,ewtab)* &
+                   nx_jes(k,t,nxt_ng,nxt_nug,nxt_dnug,jg)
+              besp(k) = max(besp(k),0d0)
            elseif(nxt_bes(k,ic) > 0d0) then
               besp(k) = nxt_bes(k,ic)*nx_jes(k,t,nxt_ng,nxt_nug,nxt_dnug,jg)
            endif

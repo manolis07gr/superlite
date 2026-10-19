@@ -966,7 +966,10 @@ c-- radiation from elsewhere and DDMC lumps (nxt_ldb)
       call allreduce_sum(size(nxt_jlsum),nxt_jlsum)
       call allreduce_sum(size(nxt_haem),nxt_haem)
       call allreduce_sum(size(nxt_haab),nxt_haab)
-      if(nxt_esrates) call allreduce_sum(size(nxt_efsum),nxt_efsum)
+      if(nxt_esrates) then
+       call allreduce_sum(size(nxt_efsum),nxt_efsum)
+       call allreduce_sum(size(nxt_efcnt),nxt_efcnt)
+      endif
 c-- window estimator of the line incident intensity (nxt_window_tally)
       if(nxt_jbwin>0d0) then
        call allreduce_sum(size(nxt_jwsum),nxt_jwsum)

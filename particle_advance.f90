@@ -19,7 +19,7 @@ subroutine particle_advance
   use fluxmod
   use sourcemod
   use nltextrmod, only:nxt_on,nxt_jbsum,nxt_jbcnt,nxt_jxsum,nxt_jlsum,nxt_jlosum,nxt_lgrp,nxt_static_tally, &
-       nxt_jwsum,nxt_jwsq,nxt_window_tally,nxt_haem,nxt_haab,nxt_kha,nxt_efsum
+       nxt_jwsum,nxt_jwsq,nxt_window_tally,nxt_haem,nxt_haab,nxt_kha,nxt_efsum,nxt_efcnt
   implicit none
 !
 !##################################################
@@ -107,7 +107,7 @@ subroutine particle_advance
 !$omp    i,t0,t1,help,tau,labfact,jrad, &
 !$omp    rndstate,eraddens,eamp,ierr,iomp,jbk,jbval,stl,stk,swl) &
 !$omp reduction(+:grd_tally,grd_jrad,nxt_jbsum,nxt_jbcnt,nxt_jxsum,nxt_jlsum,nxt_jlosum, &
-!$omp    nxt_jwsum,nxt_jwsq,nxt_haem,nxt_haab,nxt_efsum, &
+!$omp    nxt_jwsum,nxt_jwsq,nxt_haem,nxt_haab,nxt_efsum,nxt_efcnt, &
 !$omp    tot_evelo,tot_eout,tot_sflux, &
 !$omp    npckt,nflux, &
 !$omp    nstepddmc,nstepimc,nmethodswap,ndist) &
@@ -261,7 +261,10 @@ subroutine particle_advance
            endif
         endif
 !-- (the absorption in a line core after an electron scattering, nxt_esfar)
-        if(ptcl2%kfa>0) nxt_efsum(ptcl2%kfa,icold) = nxt_efsum(ptcl2%kfa,icold) + ptcl2%efa
+        if(ptcl2%kfa>0) then
+           nxt_efsum(ptcl2%kfa,icold) = nxt_efsum(ptcl2%kfa,icold) + ptcl2%efa
+           nxt_efcnt(ptcl2%kfa,icold) = nxt_efcnt(ptcl2%kfa,icold) + 1d0
+        endif
 !-- (diagnostics: Halpha absorbed at its resonances and emitted by the macro-atom)
         if(nxt_kha>0) then
            if(ptcl2%kab==nxt_kha) nxt_haab(icold) = nxt_haab(icold) + ptcl2%eab

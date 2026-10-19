@@ -1,5 +1,5 @@
 !-- Electron scattering of line photons trapped in a Sobolev resonance
-!-- (nltexmod: nx_ytrap, nx_es_table, nx_bes):
+!-- (nltexmod: nx_ytrap, nx_es_table, nx_bes, nx_wwin, nx_bew):
 !--  1. y(tau) = tau G(tau) against a direct quadrature of the double
 !--     integral of nx_ytrap's header at several depths
 !--  2. nx_bes in a homologous cell (Q independent of the direction) against
@@ -12,12 +12,17 @@
 !--     bes/(beta+bes), from the Sobolev regime (sigma L = 0.03) to the one
 !--     where electrons scatter a photon before it drifts a Doppler width
 !--     (sigma L = 1, 10)
+!--  4. the window of the transport's far-side absorption, W(t) =
+!--     int_{-5}^{5} (1 - exp(-t erfc(-x)/2)) dx (nx_wwin), against a
+!--     quadrature, below, inside and above its table, and the expectation
+!--     nx_bew = sigma v_D W(K/q)/K in a homologous cell
 program test_estrap
   use nltexmod
   use randommod
   implicit none
   real*8,parameter :: pi = 3.141592653589793d0
   real*8 :: taus(5), yref, y, dev, q, kq, sv, beta, bes, ref, etab(0:nx_nbt), btab(0:nx_nbt)
+  real*8 :: ewtab(0:nx_nbt), ts(6), w
   real*8 :: tau, sl, p, pmc
   integer :: i, nfail
   type(rnd_t) :: st
@@ -78,6 +83,27 @@ program test_estrap
      endif
   enddo
 !
+!-- 4. the window W(t) and the expectation nx_bew
+  ts = [3d-3, 0.5d0, 2d2, 1d8, 1d11, 1d13]
+  dev = 0d0
+  do i = 1, 6
+     w = nx_wwin(ts(i))
+     ref = wquad(ts(i))
+     dev = max(dev, abs(w/ref - 1d0))
+     write(6,'(a,es9.2,a,f9.5,a,f9.5)') ' t', ts(i), ': W', w, ', quadrature', ref
+  enddo
+  call nx_es_table(q, q, etab, ewtab)
+  do i = 2, 5
+     kq = ts(i)*q
+     sv = 0.05d0*q
+     dev = max(dev, abs(nx_bew(kq, sv, q, q, ewtab)/(sv*wquad(ts(i))/kq) - 1d0))
+  enddo
+  write(6,'(a,es10.3)') ' window of the far-side absorption and nx_bew: max rel. dev.', dev
+  if(dev > 1d-2) then
+     write(6,*) 'FAIL: nx_wwin or nx_bew'
+     nfail = nfail + 1
+  endif
+!
   if(nfail == 0) then
      write(6,*) 'test_estrap: PASS'
   else
@@ -120,6 +146,20 @@ contains
     enddo
     gquad = gquad*14d0/dble(nx-1)
   end function gquad
+  real*8 function wquad(t)
+!-- W(t) by the trapezoidal rule
+    real*8,intent(in) :: t
+    integer,parameter :: nx = 20001
+    real*8 :: x, f
+    integer :: i
+    wquad = 0d0
+    do i = 1, nx
+       x = -5d0 + 10d0*(i-1)/dble(nx-1)
+       f = 1d0 - exp(-0.5d0*t*erfc(-x))
+       wquad = wquad + merge(0.5d0, 1d0, i==1 .or. i==nx)*f
+    enddo
+    wquad = wquad*10d0/dble(nx-1)
+  end function wquad
   real*8 function mc_trap(t, sl, n)
 !-- photons emitted over the profile; flights end at a line absorption
 !-- (re-emission over the profile) or, if the line cannot absorb the photon
