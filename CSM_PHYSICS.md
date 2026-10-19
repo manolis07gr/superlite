@@ -751,6 +751,21 @@ iterations, and of the formal integral):
   H/He wind (in both models), as SuperLite's local detailed balance, and
   P₁ − R₁ = 1–2×10⁻⁶ s⁻¹ per H particle in the full-metal wind (both
   models: the metal continua in the Lyman continuum).
+* The H ionization of the inner full-metal wind (1.3–2.5×10¹⁵ cm),
+  where SuperLite's x(H I) was 3–16 times CMFGEN's (`blk`) after the
+  overlap runs (`rayFo1b`). SuperLite's statistical equilibrium of those
+  cells in CMFGEN's radiation field (a cell harness: CMFGEN's comoving J
+  averaged over the groups, the incident intensity of each Sobolev line
+  CMFGEN's J five Doppler widths to its blue, the Lyman continuum in
+  detailed balance with the current populations) gives x(H I) within
+  1.2–2.0 times CMFGEN's (1.2–1.7 with level dissolution, as CMFGEN's
+  `DO_DIS`), against 1.2–16 times with its own Monte Carlo J: the rate
+  equations are not the problem, the radiation field is. CMFGEN's
+  continuum J below 1000 Å alone does it; its line intensities, or those
+  of the H lines, change x(H I) by < 20 %. SuperLite's J at 916–945 Å is
+  zero in nearly every wind cell (no Monte Carlo packet), and 0.02–0.27
+  times CMFGEN's at 911.8–916 Å, where CMFGEN has J of 10⁻¹⁰–10⁻⁸; the
+  model atoms have no lines there but the Lyman series and six of N II.
 * The Balmer jump of the full-metal wind. Against the optical continuum
   (4000–8300 Å), SuperLite's Balmer continuum (3000–3646 Å) is 11–16 %
   too bright with Sobolev lines (against CMFGEN's Sobolev model) and
