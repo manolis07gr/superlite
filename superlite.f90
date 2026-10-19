@@ -228,6 +228,9 @@ program superlite
           'NLTE elements: only the lines of the model atoms (in_nltex_bbext = f)'
      nx_pc_on = in_nltex_cdest
      if(lmpi0) write(6,'(1x,a,l2)') 'NLTE lines: continuum destruction of the trapped photons (in_nltex_cdest):',nx_pc_on
+     nxt_jbbeta = in_nltex_jbbeta
+     if(lmpi0) write(6,'(1x,a,l2)') 'NLTE lines: incident intensity weighted by beta(mu)/beta_bar (in_nltex_jbbeta):', &
+          nxt_jbbeta
 !-- level dissolution (occupation probabilities, CMFGEN's DO_DIS)
      nxd_on = in_nltex_dis
      if(nxd_on) then

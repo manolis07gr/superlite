@@ -65,6 +65,7 @@ module nltextrmod
   real*8,public :: nxt_tau0 = 0d0         !benchmark: pure-scattering H-alpha with this Sobolev depth
   real*8,public :: nxt_ntemin = 0d0       !photons above this energy [erg] make fast photoelectrons (0: off)
   real*8,public :: nxt_taumin = 1d-4      !active lines: Sobolev depth above this somewhere
+  logical,public :: nxt_jbbeta = .false.  !resonance estimator weighted by beta(mu)/beta_bar (nxt_jbw)
 !
   integer,public :: nxt_ncell = 0, nxt_ng = 0
 !-- all grid cells
@@ -80,6 +81,10 @@ module nltextrmod
   logical,allocatable,public :: nxt_ljb(:,:)  !(nlin,ncell) jb set (MC; nxt_tally_finish)
   real*8,allocatable,public :: nxt_jbsum(:,:) !(nlin,ncell) tally: sum e c/(nu |Q|)
   real*8,allocatable,public :: nxt_jbcnt(:,:) !(nlin,ncell) tally: crossings
+!-- each cell's escape-probability table (nx_beta_table) and its dv/dr, v/r,
+!-- for the weights of the resonance estimator (nxt_jbw)
+  real*8,allocatable,public :: nxt_btab(:,:)  !(0:nx_nbt,ncell)
+  real*8,allocatable,public :: nxt_qbq(:,:)   !(2,ncell)
 !-- incident intensity of the Sobolev lines from the flights in a window next
 !-- to each line (nxt_window_tally; 0: off): its width [cm/s], the tallies
 !-- (sum of the contributions and of their squares), and the widths to the
@@ -306,7 +311,7 @@ module nltextrmod
   public :: nxt_write_state,nxt_read_prev,nxt_read_init,nxt_release,nxt_activate_rel
   public :: nxt_ali_cell,nxt_ali_off,nxt_ldb,nxt_lsldb,nxt_vtb,nxt_vturbv
   public :: nxt_static_line,nxt_static_tally,nxt_sobolev_neighbors,nxt_act_lookup,nxt_window_tally,nxt_esfar
-  public :: nxt_useb,nxt_es_cell
+  public :: nxt_useb,nxt_es_cell,nxt_jbw
 !
 contains
 !
@@ -350,6 +355,8 @@ subroutine nxt_init(ncell,gncell,ng,wlg,nfile,files,hnlev)
   allocate(nxt_kq(nxa_nlin,ncell),nxt_beta(nxa_nlin,ncell),nxt_bes(nxa_nlin,ncell),nxt_pc(nxa_nlin,ncell))
   allocate(nxt_jg(ng,ncell),nxt_jgc(ng,ncell),nxt_jb(nxa_nlin,ncell),nxt_ljb(nxa_nlin,ncell))
   allocate(nxt_jbsum(nxa_nlin,ncell),nxt_jbcnt(nxa_nlin,ncell))
+  allocate(nxt_btab(0:nx_nbt,ncell),nxt_qbq(2,ncell))
+  nxt_btab = 1d0; nxt_qbq = 1d0
   allocate(nxt_jwsum(nxa_nlin,ncell),nxt_jwsq(nxa_nlin,ncell),nxt_haem(ncell),nxt_haab(ncell))
   nxt_haem = 0d0; nxt_haab = 0d0
   allocate(nxt_efsum(nxa_nlin,ncell),nxt_efcnt(nxa_nlin,ncell))
@@ -574,6 +581,7 @@ subroutine nxt_dealloc
        nxt_jbsum,nxt_jbcnt,nxt_jxsum,nxt_jlsum,nxt_jlosum,grd_capnbf,nxt_xloc,nxt_neloc,nxt_nelloc,nxt_neothloc,gas_capnbf, &
        grd_emnbf,gas_emnbf,nxt_jwsum,nxt_jwsq,nxt_haem,nxt_haab,nxt_efsum,nxt_efcnt, &
        nxt_lgrp,nxt_isrt,nxt_nug,nxt_dnug,nxt_act,nxt_wlact,nxt_w,nxt_tmact)
+  if(allocated(nxt_btab)) deallocate(nxt_btab,nxt_qbq)
   if(allocated(nxt_lch)) deallocate(nxt_lch,nxt_bch,nxt_2pch)
   if(allocated(nxt_och)) deallocate(nxt_och)
   if(allocated(nxt_inl)) deallocate(nxt_inl)
@@ -1112,6 +1120,33 @@ subroutine nxt_tally_reset
 end subroutine nxt_tally_reset
 !
 !
+pure function nxt_jbw(k,ic,tau) result(w)
+!-----------------------------------------------------------------------
+! Weight of a term of the resonance estimator of line k in cell ic, for a
+! crossing with the Sobolev depth tau = K/|Q(mu)| (nxt_jbbeta): the escape
+! probability of its direction over the mean one, beta(mu)/beta_bar.
+! Sobolev's incident term is <beta(mu) I_inc(mu)> over directions; the
+! terms e c/(nu |Q|) alone sum to the plain mean <I_inc>, and the rates
+! take beta_bar J_b.  The two agree where beta or I_inc is isotropic
+! (homologous flows, a diffuse field), not where the radiation of a core
+! comes along the directions of small |Q| (a wind of nearly constant
+! velocity: the radial escape is v'/(v/r) of the tangential one).
+!-----------------------------------------------------------------------
+  integer,intent(in) :: k,ic
+  real*8,intent(in) :: tau
+  real*8 :: w,bb
+  w = 1d0
+  if(tau <= 0d0) return
+  if(tau > 1d-4) then
+     w = (1d0 - exp(-tau))/tau
+  else
+     w = 1d0 - 0.5d0*tau
+  endif
+  bb = nx_beta(nxt_kq(k,ic),nxt_qbq(1,ic),nxt_qbq(2,ic),nxt_btab(:,ic))
+  w = w/max(bb,1d-300)
+end function nxt_jbw
+!
+!
 subroutine nxt_tally_finish(ncell,vol)
 !-----------------------------------------------------------------------
 ! Mean intensity incident on each NLTE line (after nxt_store_jg and
@@ -1218,6 +1253,8 @@ subroutine nxt_tables(ncell,tempinv,radtemp,capemitgrey,xarr,vxarr)
         ljb = .false.
      endif
      call nx_beta_table(qb,qv,btab)
+     nxt_btab(:,ic) = btab
+     nxt_qbq(:,ic) = [qb,qv]
 !-- level dissolution: the cell's parameters, the dissolved shares, the
 !-- lowest frequency of each level's dissolved continuum
      nx_dis = 0d0

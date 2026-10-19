@@ -6,10 +6,17 @@ in_srctype='lumg').  No continuum opacity.  Velocity laws:
   const : v = VINF                       (dv/dr = 0: tau(mu) = tau0/(1-mu^2))
   beta  : v = VINF*(1 - 0.9*RC/r)        (accelerating, dv/dr > v/r near RC)
   homol : v = VINF*r/ROUT                (homologous: isotropic tau, S = W I_c)
+  shell : v = VINF*r/RS inside RS = 3 RC (homologous ejecta), falling linearly
+          to VCSM = 0.1 VINF at 1.1 RS, VCSM outside (slow circumstellar gas):
+          non-monotonic, Q < 0 in the decelerating zone, and the ejecta and
+          the CSM coupled where |projected velocity| < VCSM (sobolev_nl.py)
+  accdec: v = VINF*(0.2 + 0.8 sin(pi/2 (r-RC)/(RM-RC))) up to VINF at RM = 3 RC,
+          then a linear fall to 0.4 VINF at ROUT (accelerating, then
+          decelerating: several resonances on many rays)
 The Sobolev optical depth is tau(mu) = tau0*(v/r)_cell/|Q(mu)|,
 Q(mu) = mu^2 dv/dr + (1-mu^2) v/r, as in nltehtrmod (benchmark mode).
 
-usage: python3 make_bench.py {const,beta,homol} [--tau0 3] [--n 100] [--n2s 20]
+usage: python3 make_bench.py {const,beta,homol,shell,accdec} [--tau0 3] [--n 100] [--n2s 20]
 """
 import argparse
 
@@ -18,14 +25,35 @@ import numpy as np
 RC, ROUT, VINF = 1e15, 1e16, 2e8
 
 ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-ap.add_argument('law', choices=['const', 'beta', 'homol'])
+ap.add_argument('law', choices=['const', 'beta', 'homol', 'shell', 'accdec'])
 ap.add_argument('--tau0', type=float, default=3.0)
 ap.add_argument('--n', type=int, default=100)
 ap.add_argument('--n2s', type=int, default=20)
 a = ap.parse_args()
 
 r = RC * (ROUT / RC) ** (np.arange(a.n + 1) / a.n)
-v = {'const': VINF * np.ones_like(r), 'beta': VINF * (1 - 0.9 * RC / r), 'homol': VINF * r / ROUT}[a.law]
+RS, RM = 3 * RC, 3 * RC
+
+
+def shell(r):
+    v = VINF * r / RS
+    f = (r - RS) / (0.1 * RS)
+    v = np.where(r > RS, VINF + (0.1 * VINF - VINF) * np.clip(f, 0, 1), v)
+    return v
+
+
+def accdec(r):
+    up = VINF * (0.2 + 0.8 * np.sin(0.5 * np.pi * np.clip((r - RC) / (RM - RC), 0, 1)))
+    return np.where(r > RM, VINF + (0.4 * VINF - VINF) * (r - RM) / (ROUT - RM), up)
+
+
+if a.law == 'shell':
+    # cell edges at RS and 1.1 RS, so that v is linear in each cell
+    n1 = a.n // 2
+    r = np.r_[RC * (RS / RC) ** (np.arange(n1) / n1), RS + 0.1 * RS * np.arange(10) / 10,
+              1.1 * RS * (ROUT / (1.1 * RS)) ** (np.arange(a.n - n1 - 10 + 1) / (a.n - n1 - 10))]
+v = {'const': lambda r: VINF * np.ones_like(r), 'beta': lambda r: VINF * (1 - 0.9 * RC / r),
+     'homol': lambda r: VINF * r / ROUT, 'shell': shell, 'accdec': accdec}[a.law](r)
 rho, L = 1e-16, 1e42
 rows = ['# 1D spherical', '#%9d%11d%2d%3d%3d' % (a.n, 1, 1, 9, 1),
         '# x_left  x_right  vx_left  vx_right  mass  rad_temp  temp  lum  h']

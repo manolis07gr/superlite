@@ -156,6 +156,14 @@ c-- takes a photon before the line takes it back with the probability
 c-- P(kappa_c sqrt(pi) v_D/K), in the rates, the macro-atom and the source
 c-- function of the groups in local detailed balance (nltexmod nx_pcont)
       logical :: in_nltex_cdest = .true.
+c-- incident intensity of the Sobolev NLTE lines in the rates: the terms of
+c-- the resonance estimator weighted by the escape probability of their
+c-- direction over the mean one, beta(mu)/beta_bar, so that beta_bar J_b
+c-- is Sobolev's <beta(mu) I_inc>; f: the plain mean <I_inc> (as before),
+c-- which takes the radiation of a core along the directions of small
+c-- |Q(mu)| (a wind of nearly constant velocity) for isotropic
+c-- (nltextrmod nxt_jbw).  Homologous flows: the same.
+      logical :: in_nltex_jbbeta = .true.
 c-- incident intensity of the Sobolev NLTE lines in the statistical
 c-- equilibrium: path-length estimator of J_nu in a window this wide
 c-- [km/s] next to each line, on the side the comoving frequency of a
@@ -344,7 +352,8 @@ c-- runtime parameter namelist
      & in_nlteh_tau0,in_nltex_atoms,in_nltex_dir,in_nltex_chgexch,
      & in_srctype,in_shock_dvmin,in_shock_tmax,in_shock_cie,
      & in_nltex_prev,in_nltex_dtprev,in_nltex_init,in_nltex_hold,
-     & in_nltex_bbext,in_nltex_cdest,in_nltex_jbwin,in_nltex_dis,
+     & in_nltex_bbext,in_nltex_cdest,in_nltex_jbbeta,in_nltex_jbwin,
+     & in_nltex_dis,
      & in_nltex_ali,
      & in_nltex_ldb,in_nltex_vturb,in_nltex_vturbmax,in_nltex_esrates,
      & in_nltex_esdamp,in_nltex_dopmc,in_nltex_dopz,in_nltex_dopes,
@@ -495,6 +504,7 @@ c
       call insertl(in_nltex_hold,in_l,il)
       call insertl(in_nltex_bbext,in_l,il)
       call insertl(in_nltex_cdest,in_l,il)
+      call insertl(in_nltex_jbbeta,in_l,il)
       call insertr(in_nltex_jbwin,in_r,ir)
       call insertl(in_nltex_dis,in_l,il)
       call insertl(in_nltex_esdamp,in_l,il)

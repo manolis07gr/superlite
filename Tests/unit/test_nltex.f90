@@ -114,6 +114,7 @@ program test_nltex
      endif
   enddo
   call pc_tests
+  call jbw_tests
   call td_tests
   call ali_tests
   call ldb_tests
@@ -303,6 +304,71 @@ contains
          '; LTE kept to', d1, '; P -> 1 against thin lines to', d2, ', x(H II)', xa(nxa_nst)
     if(dvp > 1d-3 .or. d1 > 1d-6 .or. d2 > 1d-4) nfail = nfail + 1
   end subroutine pc_tests
+!
+  subroutine jbw_tests
+!-- weights of the resonance estimator, beta(mu)/beta_bar (nxt_jbw):
+!--  a) homologous flow (dv/dr = v/r): 1 in every direction;
+!--  b) any flow, an isotropic incident intensity: the weighted estimator
+!--     is unbiased, int_0^1 w(mu) dmu = 1 (the plain mean as before), for
+!--     constant velocity, acceleration, deceleration and a gradient that
+!--     changes sign over directions, thin to very thick lines;
+!--  c) a core seen in a constant-velocity wind with a thick line: the
+!--     mean weight over the cone of the core is beta_c/(beta_bar W'),
+!--     here (1 - mu_c)(2 + mu_c)/2 for beta ~ |Q|/K (0.145 at mu_c = 0.9)
+    real*8 :: qq(2,5), kk(5), dw1, dw2, dw3, mu, wsum, qmu, tau, wc, ex
+    integer :: iq, ik, im
+    integer,parameter :: nm = 20000
+    qq(:,1) = [1d-6, 1d-6]; qq(:,2) = [0d0, 1d-6]; qq(:,3) = [3d-6, 1d-6]
+    qq(:,4) = [-0.5d-6, 1d-6]; qq(:,5) = [-5d-6, 1d-6]
+    kk = [1d-9, 1d-6, 3d-5, 1d-2, 1d1]
+    allocate(nxt_kq(1,1), nxt_btab(0:nx_nbt,1), nxt_qbq(2,1))
+    dw1 = 0d0; dw2 = 0d0
+    do iq = 1, 5
+       call nx_beta_table(qq(1,iq), qq(2,iq), nxt_btab(:,1))
+       nxt_qbq(:,1) = qq(:,iq)
+       do ik = 1, 5
+          nxt_kq(1,1) = kk(ik)
+          wsum = 0d0
+          do im = 1, nm
+             mu = (im - 0.5d0)/nm
+             qmu = max(abs(mu*mu*qq(1,iq) + (1d0 - mu*mu)*qq(2,iq)), 1d-3*max(abs(qq(1,iq)), abs(qq(2,iq))))
+             tau = nxt_kq(1,1)/qmu
+             if(iq == 1) dw1 = max(dw1, abs(nxt_jbw(1, 1, tau) - 1d0))
+             wsum = wsum + nxt_jbw(1, 1, tau)/nm
+          enddo
+          dw2 = max(dw2, abs(wsum - 1d0))
+       enddo
+    enddo
+!-- c) constant velocity, K = 1e4 v/r, core within mu > 0.9
+    call nx_beta_table(0d0, 1d-6, nxt_btab(:,1))
+    nxt_qbq(:,1) = [0d0, 1d-6]
+    nxt_kq(1,1) = 1d-2
+    wsum = 0d0
+    do im = 1, nm
+       mu = 0.9d0 + 0.1d0*(im - 0.5d0)/nm
+       qmu = max((1d0 - mu*mu)*1d-6, 1d-9)
+       wsum = wsum + nxt_jbw(1, 1, nxt_kq(1,1)/qmu)/nm
+    enddo
+    wc = wsum
+!-- beta ~ max(1-mu^2, 1e-3)/K: <beta>_cone/beta_bar with the floor
+    ex = 0d0
+    do im = 1, nm
+       mu = 0.9d0 + 0.1d0*(im - 0.5d0)/nm
+       ex = ex + max(1d0 - mu*mu, 1d-3)/nm
+    enddo
+    wsum = 0d0
+    do im = 1, nm
+       mu = (im - 0.5d0)/nm
+       wsum = wsum + max(1d0 - mu*mu, 1d-3)/nm
+    enddo
+    ex = ex/wsum
+    dw3 = abs(wc/ex - 1d0)
+    deallocate(nxt_kq, nxt_btab, nxt_qbq)
+    write(*,'(a,es9.2,a,es9.2,a,f7.4,a,f7.4,a)') '  resonance-estimator weights beta(mu)/beta_bar: homologous max |w-1| =', &
+         dw1, ', isotropic field max |<w>-1| =', dw2, '; core cone of a constant-velocity wind', wc, &
+         ' (expected', ex, ')'
+    if(dw1 > 1d-3 .or. dw2 > 2d-3 .or. dw3 > 1d-2) nfail = nfail + 1
+  end subroutine jbw_tests
 !
   subroutine ldb_tests
 !-- local detailed balance in thick groups (nxt_ldb, nxt_ali_cell):

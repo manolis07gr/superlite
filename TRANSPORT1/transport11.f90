@@ -754,6 +754,8 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
 !-- resonance estimator of the incident intensity
      jbk = kres
      jbval = e*elabfact*pc_c/(nxa_lnu(kres)*qmu)
+!-- (nxt_jbbeta: times beta(mu)/beta_bar, the Sobolev weight of the direction)
+     if(nxt_jbbeta) jbval = jbval*nxt_jbw(kres,ic,tau)
 !-- (nxt_esrates: the line's profile was tested for the whole path at the
 !-- packet's last electron scattering, nxt_esfar)
      if(any(ptcl2%kskip==kres)) then
