@@ -934,6 +934,15 @@ subroutine nxt_ldb(ncell,ng,vol,dr,tempinv,cap,capemit,planck,spk,nlump,glump)
 !   turns the on-the-spot cycle into net recombination.  The statistical
 !   equilibrium takes the cell's own cycle out with the same Lambda*
 !   (nxt_ali_cell).
+! * With DDMC the photons that the NLTE lines inside such a group emit into
+!   it are DDMC packets of the lump, which J = S would leave out: the
+!   lines' net emission is part of the source function,
+!      S = (kappa S_c + eta_l)/(kappa + kappa_l),
+!   eta_l = sum beta n_u A h nu/(4 pi dnu) and kappa_l = sum beta (n_l B_lu
+!   - n_u B_ul) h nu/(4 pi dnu) over the group's lines (the Fe III, C II
+!   and O II lines inside the Lyman continuum of a dense wind, whose
+!   photons ionize H I there).  Without DDMC the tally of the radiation
+!   from elsewhere holds them (line packets count in nxt_jxsum).
 !-----------------------------------------------------------------------
   integer,intent(in) :: ncell,ng
   real*8,intent(in) :: vol(ncell),dr(ncell),tempinv(ncell)
@@ -942,12 +951,17 @@ subroutine nxt_ldb(ncell,ng,vol,dr,tempinv,cap,capemit,planck,spk,nlump,glump)
   integer,intent(in) :: nlump(ncell)
   integer*2,intent(in) :: glump(ng,ncell)
   real*8,parameter :: sb = 5.670374419d-5
-  integer :: i,ig,k,ib
-  real*8 :: w,tau,s,u,ls,jx,wl
-  logical :: ldiag
+  integer :: i,ig,k,ib,iel,o
+  real*8 :: w,tau,s,u,ls,jx,wl,pl,pu,hv
+  real*8 :: eml(ng),abl(ng)
+  logical :: ldiag,lln
 !
   ldiag = allocated(nxt_nug)
   if(ldiag) ldiag = size(nxt_nug)==ng
+!-- (the lines' terms need the populations and escape probabilities of the cells)
+  lln = nxt_ldbone .and. nxt_ldbtau>0d0
+  if(lln) lln = allocated(nxt_x) .and. allocated(nxt_nel) .and. allocated(nxt_w) .and. allocated(nxt_beta)
+  if(lln) lln = size(nxt_x,2)==ncell .and. size(nxt_w,2)==ncell .and. size(nxt_beta,2)==ncell
   if(allocated(nxt_ldbd)) then
      if(size(nxt_ldbd,3)/=ncell) deallocate(nxt_ldbd)
   endif
@@ -973,10 +987,27 @@ subroutine nxt_ldb(ncell,ng,vol,dr,tempinv,cap,capemit,planck,spk,nlump,glump)
 !-- local detailed balance
      if(nxt_ldbtau<=0d0) cycle
      u = sb/(pi*tempinv(i)**4)
+!-- (DDMC: the net emission of the lines inside the groups)
+     eml = 0d0
+     abl = 0d0
+     if(lln) then
+        do k=1,nxa_nlin
+           ig = nxa_lgn(k)
+           if(cap(ig,i)*dr(i)<nxt_ldbtau) cycle
+           iel = nxa_lel(k)
+           o = nxa_el(iel)%xoff
+           pl = nxt_nel(iel,i)*nxt_x(o+nxa_lsl(k),i)*nxt_w(nxa_llv(k),i)
+           pu = nxt_nel(iel,i)*nxt_x(o+nxa_lsu(k),i)*nxt_w(nxa_luv(k),i)
+           hv = nxt_beta(k,i)*hh*nxa_lnu(k)/(4d0*pi*nxt_dnug(ig))
+           eml(ig) = eml(ig) + hv*pu*nxa_la(k)
+           abl(ig) = abl(ig) + hv*(pl*nxa_lblu(k) - pu*nxa_lbul(k))
+        enddo
+     endif
      do ig=1,ng
         tau = cap(ig,i)*dr(i)
         if(tau<nxt_ldbtau) cycle
         s = (planck(ig,i)*capemit(ig,i) + grd_emnbf(ig,i))/cap(ig,i)*u/nxt_dnug(ig)
+        if(eml(ig)>0d0) s = (cap(ig,i)*s + eml(ig))/max(cap(ig,i) + abl(ig),0.5d0*cap(ig,i))
         if(nxt_ldbone) then
            ls = 1d0
         else

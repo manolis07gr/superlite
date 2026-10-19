@@ -19,7 +19,9 @@ program cell_jtest
 !   mode: all (default); fuv: the external J below wl_max [A] only (groups
 !   and lines; default 1250); cont: the groups only; lines: the line
 !   intensities only; hlines: those of the H lines only.  dis: level
-!   dissolution (in_nltex_dis).
+!   dissolution (in_nltex_dis).  dump (7th argument): the net flows into
+!   the ground state of H and the ionization flows of each element of
+!   both solutions (as SL_RATEDUMP) to cell_jtest_dump_<cell>.
 ! build (as test_nebular in Tests/unit/run_tests.sh), with a CMake build B:
 !   mpif90 -O2 -fallow-argument-mismatch -I$B Tools/cell_jtest.f90 \
 !     $(find $B/CMakeFiles/superlite.dir -name '*.o' ! -name superlite.f90.o) -llapack -lblas
@@ -47,7 +49,7 @@ program cell_jtest
   real*4,allocatable :: kap(:)
   logical,allocatable :: ljb(:)
   real*8 :: qb,qv,ne,nu1,nu2,s,w,nu0,dr,xo(2),wlmax,ovl,vturb
-  logical :: lg,ll
+  logical :: lg,ll,ldmp
 !
   call get_command_argument(1,run)
   call get_command_argument(2,arg)
@@ -65,6 +67,11 @@ program cell_jtest
   if(command_argument_count() >= 6) then
      call get_command_argument(6,arg)
      nxd_on = trim(arg)=='dis'
+  endif
+  ldmp = .false.
+  if(command_argument_count() >= 7) then
+     call get_command_argument(7,arg)
+     ldmp = trim(arg)=='dump'
   endif
 !-- the run's model atoms, charge exchange, overlap and microturbulence
   adir = ''
@@ -189,7 +196,9 @@ program cell_jtest
      do ig=1,ng
         nu2 = cl/wlg(ig)
         nu1 = cl/wlg(ig+1)
-        if(wlg(ig+1) < 911.76d-8) then
+!-- (every group with Lyman-continuum opacity: one that straddles the edge
+!-- holds n_1 at the external J's S_LyC as firmly as the continuum itself)
+        if(wlg(ig) < 911.76d-8) then
            jg(ig) = nxt_jg(ig,ic)
            cycle
         endif
@@ -220,6 +229,7 @@ program cell_jtest
         x = xs(:,ic)
         nx_dis = 0d0
         if(nxd_on) call nxd_cellx(hdr(5,ic),nel,x,hdr(4,ic),nx_dis)
+        nx_dump = ldmp
         if(iv==1) then
            call nxt_ali_off
            call nx_solve_cell(hdr(4,ic),hdr(4,ic),nel,0d0,qb,qv,ng,nxt_nug,nxt_dnug,nxt_jg(:,ic),nxt_jb(:,ic), &
@@ -230,10 +240,78 @@ program cell_jtest
            call nx_solve_cell(hdr(4,ic),hdr(4,ic),nel,0d0,qb,qv,ng,nxt_nug,nxt_dnug,jg,jb,ljb,nti,ntx,x,ne,beta,ierr)
            call nxt_ali_off
         endif
+        if(ldmp) call dump(iv)
      enddo
      write(*,'(i5,es12.4,4es15.4,a,i2)') ic,0.5d0*(str(1,ic)+str(2,ic)),xo(1),x(1),xo(2),x(2),'  ierr',ierr
   enddo
 contains
+  subroutine dump(jv)
+!-- the flows of the last solution (nx_dump, as SL_RATEDUMP)
+    integer,intent(in) :: jv
+    integer :: lu,kk,jj
+    character(64) :: fn
+    real*8 :: wlv(nxa_nlv),netl(nxa_nlin),pl,pu,jlk
+    nx_dump = .false.
+    write(fn,'(a,i0)') 'cell_jtest_dump_',ic
+    open(newunit=lu,file=trim(fn),position='append')
+    if(jv==1) write(lu,'(a,i5,a,a,a,f8.1)') '##### cell',ic,'  mode ',trim(mode),'  wl_max',wlmax
+    write(lu,'(a,a,a,es11.4,a,es11.4,a,2es11.4)') '# solution with the ',trim(merge('own J     ','external J',jv==1)), &
+         '  T',hdr(4,ic),'  n_e',ne,'  x_1, x_2',x(1),x(2)
+    write(lu,'(a)') '# Lyman lines and H alpha: lambda [A], beta, beta + bes, J resonance, J e.s., J rates, S, '// &
+         'net u->l per H particle, J e.s. expectation'
+    do kk=1,size(nx_dlya,2)
+       if(nx_dlya(1,kk) > 0d0) write(lu,'(a,f9.2,8es12.4)') '#  ',nx_dlya(:,kk)
+    enddo
+    write(lu,'(a,es12.4)') '# charge exchange into the ground state:',nx_dcx
+    write(lu,'(a)') '# state  net flow into the ground state [1/s per H particle], charge exchange apart'
+    do kk=2,nx_dns
+       write(lu,'(i6,es14.5)') kk,nx_dflow(kk)
+    enddo
+!-- metal lines inside the H Lyman continuum: their net radiative rate
+!-- n_u A beta (1 - J_l/S) per volume, which H I absorbs (the Fe III
+!-- 3d6-3d5 4p lines at 800-870 A in a dense wind)
+    write(lu,'(a)') '# lines (Z > 2) inside the Lyman continuum: net radiative u->l [cm^-3 s^-1] '// &
+         'per ion, and the largest lines (lambda [A], net, beta, J_l, S)'
+    call nxa_weights(hdr(4,ic),wlv)
+    netl = 0d0
+    do kk=1,nxa_nlin
+       if(cl/nxa_lnu(kk) >= 911.76d-8) cycle
+       jj = nxa_lel(kk)
+       if(nxa_el(jj)%z <= 2) cycle
+       pl = nel(jj)*x(nxa_el(jj)%xoff+nxa_lsl(kk))*wlv(nxa_llv(kk))
+       pu = nel(jj)*x(nxa_el(jj)%xoff+nxa_lsu(kk))*wlv(nxa_luv(kk))
+       jlk = nx_jline(kk,ng,nxt_nug,merge(nxt_jg(:,ic),jg,jv==1),merge(nxt_jb(kk,ic),jb(kk),jv==1), &
+            merge(nxt_ljb(kk,ic),ljb(kk),jv==1))
+       netl(kk) = beta(kk)*(pu*nxa_la(kk) - (pl*nxa_lblu(kk) - pu*nxa_lbul(kk))*jlk)
+    enddo
+    do kk=1,nxa_nion
+       pl = 0d0
+       do jj=1,nxa_nlin
+          if(nxa_lion(jj) == kk) pl = pl + netl(jj)
+       enddo
+       if(pl /= 0d0) write(lu,'(a,a8,es12.4)') '#   ',nxa_ion(kk)%name,pl
+    enddo
+    do jj=1,10
+       kk = maxloc(abs(netl),1)
+       if(netl(kk) == 0d0) exit
+       pl = nel(nxa_lel(kk))*x(nxa_el(nxa_lel(kk))%xoff+nxa_lsl(kk))*wlv(nxa_llv(kk))
+       pu = nel(nxa_lel(kk))*x(nxa_el(nxa_lel(kk))%xoff+nxa_lsu(kk))*wlv(nxa_luv(kk))
+       jlk = nx_jline(kk,ng,nxt_nug,merge(nxt_jg(:,ic),jg,jv==1),merge(nxt_jb(kk,ic),jb(kk),jv==1), &
+            merge(nxt_ljb(kk,ic),ljb(kk),jv==1))
+       write(lu,'(a,a8,f10.3,4es12.4)') '#     ',nxa_ion(nxa_lion(kk))%name,cl/nxa_lnu(kk)*1d8,netl(kk),beta(kk),jlk, &
+            pu*nxa_la(kk)/max(pl*nxa_lblu(kk) - pu*nxa_lbul(kk),1d-300)
+       netl(kk) = 0d0
+    enddo
+    write(lu,'(a)') '# H states: fraction of H'
+    write(lu,'(5es13.5)') x(nxa_el(1)%xoff+1:nxa_el(1)%xoff+nxa_el(1)%ns)
+    write(lu,'(a)') '# per element and ion stage [1/s per particle of the element]: up, down, net charge exchange up'
+    do kk=1,nxa_nel
+       do jj=1,nxa_el(kk)%nion
+          write(lu,'(2i4,a,3es13.4)') nxa_el(kk)%z,jj,'  ',nx_dion(:,jj,kk)
+       enddo
+    enddo
+    close(lu)
+  end subroutine dump
   function quoted(l) result(q)
     character(*),intent(in) :: l
     character(2048) :: q

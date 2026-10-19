@@ -330,6 +330,37 @@ contains
        jw = sg + nxt_jxsum(ig,1)/(4d0*pi_*vol1(1)*dnug(ig))
        dev2 = max(dev2, abs(nxt_jg(ig,1)/jw - 1d0))
     enddo
+!-- (and the net emission of a line inside a thick group is part of its
+!-- source function: Lyman beta in a thick group, S = (kappa S_c + eta_l)/
+!-- (kappa + kappa_l) from the populations and the escape probability)
+    allocate(nxt_x(nxa_nst,1), nxt_nel(nxa_nel,1), nxt_w(nxa_nlv,1), nxt_beta(nxa_nlin,1))
+    nxt_x = 0d0
+    nxt_x(1,1) = 1d-3; nxt_x(2,1) = 1d-9; nxt_x(3,1) = 2d-10; nxt_x(nxa_nst,1) = 1d0 - 1.0000012d-3
+    nxt_nel = 1d9
+    nxt_w = 1d0
+    nxt_beta = 0d0
+    do k = 1, nxa_nlin
+       if(nxa_lsl(k)==1 .and. nxa_lsu(k)==3) exit
+    enddo
+    nxt_beta(k,1) = 0.3d0
+    ig = nxa_lgn(k)
+    cap1(ig,1) = 1e-12
+    cape1(ig,1) = 0.5*cap1(ig,1)
+    grd_emnbf(ig,1) = 0.3*cap1(ig,1)*real(plk(ig,1))
+    nxt_jg = 1d0
+    call nxt_ldb(1, ng, vol1, dr1, ti1, cap1, cape1, plk, spk1, nl1, gl1)
+    sg = (plk(ig,1)*cape1(ig,1) + grd_emnbf(ig,1))/cap1(ig,1)*u/dnug(ig)
+    da = 0.3d0*hh*nxa_lnu(k)/(4d0*pi_*dnug(ig))
+    db = da*(1d9*1d-3*nxa_lblu(k) - 1d9*2d-10*nxa_lbul(k))
+    da = da*1d9*2d-10*nxa_la(k)
+    jw = (cap1(ig,1)*sg + da)/(cap1(ig,1) + db) + nxt_jxsum(ig,1)/(4d0*pi_*vol1(1)*dnug(ig))
+    dsl = nxt_jg(ig,1)/jw - 1d0
+!-- (J moves from S_c towards the line's source function da/db)
+    w0 = nxt_jg(ig,1) - nxt_jxsum(ig,1)/(4d0*pi_*vol1(1)*dnug(ig))
+    write(*,'(a,es10.3,a,es10.3,a,es10.3)') '  line inside a thick DDMC group: J/(S_c + line terms) - 1 =', dsl, &
+         '; (J - J_ext)/S_c =', w0/sg,', S_line/S_c =', da/db/sg
+    if(abs(dsl) > 1d-12 .or. (w0 - sg)*(da/db - sg) <= 0d0) nfail = nfail + 1
+    deallocate(nxt_x, nxt_nel, nxt_w, nxt_beta)
     nxt_ldbone = .false.
     nxt_ldbtau = 0d0
     deallocate(plk, spk1, cap1, cape1, gl1)
