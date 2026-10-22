@@ -32,7 +32,7 @@ program superlite
   use nltexmod, only:nx_esdamp,nx_ovl_dv,nxo_npair,nx_pc_on
   use nltedismod, only:nxd_on,nxd_setup
   use bbsobmod
-  use tebalmod, only:te_damp,te_ntemin,te_zsolve
+  use tebalmod, only:te_damp,te_ntemin,te_zsolve,te_secant
   use nltentmod, only:nxn_on,nxn_emax,nxn_de,nxn_init
   use shockciemod, only:shc_read,shc_setup,shc_nel,shc_elz
 
@@ -305,6 +305,7 @@ program superlite
   if(in_tesolve) then
      te_damp = in_te_damp
      te_zsolve = in_te_zsolve
+     te_secant = in_te_secant
      if(lmpi0) write(6,'(1x,a,f5.2,2a)') 'T_e from the thermal balance, damping', &
           in_te_damp,', LTE elements at T_ion = ',in_tion
   endif

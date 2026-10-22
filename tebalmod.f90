@@ -61,9 +61,14 @@ module tebalmod
   real*8,public :: te_ntemin = 0d0              !fast photoelectrons above [erg], 0: off
 !-- elements with Z <= te_zsolve are re-solved at each trial temperature;
 !-- the populations of the heavier ones are held (their rates still follow T)
+!-- (diagnostics: terms(4) split into collisions between states, charge
+!-- exchange, lines within super-levels; set by te_terms)
+  real*8,public :: te_t4parts(3) = 0d0
   integer,public :: te_zsolve = 99
   integer,parameter,public :: te_nterm = 6
-  public :: te_balance,te_terms,te_step,te_heatshare
+!-- secant steps (te_stepsec) instead of te_step (inputparmod in_te_secant)
+  logical,public :: te_secant = .false.
+  public :: te_balance,te_terms,te_step,te_stepsec,te_heatshare
 !
 contains
 !
@@ -250,7 +255,11 @@ subroutine te_terms(temp,ng,nug,dnug,jg,capabs,capem,nel,x,ne,gam_ext,terms,pa,p
      deallocate(cq,eup,edn,cil,c3l)
   enddo
   terms(4) = ne*sm
-  if(nxa_ncx>0) terms(4) = terms(4) - nx_cx_heat(temp,nel,x,wg)
+  te_t4parts = [terms(4),0d0,0d0]
+  if(nxa_ncx>0) then
+     te_t4parts(2) = -nx_cx_heat(temp,nel,x,wg)
+     terms(4) = terms(4) + te_t4parts(2)
+  endif
 !-- lines within super-levels: thermal at T_e
   if(nxa_anysl .and. present(beta) .and. present(jl)) then
      sm = 0d0
@@ -265,6 +274,7 @@ subroutine te_terms(temp,ng,nug,dnug,jg,capabs,capem,nel,x,ne,gam_ext,terms,pa,p
         se(iel) = se(iel) + abs(sh0)
      enddo
      terms(4) = terms(4) + sm
+     te_t4parts(3) = sm
   endif
   terms(6) = gam_ext
   if(present(elc)) elc = se
@@ -295,7 +305,7 @@ subroutine te_balance(told,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx,ca
   real*8,intent(in),optional :: xprev(nxa_nst),dtinv
   integer,intent(in),optional :: scanlu
   integer :: it,side,ielast
-  real*8 :: nelast,xhlast
+  real*8 :: nelast,xhlast,tlast(te_nterm)
   real*8 :: a,b,c,fa,fb,fc,tsol,lo,hi,step,elc(nxa_nel),scale
   logical :: lsol(nxa_nel),lfirst
   real*8 :: pa(nxa_nlv),pb(nxa_nlv),jl(nxa_nlin),wg(nxa_nlv)
@@ -373,10 +383,14 @@ subroutine te_balance(told,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx,ca
 !-- (diagnostics: the balance function around the old temperature)
   if(present(scanlu)) then
      if(scanlu > 0) then
+        write(scanlu,'(a,99(1x,i2,l2))') '# Z, re-solved:',(nxa_el(it)%z,lsol(it),it=1,nxa_nel)
+        write(scanlu,'(a)') '#  T  f/scale  ierr  ne  x_top(el 1)  lte_net pi_heat rec_cool coll_net compton ext'// &
+             ' | coll_net: states, charge exchange, lines in super-levels'
         do it=0,40
            c = log(told) - 0.3d0 + 0.015d0*it
            fc = fval(c)
-           write(scanlu,'(f10.1,es13.4,i3,2es13.4)') exp(c), fc/max(scale,1d-300), ielast, nelast, xhlast
+           write(scanlu,'(f10.1,es13.4,i3,11es13.4)') exp(c), fc/max(scale,1d-300), ielast, nelast, xhlast, tlast, &
+                te_t4parts
         enddo
      endif
   endif
@@ -409,6 +423,7 @@ contains
        ne = neoth + free_el(xx)
     endif
     call te_terms(t,ng,nug,dnug,jg,capabs,capem,nel,xx,ne,gam_ext,terms,pa,pb,elc,beta,jl)
+    tlast = terms
     fval = terms(1) - terms(2) + terms(3) + terms(4) + terms(5) - terms(6)
     if(lfirst) then
        lfirst = .false.
@@ -461,6 +476,38 @@ pure subroutine te_step(told,tsol,dprev,dloc,tnew)
   tnew = min(max(tnew, told/te_maxfac), told*te_maxfac)
   tnew = min(max(tnew, te_tmin), te_tmax)
 end subroutine te_step
+!
+!
+pure subroutine te_stepsec(told,tsol,lt0,lr0,w,tnew)
+!-- secant step of one cell (te_secant): the root R of the thermal balance
+!-- moves with the old temperature T (through the radiation field and the
+!-- populations), so T = R(T) is a fixed point; with g = dlnR/dlnT, the
+!-- secant of the last two iterations (lt0, lr0: their ln T and ln R; 0:
+!-- none), the step w ln(R/T), w = 1/(1 - g), lands on it: w < 1 damps an
+!-- oscillation (g < 0), w > 1 accelerates a slow approach (0 < g < 1;
+!-- the outer layers of a supernova, whose lines heat by their own
+!-- emission).  w in [0.1, 2], the geometric mean with the cell's last
+!-- weight (Monte Carlo noise); with a step of ln T below 0.5 % or g >= 1
+!-- the last weight (start te_damp).  The limiter te_maxfac as te_step.
+  real*8,intent(in) :: told,tsol
+  real*8,intent(inout) :: lt0,lr0,w
+  real*8,intent(out) :: tnew
+  real*8 :: lt,lr,g,wn
+  lt = log(told)
+  lr = log(tsol)
+  if(lt0 /= 0d0 .and. abs(lt - lt0) > 5d-3) then
+     g = (lr - lr0)/(lt - lt0)
+     if(g < 1d0) then
+        wn = min(max(1d0/(1d0 - g),0.1d0),2d0)
+        w = min(max(sqrt(wn*w),0.1d0),2d0)
+     endif
+  endif
+  lt0 = lt
+  lr0 = lr
+  tnew = told*exp(w*(lr - lt))
+  tnew = min(max(tnew, told/te_maxfac), told*te_maxfac)
+  tnew = min(max(tnew, te_tmin), te_tmax)
+end subroutine te_stepsec
 !
 end module tebalmod
 ! vim: fdm=marker

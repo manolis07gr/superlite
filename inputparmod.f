@@ -299,6 +299,10 @@ c-- the temperature and dilution of the Monte Carlo radiation field ('nebu')
 c-- NLTE elements re-solved at each trial temperature of the thermal balance:
 c-- Z <= in_te_zsolve (99: all; 2: H and He, the others held)
       integer :: in_te_zsolve = 99
+c-- T_e step per cell from the secant of the last two iterations (root
+c-- against old T; tebalmod te_stepsec) instead of the sign-reversal
+c-- damping (te_step)
+      logical :: in_te_secant = .false.
       character(4) :: in_tion = 'hydr'
 c-- photons above in_nt_emin [eV] absorbed by the gas make fast
 c-- photoelectrons that ionize and excite H (Shull & van Steenberg 1985;
@@ -384,7 +388,7 @@ c-- runtime parameter namelist
      & in_xray_table,in_xray_ff1,in_xray_ff2,in_xray_t1,in_xray_t2,
      & in_xray_v1,in_xray_v2,in_xray_smooth,
      & in_bbsobolev,in_bbeps,in_rayleigh,in_tesolve,in_te_damp,
-     & in_te_zsolve,
+     & in_te_zsolve,in_te_secant,
      & in_tion,
      & in_nt_emin,in_nt_sf,in_nt_sfemax,in_nt_sfde,in_nt_lumg,
      & in_fflegacy,
@@ -550,6 +554,7 @@ c
       call insertl(in_tesolve,in_l,il)
       call insertr(in_te_damp,in_r,ir)
       call inserti(in_te_zsolve,in_i,ii)
+      call insertl(in_te_secant,in_l,il)
       call insertc(in_tion,in_c,ic)
       call insertr(in_nt_emin,in_r,ir)
       call insertl(in_nt_sf,in_l,il)

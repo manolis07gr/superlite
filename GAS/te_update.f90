@@ -28,6 +28,8 @@ subroutine te_update(it)
   real*4 :: capabs(nxt_ng)
 !-- per cell: previous proposed change of ln T and damping weight
   real*8,allocatable,save :: dprev(:),dloc(:)
+!-- (te_secant: ln T and ln of the root of the last iteration)
+  real*8,allocatable,save :: ltp(:),lrp(:)
   logical :: lout
   character(24) :: fname
 !-- (diagnostics: cells whose balance function is tabulated, from the
@@ -38,8 +40,10 @@ subroutine te_update(it)
 !
   if(.not.nxt_have_mc) return
   if(.not.allocated(dprev)) then
-     allocate(dprev(gas_ncell),dloc(gas_ncell))
+     allocate(dprev(gas_ncell),dloc(gas_ncell),ltp(gas_ncell),lrp(gas_ncell))
      dprev = 0d0
+     ltp = 0d0
+     lrp = 0d0
      dloc = te_damp
      call get_environment_variable('SL_TESCAN',env,status=ios)
      n = 0
@@ -56,7 +60,8 @@ subroutine te_update(it)
      write(41,'(a)') '# thermal balance per cell at the new T_e [erg/s/cm^3]: '// &
           'LTE-opacity net cooling, NLTE photoionization heating, NLTE recombination cooling, '// &
           'NLTE collisional net cooling, Compton net cooling, external heating'
-     write(41,'(a)') '#  cell        T_e       T_old     lte_net     pi_heat     rec_cool    coll_net    compton_net ext_heat'
+     write(41,'(a)') '#  cell        T_e       T_old     lte_net     pi_heat     rec_cool    coll_net    compton_net ext_heat'// &
+          '    T_root'
   endif
   nfail = 0
   dmax = 1d0
@@ -125,7 +130,11 @@ subroutine te_update(it)
         write(lu,'(a,2f10.1)') '# root, new T',tsol,tnew
         close(lu)
      endif
-     call te_step(gas_temp(i),tsol,dprev(i),dloc(i),tnew)
+     if(te_secant) then
+        call te_stepsec(gas_temp(i),tsol,ltp(i),lrp(i),dloc(i),tnew)
+     else
+        call te_step(gas_temp(i),tsol,dprev(i),dloc(i),tnew)
+     endif
      if(ierr/=0) nfail = nfail + 1
      if(lout) then
         x = nxt_xloc(:,i)
@@ -142,7 +151,7 @@ subroutine te_update(it)
         enddo
         call te_terms(tnew,nxt_ng,nxt_nug,nxt_dnug,nxt_jg(:,l),capabs,gas_capemit(:,i),nel,x,ne, &
              gext,terms,beta=beta,jl=jl)
-        write(41,'(i7,2f12.1,6es12.4)') l,tnew,gas_temp(i),terms
+        write(41,'(i7,2f12.1,6es12.4,f12.1)') l,tnew,gas_temp(i),terms,tsol
      endif
      call nxt_ali_off
      if(nxn_on) call nxn_done
