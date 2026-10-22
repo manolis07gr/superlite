@@ -788,11 +788,22 @@ iterations, and of the formal integral):
   it, 0.73 of its source function, and no trough. `sob`, `blk` and
   SuperLite have a trough over that range (1–7×10⁻⁸). SuperLite's Lyα is
   fed at 0.15 S (0.23 with `in_nltex_esrates`, `rayGel_hhe`), so its net
-  decay into the ground state is 3 times `ies`'s. The trapped-photon
-  scattering (Hummer & Rybicki's P(r), r = κ_es/κ₀ = 1.3×10⁻⁸ in that cell)
-  sends 40 % of the escaping Lyα photons out of the core. It does not fill
-  the trough: in the Monte Carlo it acts only with `in_nltex_esrates`
-  (`nx_linees`), and with it the trough stays. Open.
+  decay into the ground state is 3 times `ies`'s. The trough comes from
+  the Rayleigh wing of Lyα (scattering depth 25–40 above the photosphere,
+  item above). It forms between 1.08 and 1.11×10¹⁵ cm: inside that,
+  SuperLite's J near Lyα is 0.7–1.1 times `ies`'s; at 1.1–1.3×10¹⁵ cm,
+  0.1–0.25 times at 1000–3000 km/s from the line. `ies` has no trough
+  because CMFGEN's incoherent scattering redistributes its whole scattering
+  opacity with the thermal electrons, Rayleigh included (`comp_j_blank`:
+  the source of the e.s. term is ESEC_EXT × RJ_ES with ESEC_EXT built from
+  CHI_SCAT = ESEC + CHI_RAY). Scattering by an H atom is coherent to its
+  thermal speed (10 km/s), and the coherent models (`blk`, `sob`) have the
+  trough as SuperLite has. `'lymes'` reproduces CMFGEN's treatment for the
+  like-for-like comparison: before the β weighting it brought b₁ to 5–33 %
+  of `ies`'s (`rayG2_hhe_es`); with it, `rayGkl_hhe`. The trapped-photon
+  scattering (Hummer & Rybicki's P(r), r = κ_es/κ₀ = 1.3×10⁻⁸ in cell 47)
+  sends 40 % of the escaping Lyα photons out of the core, but in the
+  Monte Carlo it acts only with `in_nltex_esrates` (`nx_linees`).
 * The H ionization of the inner full-metal wind (1.2–2.5×10¹⁵ cm),
   where SuperLite's x(H I) was 3–16 times CMFGEN's (`blk`) after the
   overlap runs (`rayFo1b`, `rayFo1c`). `Tools/cell_jtest.f90` solves
