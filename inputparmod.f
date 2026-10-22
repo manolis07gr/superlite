@@ -162,8 +162,11 @@ c-- direction over the mean one, beta(mu)/beta_bar, so that beta_bar J_b
 c-- is Sobolev's <beta(mu) I_inc>; f: the plain mean <I_inc> (as before),
 c-- which takes the radiation of a core along the directions of small
 c-- |Q(mu)| (a wind of nearly constant velocity) for isotropic
-c-- (nltextrmod nxt_jbw).  Homologous flows: the same.
-      logical :: in_nltex_jbbeta = .true.
+c-- (nltextrmod nxt_jbw).  Homologous flows: the same.  Off by default:
+c-- exact for an isolated pure-scattering Sobolev line, but in the CMFGEN
+c-- H/He benchmark wind it puts b1 1.4-4.6 times CMFGEN's comoving-frame
+c-- value against 0.86-1.5 times without it (CSM_PHYSICS.md 4.4).
+      logical :: in_nltex_jbbeta = .false.
 c-- adaptive damping of the populations between iterations: in each cell
 c-- the weight of the new solution 1/(1 - g), g the slope of the solve's
 c-- output against its input along the last step (secant), in [0.1, 1]
