@@ -19,7 +19,10 @@ module nltentmod
 !    collision strength, else with the collision strength of the table's
 !    highest temperature, constant in energy;
 !  - ionization routes of ions below nxn_omion of the most populated
-!    target are left out (at least the ten most populated ions are kept);
+!    target are left out of the degradation (at least the ten most
+!    populated ions are kept); these trace ions are ionized by the
+!    degradation spectrum of the others (their rate per particle; in the
+!    IME layers of a SN Ia all of Fe, Co and Ni);
 !  - one electron injected at nxn_emax (1000 eV) on a grid of nxn_de.
 ! nxn_rates solves a cell from its populations and gives the
 ! ionization rate per particle of each state, the excitation rates between
@@ -305,7 +308,7 @@ subroutine nxn_rates(i,nel,x,ne,temp,edep,nti)
   integer,intent(in) :: i
   real*8,intent(in) :: nel(nxa_nel),x(nxa_nst),ne,temp,edep
   real*8,intent(out) :: nti(nxa_nst)
-  real*8 :: npop(nxa_nlv),nrt(nxn_nrt),nion(nxn_nrt),nst(nxa_nst),q(0:nxa_nst)
+  real*8 :: npop(nxa_nlv),nrt(nxn_nrt),nion(nxn_nrt),nst(nxa_nst),q(0:nxa_nst),ngt(nxn_nrt),npp(nxn_nrt)
   real*8 :: wsum(nxa_nst),fh,etot,nmax,nlim,w,c,ntot,nlow,fion,fexc
   real*8,allocatable :: ae(:),ap(:),an(:),aev(:)
   integer,allocatable :: ak(:),at(:)
@@ -405,8 +408,15 @@ subroutine nxn_rates(i,nel,x,ne,temp,edep,nti)
      enddo
   enddo
 !
-  call nt_solve(nxn_nrt,rt_thr,rt_j,nion,rt_sig,na,ae,ak,ap,an,max(ne,1d-30),nxn_emax,fh,nrt,aev)
-!-- (nrt now: ionizations of each route per eV deposited)
+  ngt = nrt
+  call nt_solve(nxn_nrt,rt_thr,rt_j,nion,rt_sig,na,ae,ak,ap,an,max(ne,1d-30),nxn_emax,fh,nrt,aev,npp)
+!-- (nrt now: ionizations of each route per eV deposited; the trace routes
+!-- from their rate per particle)
+  do p=1,nxn_nrt
+     if(nion(p) > 0d0 .or. ngt(p) <= 0d0) cycle
+     nion(p) = ngt(p)
+     nrt(p) = npp(p)*ngt(p)
+  enddo
 !
   etot = edep/evg
   nti = 0d0

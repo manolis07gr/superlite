@@ -146,7 +146,7 @@ pure function nt_xsec(kind,eps,par,e) result(s)
 end function nt_xsec
 !
 !
-subroutine nt_solve(nion,ithr,ijop,ion_n,ion_sig,nexc,xeps,xkind,xpar,exc_n,ne,e0,fheat,nion_ev,nexc_ev)
+subroutine nt_solve(nion,ithr,ijop,ion_n,ion_sig,nexc,xeps,xkind,xpar,exc_n,ne,e0,fheat,nion_ev,nexc_ev,nion_pp)
 !-----------------------------------------------------------------------
 ! One electron injected at e0 (<= the top of the grid): the share of its
 ! energy that heats (fheat; the rest goes into ionization and excitation)
@@ -156,7 +156,9 @@ subroutine nt_solve(nion,ithr,ijop,ion_n,ion_sig,nexc,xeps,xkind,xpar,exc_n,ne,e
 ! section ion_sig on the grid [cm^2]) and nexc excitations (energy xeps
 ! [eV], kind xkind and parameter xpar of nt_xsec, density exc_n of the
 ! lower level); the thermal electrons ne [cm^-3].  A process with zero
-! density is left out.
+! density is left out.  nion_pp (optional): the ionizations of each route
+! per eV and per unit density of its ion, also of the routes left out
+! (trace ions, which do not change the degradation spectrum).
 !-----------------------------------------------------------------------
   integer,intent(in) :: nion,nexc
   real*8,intent(in) :: ithr(nion),ijop(nion),ion_n(nion),ion_sig(nt_ne,nion)
@@ -164,6 +166,7 @@ subroutine nt_solve(nion,ithr,ijop,ion_n,ion_sig,nexc,xeps,xkind,xpar,exc_n,ne,e
   integer,intent(in) :: xkind(nexc)
   real*8,intent(in) :: ne,e0
   real*8,intent(out) :: fheat,nion_ev(nion),nexc_ev(nexc)
+  real*8,intent(out),optional :: nion_pp(nion)
   real*8 :: y(nt_ne),arr(nt_ne),stot(nt_ne),coul(nt_ne),cfl,num,emax,an,ea,eb,pa,de,st
   real*8 :: sx(nexc),da(nt_ne/2+1,nion)
   integer :: i,k,p,i0,kb
@@ -190,6 +193,7 @@ subroutine nt_solve(nion,ithr,ijop,ion_n,ion_sig,nexc,xeps,xkind,xpar,exc_n,ne,e
   arr(i0) = 1d0
   nion_ev = 0d0
   nexc_ev = 0d0
+  if(present(nion_pp)) nion_pp = 0d0
   do i=i0,1,-1
      cfl = 0d0
      if(i < i0) cfl = coul(i+1)*y(i+1)
@@ -204,6 +208,11 @@ subroutine nt_solve(nion,ithr,ijop,ion_n,ion_sig,nexc,xeps,xkind,xpar,exc_n,ne,e
 !-- y de (stot + coul/de) = arrivals + the Coulomb flux from above
      y(i) = (arr(i) + cfl)/(de*st + coul(i))
      if(i == 1) exit
+     if(present(nion_pp)) then
+        do p=1,nion
+           if(nt_e(i) > ithr(p)) nion_pp(p) = nion_pp(p) + ion_sig(i,p)*y(i)*de
+        enddo
+     endif
 !-- excitations: to E - eps
      do p=1,nexc
         if(sx(p) <= 0d0) cycle
@@ -251,6 +260,7 @@ subroutine nt_solve(nion,ithr,ijop,ion_n,ion_sig,nexc,xeps,xkind,xpar,exc_n,ne,e
   fheat = max(1d0 - (fion + fexc)/nt_e(i0),0d0)
   nion_ev = nion_ev/nt_e(i0)
   nexc_ev = nexc_ev/nt_e(i0)
+  if(present(nion_pp)) nion_pp = nion_pp/nt_e(i0)
 contains
   subroutine push(et,nn)
 !-- nn electrons at energy et: linear split onto the bin centres

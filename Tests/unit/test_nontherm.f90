@@ -9,7 +9,10 @@
 !    the van Regemorter excitation of H here takes up to 0.08 more);
 !  - the work per ion pair of neutral hydrogen, 36.3 eV (Dalgarno et al.
 !    1999), and the heating share that goes to 1 as x_e -> 1;
-!  - grid convergence: 1 eV and 0.5 eV bins.
+!  - grid convergence: 1 eV and 0.5 eV bins;
+!  - trace ions: the ionizations per particle of a route left out of the
+!    degradation (zero density) equal those of the same route at 1e-6 of
+!    the main target.
 !-----------------------------------------------------------------------
 program test_nontherm
   use nonthermmod
@@ -50,6 +53,10 @@ program test_nontherm
   call he_run(whe)
   write(*,'(a,f6.1,a)') '  work per ion pair of neutral helium',whe,' eV (measured 41.3-42.3 eV; Dalgarno et al. 1999: 46 eV)'
   if(whe < 38d0 .or. whe > 50d0) nfail = nfail + 1
+!-- trace ion
+  call trace_run(fi,fe)
+  write(*,'(a,es11.4,a,es11.4)') '  trace He in H: ionizations per particle and eV, left out',fi,', at 1e-6',fe
+  if(abs(fi/fe - 1d0) > 1d-3) nfail = nfail + 1
   if(nfail > 0) then
      write(*,'(a)') 'test_nontherm: FAILED'
      stop 1
@@ -98,4 +105,21 @@ contains
     call nt_solve(1,[24.587d0],[0.6d0*24.587d0],[1d9],sigi,nh,he,hk,hp,hn,1d3,3000d0,fhh,sg,hx)
     w = 24.587d0/(24.587d0*sg(1))
   end subroutine he_run
+  subroutine trace_run(ppout,ppin)
+!-- H at x_e = 0.01 with He I as a second route, left out or at 1e-6 of H
+    real*8,intent(out) :: ppout,ppin
+    real*8 :: n2(2),pp(2),nn(2)
+    real*8,allocatable :: s2(:,:)
+    call setup(1d0)
+    allocate(s2(nt_ne,2))
+    s2(:,1) = sigi(:,1)
+    call nt_arfit(24.587d0,17.8d0,-11.0d0,7.0d0,-23.2d0,s2(:,2))
+    exn = 0.99d9
+    n2 = [0.99d9, 0d0]
+    call nt_solve(2,[13.6d0,24.587d0],[8d0,0.6d0*24.587d0],n2,s2,nx,eps,kx,lyfp,exn,1d7,3000d0,fh,nn,nexc,pp)
+    ppout = pp(2)
+    n2(2) = 0.99d3
+    call nt_solve(2,[13.6d0,24.587d0],[8d0,0.6d0*24.587d0],n2,s2,nx,eps,kx,lyfp,exn,1d7,3000d0,fh,nn,nexc,pp)
+    ppin = nn(2)/n2(2)
+  end subroutine trace_run
 end program test_nontherm
