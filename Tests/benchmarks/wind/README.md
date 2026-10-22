@@ -111,6 +111,16 @@ the weighting; before, the plain estimator and the plain group J were 1.07
 times S at the core, 2.4-3.6 at 1.2-2x10^15 cm, 6-13 at 2.3-3.5x10^15 and
 22-112 beyond 4x10^15 cm.
 
+Rybicki & Hummer's own case, `make_bench.py rh78 --tau0 100` (v ~ r^-1/2
+out to 100 r_c; every point is coupled to the faster gas inside it): the
+Monte Carlo profile against the generalized solution chi^2/dof = 1.65 (40
+bins of 50 km/s within 1000 km/s; largest deviation 3.1 sigma on the steep
+red edge of the emission at +125 km/s), against the disconnected one 15.2;
+line-centre flux 1.34 times the disconnected one (their Table 1: 1.35).  The
+beta-weighted estimator against S: chi^2/dof = 1.00 in the 58 cells with at
+least 100 events; the incident intensity of the rates 0.72-1.25 times S in
+every cell (the local S is off by up to 57 %).
+
 `sobolev_nl.py` itself is checked against Rybicki & Hummer's Table 2
 (`rh78_table2.py`: their decelerating winds v ~ r^-1/2 and r^-1 out to
 100 r_c, tau0 = 100): the generalized S within 5 % of their values at
