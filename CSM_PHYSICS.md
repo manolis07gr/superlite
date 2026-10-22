@@ -1173,29 +1173,47 @@ its L_bol = 2.40×10⁴² erg/s), NLTE Si II–IV, S II–IV, Ca II–IV, Fe I�
 Co II–V and Ni II–V, T_e from the thermal balance (`in_tesolve`), DDMC
 for the thick continua with local detailed balance, 12 iterations.
 
-| v [km/s] | 2000 | 4000 | 6000 | 8000 | 10 000 | 15 000 | 20 000 | 25 000 |
-|---|---|---|---|---|---|---|---|---|
-| T_e SuperLite [K] | 18 962 | 11 145 | 7477 | 6111 | 5169 | 4194 | 4303 | 4895 |
-| T_e CMFGEN [K] | 18 683 | 10 734 | 7466 | 6223 | 5423 | 4335 | 5156 | 6027 |
-| Fe II SuperLite | 1.5e-10 | 4.4e-4 | 1.1e-4 | 0.010 | 0.33 | 1.00 | 0.094 | 7.6e-5 |
-| Fe II CMFGEN | 6.7e-11 | 1.6e-4 | 0.16 | 0.83 | 0.97 | 0.99 | 0.97 | 0.97 |
+Ion fractions at 19.48 d without (`toy01_ref`) and with the fast electrons
+(`toy01_nt2`: `in_nt_sf`, `in_nt_lumg` = 0.754, CMFGEN's deposition over
+L_bol, 12 iterations each), against CMFGEN's. Fe, Co and Ni exist only
+below about 5000 km/s in toy01; outside that the ejecta are Si, S and Ca
+(55, 35 and 10 % by mass).
 
-n_e agrees within 6 %. Band luminosities of the last iteration against
-CMFGEN's (Sedona and SuperNu, LTE, in brackets): 2500–3500 Å 0.73 (0.88,
-0.44), 3500–4500 Å 0.79 (0.99, 0.67), 4500–5500 Å 0.83 (1.05, 1.09),
-5500–6500 Å 0.84 (1.48, 1.38), 6500–8000 Å 0.96 (1.18, 1.30), 8000–10 000 Å
-1.03 (1.89, 1.75).
-* Fe, Co and Ni stay doubly ionized out to 8000–10 000 km/s, where CMFGEN
-  has them singly ionized from 6000 km/s on, and beyond 20 000 km/s, where
-  SuperLite's T_e is 15–20 % below CMFGEN's, they are doubly ionized again.
-  Not yet traced (the same direction as the Fe II deficit of the inner IIn
-  wind, ×2–3, §4.4, where H I and O I are low by the same factor: there
-  CMFGEN's ground state of H is 1.5–4 times SuperLite's near the
-  photosphere while n₂ and n₃ agree within 10 %).
-* CMFGEN's higher stages (Ca IV, Co IV, Ni IV) have floors of 10⁻⁶–10⁻³
-  in the outer ejecta from the non-thermal ionization by the γ-ray
-  deposition, which SuperLite does not have for the metals (§3, items 2b
-  and 4).
+| v [km/s] | 2000 | 5000 | 8000 | 11 000 | 14 000 | 18 000 | 22 000 | 26 000 |
+|---|---|---|---|---|---|---|---|---|
+| T_e SuperLite [K] | 25 450 | 10 220 | 6884 | 4884 | 3900 | 4022 | 4202 | 3828 |
+| T_e CMFGEN [K] | 18 683 | 8600 | 6223 | 5097 | 4446 | 4665 | 5644 | 6010 |
+| Ca IV, no fast electrons | 0.54 | 9e-13 | 7e-24 | 1e-36 | 4e-47 | 1e-53 | 5e-51 | 3e-65 |
+| Ca IV, Spencer–Fano | 0.61 | 3.9e-4 | 1.1e-4 | 7.7e-5 | 1.8e-5 | 8.9e-5 | 1.8e-5 | 2.1e-5 |
+| Ca IV CMFGEN | 0.091 | 3.5e-4 | 9.5e-5 | 6.2e-5 | 4.4e-5 | 8.3e-5 | 2.0e-4 | 4.7e-4 |
+| Si IV, no fast electrons | 3.7e-3 | 4.7e-5 | 2e-13 | 2e-22 | 1e-27 | 1e-35 | 1e-37 | 1e-52 |
+| Si IV, Spencer–Fano | 3.7e-3 | 2.5e-4 | 1.7e-5 | 4.3e-7 | 1.2e-7 | 5.0e-7 | 1.4e-6 | 6.2e-6 |
+| Si IV CMFGEN | 0.80 | 2.2e-4 | 2.5e-6 | 7.7e-8 | 9.8e-8 | 4.3e-7 | 6.2e-7 | 1.3e-6 |
+| S III, no fast electrons | 1.3e-4 | 0.79 | 5.6e-4 | 6e-8 | 2e-11 | 2e-16 | 2e-17 | 1e-26 |
+| S III, Spencer–Fano | 1.2e-4 | 0.80 | 1.7e-3 | 6.2e-4 | 5.0e-4 | 1.3e-3 | 8.8e-4 | 1.2e-3 |
+| S III CMFGEN | 5.5e-3 | 0.019 | 6.1e-4 | 4.5e-4 | 5.0e-4 | 1.1e-3 | 1.5e-3 | 2.2e-3 |
+| S IV, Spencer–Fano | 0.96 | 9.8e-5 | 5.8e-8 | 2.1e-8 | 2.0e-8 | 1.1e-7 | 1.6e-7 | 4.4e-7 |
+| S IV CMFGEN | 0.97 | 2.2e-6 | 2.3e-8 | 1.4e-8 | 2.0e-8 | 9.8e-8 | 1.7e-7 | 4.7e-7 |
+
+* The fast electrons give the higher stages of the IME layers the floors
+  of CMFGEN: Ca IV, S III and S IV within a factor 1.5 from 8000 to
+  18 000 km/s, Si IV within 1–7. Without them those stages are 10⁻¹³–10⁻⁶⁵.
+  The dominant stages and the core (Fe, Co, Ni IV at 2000 km/s 0.95–0.97
+  against CMFGEN's 0.99; III at 5000 km/s) do not change.
+* Ions below 10⁻³ of the most populated target (`nxn_omion`) are left out
+  of the degradation but ionized by its spectrum (`nt_solve`'s rate per
+  particle; checked in `test_nontherm`). Without that, trace elements (Fe in
+  the IME layers of a model with mixing) would get no floor.
+* Not from the fast electrons: SuperLite's IME layers are 500–2200 K
+  cooler than CMFGEN's from 14 000 km/s out (the same with and without
+  them), so S I and Ca II dominate there where CMFGEN has S II and Ca III
+  (S II 0.27–0.39 against 1.00 at 22 000–26 000 km/s); the core is 6800 K
+  hotter (and Si IV 3.7×10⁻³ against 0.80 at 2000 km/s, while S IV
+  agrees). The population change per iteration was still 20 % in the
+  last iterations (`toy01_nt3` continues it).
+* An earlier version of this section compared Fe II beyond 5000 km/s;
+  SuperLite has no Fe there, so its fractions in those cells are only the
+  initial values.
 
 **γ-ray deposition** (`Tools/gamma_deposition.py --mc --pe`, 200 000 packets,
 100 zones, against the deposition of CMFGEN in StaNdaRT). The share of the
