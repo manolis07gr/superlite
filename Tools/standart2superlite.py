@@ -150,6 +150,10 @@ def main():
         vl = m['vel'] - 0.5 * dv
         vr = m['vel'] + 0.5 * dv
         dm = m['dm'] * MSUN
+# (no cells inside the model: SuperLite needs mass in every cell)
+    if a.vmin < vl[0]:
+        print(f'--vmin {a.vmin} is inside the model\'s inner edge; using {vl[0]:.1f} km/s', file=sys.stderr)
+        a.vmin = float(vl[0])
     edges = np.linspace(a.vmin, a.vmax, a.n + 1)
     mass = np.zeros(a.n)
     mfr = {k: np.zeros(a.n) for k in comp}
