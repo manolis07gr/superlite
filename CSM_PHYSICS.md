@@ -761,30 +761,38 @@ iterations, and of the formal integral):
   models), as SuperLite's local detailed balance. In the full-metal wind
   P₁ − R₁ = 1–2×10⁻⁶ s⁻¹ per H particle (both models): the metal lines
   inside the Lyman continuum (next item).
-* The incident intensity of the higher Lyman lines. With the β-weighted
-  estimators (`in_nltex_jbbeta`, `rayGk_hhe`) b₁ of the H/He wind is 2.1
-  times `sob`'s at 1.6×10¹⁵ cm and 1.6–2.1 times beyond. Before the
-  weighting (`rayGh_hhe`) it was 1.5 and 0.67–0.98 times. The single-cell
-  harness (`Tools/cell_jtest.f90`, cells 47 and 54 at 1.9 and 3.4×10¹⁵ cm)
-  takes the rates out of the question. In cell 47, x(H I) is:
+* The incident intensity of the Lyman lines and the ground state of H.
+  With the β-weighted estimators (`in_nltex_jbbeta`, `rayGk_hhe`) b₁ of
+  the H/He wind is 2.1 times `sob`'s at 1.6×10¹⁵ cm and 1.6–2.1 times
+  beyond. Before the weighting (`rayGh_hhe`) it was 1.5 and 0.67–0.98
+  times. The single-cell harness (`Tools/cell_jtest.f90`, J sampled 100
+  km/s to the blue of each line) takes the rates out of the question: the
+  difference is in the incident intensities of the H lines, and which line
+  matters depends on CMFGEN's electron scattering. x(H I) of cell 47
+  (1.9×10¹⁵ cm):
 
   | J in the harness | x(H I), cell 47 |
   |---|---|
   | SuperLite's own | 1.33×10⁻³ |
-  | CMFGEN's for the H lines (`sob` / `blk`) | 3.9×10⁻⁴ / 4.3×10⁻⁴ |
-  | CMFGEN's for the continua only | 1.6×10⁻³ |
-  | CMFGEN's below 980 Å only (Lyγ and up) | 4.5×10⁻⁴ |
-  | CMFGEN's own result | 5.7×10⁻⁴ |
+  | `sob` J, H lines / below 980 Å only | 3.9×10⁻⁴ / 4.5×10⁻⁴ |
+  | `blk` J (coherent e.s.), H lines | 4.3×10⁻⁴ |
+  | `ies` J (incoherent e.s.), H lines / Lyα and up / Lyβ and up / below 980 Å | 6.3×10⁻⁴ / 6.8×10⁻⁴ / 1.35×10⁻³ / 1.7×10⁻³ |
+  | CMFGEN's own result: `sob`, `blk`, `ies` | 5.7, 5.9, 8.1 ×10⁻⁴ |
 
-  What falls short is the incident intensity of the higher Lyman lines. At
-  Lyγ the resonance estimator gives 3.8×10⁻⁸ erg s⁻¹ cm⁻² Hz⁻¹ sr⁻¹
-  unweighted and 2.6×10⁻⁸ weighted. The Monte Carlo J of its group is
-  5.7×10⁻⁸, that of the group 26 Å to its blue 1.1×10⁻⁷, and CMFGEN's J
-  20 km/s blue of the line 8.5×10⁻⁸ (`sob` and `blk` alike). The groups
-  that hold the higher Lyman lines get 0.25–0.65 times CMFGEN's J (0.10
-  next to the edge), the groups between them 1.1–1.2 times. Open: why fewer
-  photons reach the resonances of the coasting wind (223–245 km/s beyond
-  1.3×10¹⁵ cm) than the continuum blueward of them holds.
+  With coherent scattering the continuum just blueward of the higher
+  Lyman lines stays at its level (8×10⁻⁸ erg s⁻¹ cm⁻² Hz⁻¹ sr⁻¹), where
+  SuperLite's estimator gets 3.8×10⁻⁸ at Lyγ (unweighted; 2.6×10⁻⁸
+  weighted). With thermal electrons, which SuperLite has, the higher
+  Lyman lines see less than SuperLite's estimators give. What is missing
+  then is Lyα: `ies` has J ≈ 2×10⁻⁷ at 100–5000 km/s on either side of
+  it, 0.73 of its source function, and no trough. `sob`, `blk` and
+  SuperLite have a trough over that range (1–7×10⁻⁸). SuperLite's Lyα is
+  fed at 0.15 S (0.23 with `in_nltex_esrates`, `rayGel_hhe`), so its net
+  decay into the ground state is 3 times `ies`'s. The trapped-photon
+  scattering (Hummer & Rybicki's P(r), r = κ_es/κ₀ = 1.3×10⁻⁸ in that cell)
+  sends 40 % of the escaping Lyα photons out of the core. It does not fill
+  the trough: in the Monte Carlo it acts only with `in_nltex_esrates`
+  (`nx_linees`), and with it the trough stays. Open.
 * The H ionization of the inner full-metal wind (1.2–2.5×10¹⁵ cm),
   where SuperLite's x(H I) was 3–16 times CMFGEN's (`blk`) after the
   overlap runs (`rayFo1b`, `rayFo1c`). `Tools/cell_jtest.f90` solves
