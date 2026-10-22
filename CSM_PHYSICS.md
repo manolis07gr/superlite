@@ -1232,6 +1232,18 @@ below about 5000 km/s in toy01; outside that the ejecta are Si, S and Ca
   hotter (and Si IV 3.7×10⁻³ against 0.80 at 2000 km/s, while S IV
   agrees). The population change per iteration was still 20 % in the
   last iterations (`toy01_nt3` continues it).
+* T_e against the other codes of StaNdaRT at 19.5 d. In the IME layers
+  (14 000–26 000 km/s) SuperLite's 3800–4300 K is within their spread
+  (Sedona, SuperNu, URILIGHT: 3300–5400 K); only CMFGEN warms outward, to
+  6000 K. These layers are converged (the root of the thermal balance
+  within 1–4 % of T_e; secant steps, `in_te_secant`, end at the same
+  temperatures), and there the line radiation the gas absorbs and
+  thermalizes sets T_e (collisional terms 100–1000 times the deposition).
+  The core is too hot: 24 000–25 500 K at 2000 km/s against 18 700–20 800
+  K. The CMFGEN-like super-level atoms (`t01`: Fe IV 1000 levels in 100
+  super-levels against 50 levels) take 900–1600 K off (`toy01_t01`),
+  DDMC only above τ = 30 (`in_trn_tauddmc`) another 1000–2300 K
+  (`tdd30`); still open.
 * An earlier version of this section compared Fe II beyond 5000 km/s;
   SuperLite has no Fe there, so its fractions in those cells are only the
   initial values.
