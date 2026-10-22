@@ -167,7 +167,9 @@ def main():
         for i in range(a.n):
             v0, v1 = edges[i] * 1e5, edges[i + 1] * 1e5
             row = [v0 * tt, v1 * tt, v0, v1, mass[i], temp[i], temp[i], lum[i]] + [mfr[k][i] for k in labels]
-            f.write('  '.join('%.6e' % x for x in row) + '\n')
+# (lum in full precision: the injected energy of a cell is the difference of
+# neighbouring values, 1e-8 of the total and less in the outer ejecta)
+            f.write('  '.join(('%.15e' if j == 7 else '%.6e') % x for j, x in enumerate(row)) + '\n')
     linner = np.interp(a.vmin * 1e5 * tt, re, cum)
     print(f'{name} at t = {t} d ({a.code}): L_bol = {lbol:.7e} erg/s, deposition = {edtot:.4e} erg/s '
           f'(on its grid {cum[-1]:.4e}, inside {a.vmin} km/s {linner:.4e}, inside {a.vmax} km/s {ltot_grid:.4e})')

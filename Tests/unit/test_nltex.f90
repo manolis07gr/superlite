@@ -119,6 +119,7 @@ program test_nltex
   call ali_tests
   call ldb_tests
   call dis_tests
+  call nt_tests
   deallocate(x, xl, beta, jb, ljb, nti, ntx, nel)
 !
 !-- 2. He model atoms
@@ -136,6 +137,48 @@ program test_nltex
   endif
   write(*,'(a)') 'test_nltex: PASS'
 contains
+!
+!
+  subroutine nt_tests
+!-- fast electrons with all NLTE species (nltentmod) in an H gas with
+!-- x_e = 0.01: the heat share near that of the Spencer-Fano solution of
+!-- test_nontherm (0.30), the energy shares summing to 1, the ionization
+!-- rate per atom against the ionization share, and the Monte Carlo channel
+!-- of heat drawn with the heat share
+    use nltentmod
+    use randommod
+    real*8 :: xx(nxa_nst), nn(nxa_nel), ti(nxa_nst), sh(3), eion, fh, r
+    integer :: iu, iel, s, nh_, k
+    type(rnd_t) :: st
+    open(newunit=iu, file='nt_ar.dat', status='replace')
+    write(iu,'(a)') '   1   1  1  0    13.6000    22.8000   -12.0000     1.9000   -22.6000'
+    close(iu)
+    nxn_emax = 1000d0
+    nxn_de = 1d0
+    call nxn_init('.', 1, 1, .false.)
+    xx = 0d0
+    xx(1) = 0.99d0
+    xx(nxa_nst) = 0.01d0
+    nn = 1d9
+    call nxn_rates(1, nn, xx, 1d7, 1d4, 1d0, ti)
+    nxn_q(:,1) = nxn_qloc(:,1)
+    sh = nxn_sloc(:,1)
+!-- ionizations per eV deposited x 13.6 eV = the ionization share
+    eion = ti(1)*nn(1)*xx(1)/(1d0/1.602176634d-12)*13.6d0
+    nh_ = 0
+    st%part = [521288629, 362436069, 16163801, 1131199299]
+    do k = 1, 20000
+       call rnd_r(r, st)
+       call nxn_pick(1, r, iel, s)
+       if(iel == 0) nh_ = nh_ + 1
+    enddo
+    fh = nh_/20000d0
+    write(*,'(a,3f8.4,a,f8.4,a,es9.2,a,f7.4)') '  fast electrons in H (x_e = 0.01): heat, ionization, excitation', sh, &
+         ', sum - 1', sum(sh) - 1d0, ' rate x 13.6 eV / share - 1', eion/sh(2) - 1d0, '; heat drawn', fh
+    if(abs(sh(1) - 0.30d0) > 0.05d0 .or. abs(sum(sh) - 1d0) > 1d-10 .or. abs(eion/sh(2) - 1d0) > 1d-10 .or. &
+         abs(fh - sh(1)) > 0.01d0) nfail = nfail + 1
+    call nxn_done
+  end subroutine nt_tests
 !
   subroutine td_tests
 !-- time-dependent statistical equilibrium (built-in H, Case B nebula):

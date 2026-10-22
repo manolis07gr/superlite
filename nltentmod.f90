@@ -93,8 +93,6 @@ subroutine nxn_init(dir,ncell,gncell,lmpi0)
   logical :: lany
 !
   call nt_grid(nxn_emax,nxn_de)
-!-- (the subshells of Verner et al. for the Lotz cross-sections)
-  if(all(bf_ph1(1,:,8,8) == 0.)) call bfxs_read_data
 !-- levels of the ground term: the name of level 1 up to its [J]
   allocate(lv_gt(nxa_nlv))
   lv_gt = .false.
@@ -121,6 +119,14 @@ subroutine nxn_init(dir,ncell,gncell,lmpi0)
      enddo
      close(iu)
   endif
+!-- (the subshells of Verner et al. for the Lotz cross-sections of the ions
+!-- without fits)
+  lany = .false.
+  do i=1,nxa_nion
+     ne = nxa_ion(i)%z - nxa_ion(i)%stage + 1
+     if(count(arz(:nar)==nxa_ion(i)%z .and. arne(:nar)==ne) == 0) lany = .true.
+  enddo
+  if(lany .and. all(bf_ph1(1,:,8,8) == 0.)) call bfxs_read_data
 !-- routes
   nxn_nrt = 0
   do i=1,nxa_nion
