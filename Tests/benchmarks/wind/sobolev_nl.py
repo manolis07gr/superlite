@@ -19,7 +19,7 @@ K constant per cell, |Q| floored at 1e-3 max(|dv/dr|, v/r) as in the code).
 
 usage: python3 sobolev_nl.py input.str tau0 out_prefix [umax_kms] [nu]
   writes out_prefix.S (r, S/I_c, beta_bar, S of the local Sobolev solution,
-  the plain angle mean of the incident intensity)
+  the plain angle mean of the incident intensity, Rybicki & Hummer's S0)
   and out_prefix.dat (u [km/s] toward the observer, F/F_c)
 """
 import sys
@@ -103,8 +103,15 @@ def source_function(fl, nsub=8, nmu=400, nz=3000, eps=0.0, bth=0.0):
                          for j in range(fl.n)])
     rs = np.clip(rs, fl.rc*(1 + 1e-9), fl.rout*(1 - 1e-9))
     xg, wg = np.polynomial.legendre.leggauss(nmu//2)
-    mu = np.r_[-0.5*(xg + 1)[::-1], 0.5*(xg + 1)]          # Gauss-Legendre on [-1,0] and [0,1]
-    wmu = np.r_[0.5*wg[::-1], 0.5*wg]/2                       # 1/2 int dmu
+    xc, wc = np.polynomial.legendre.leggauss(max(nmu//4, 8))
+
+    def mugrid(muc):
+        # Gauss-Legendre on [-1,0], [0,mu_c] and the cone of the core [mu_c,1]
+        # (far out it is narrow: 5e-5 wide at 100 R_c), 1/2 int dmu
+        a = 0.5*(xc + 1)
+        m = np.r_[-0.5*(xg + 1)[::-1], muc*a, muc + (1 - muc)*a]
+        w = np.r_[0.5*wg[::-1], muc*0.5*wc, (1 - muc)*0.5*wc]/2
+        return m, w
     # per (radius, mu): the upstream resonances (their S nodes and weights) and the
     # attenuated boundary intensity; I_inc = I0 + sum_j c_j S(r_j)
     rows, rowj = [], []
@@ -112,6 +119,8 @@ def source_function(fl, nsub=8, nmu=400, nz=3000, eps=0.0, bth=0.0):
     sloc = np.empty(rs.size)
     for i, r0 in enumerate(rs):
         v0 = fl.vel(np.array([r0]))[0][0]
+        muc = np.sqrt(max(0.0, 1 - (fl.rc/r0)**2))
+        mu, wmu = mugrid(muc)
         t0 = fl.tau(np.full(mu.size, r0), mu)
         b0 = beta_of(t0)
         bbar[i] = np.sum(wmu*b0)
@@ -157,7 +166,6 @@ def source_function(fl, nsub=8, nmu=400, nz=3000, eps=0.0, bth=0.0):
                     cc[m] = cc.get(m, 0.0) + x
             out.append((bnd, cc))
         # the local solution: no nonlocal coupling
-        muc = np.sqrt(max(0.0, 1 - (fl.rc/r0)**2))
         sloc[i] = ((1 - eps)*np.sum((wmu*b0)[mu >= muc]) + eps*bth)/(eps + (1 - eps)*bbar[i])
     # S (eps + (1-eps) bbar) = (1-eps) (ibnd + sum c S) + eps B  (solve directly)
     n = rs.size
@@ -171,7 +179,10 @@ def source_function(fl, nsub=8, nmu=400, nz=3000, eps=0.0, bth=0.0):
     S = np.linalg.solve(A, b)
     # the plain angle mean of the incident intensity, 1/2 int I_inc dmu
     jinc = np.array([bnd + sum(x*S[m] for m, x in cc.items()) for bnd, cc in rowj])
-    return rs, S, bbar, sloc, jinc
+    # Rybicki & Hummer's disconnected approximation S0: the core seen through
+    # the resonances upstream (their attenuation), without their emission
+    s0 = b/np.diag(A)
+    return rs, S, bbar, sloc, jinc, s0
 
 
 def profile(fl, rs, S, u, npc=600, npo=1600, nz=4000):
@@ -210,10 +221,11 @@ if __name__ == '__main__':
     nu = int(sys.argv[5]) if len(sys.argv) > 5 else 251
     r, v = read_str(path)
     fl = Flow(r, v, tau0)
-    rs, S, bbar, sloc, jinc = source_function(fl)
-    np.savetxt(out + '.S', np.c_[rs, S, bbar, sloc, jinc],
+    rs, S, bbar, sloc, jinc, s0 = source_function(fl)
+    np.savetxt(out + '.S', np.c_[rs, S, bbar, sloc, jinc, s0],
                header='r [cm], S/I_c (generalized Sobolev; = <beta I_inc>/beta_bar), beta_bar, '
-                      'S/I_c (local Sobolev), <I_inc>/I_c (plain angle mean of the incident intensity)')
+                      'S/I_c (local Sobolev), <I_inc>/I_c (plain angle mean of the incident intensity), '
+                      'S0/I_c (disconnected: the core attenuated by the upstream resonances, RH78)')
     u = np.linspace(-umax, umax, nu)*1e5
     f = profile(fl, rs, S, u)
     np.savetxt(out + '.dat', np.c_[u/1e5, f], header='u = velocity toward observer [km/s], F/F_c')

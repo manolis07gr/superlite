@@ -106,7 +106,14 @@ group instead, weighted by its shares in eight bins of |mu| (the Monte Carlo
 tallies them) with the bin means of the escape probability.  `compare_s.py
 --rates` compares the incident intensity the rates take (Jb_Ha, estimator
 or weighted group J) with S in every cell.  Constant velocity, tau0 = 30
-(100 cells, 0-311 events each): 0.82-1.22 times S out to 9x10^15 cm with
-the weighting; before, the plain estimator and the plain group J were 1.06
+(100 cells, 0-311 events each): 0.80-1.29 times S out to 10^16 cm with
+the weighting; before, the plain estimator and the plain group J were 1.07
 times S at the core, 2.4-3.6 at 1.2-2x10^15 cm, 6-13 at 2.3-3.5x10^15 and
-22-93 beyond 4x10^15 cm.
+22-112 beyond 4x10^15 cm.
+
+`sobolev_nl.py` itself is checked against Rybicki & Hummer's Table 2
+(`rh78_table2.py`: their decelerating winds v ~ r^-1/2 and r^-1 out to
+100 r_c, tau0 = 100): the generalized S within 5 % of their values at
+log r/r_c = 0-2, and their disconnected approximation S0 (the core
+attenuated by the resonances upstream) within 6 %.  Far out the core is
+a cone of 5e-5 in mu (at 100 r_c), which needs its own quadrature.
