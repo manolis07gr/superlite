@@ -59,6 +59,8 @@ subroutine nltex_gas_update(it)
        '): largest change of a state above 1e-4 per cell, median',nxt_dxstat(1),', max',nxt_dxstat(2),' (rank 0)'
   if(lmpi0 .and. it>1 .and. nxt_have_mc .and. nxt_dmpsec) write(6,'(1x,a,f6.3,a,f6.3)') &
        'NLTE damping (in_nltex_dmpsec): weight of the new solution, median',nxt_dmpstat(1),', smallest',nxt_dmpstat(2)
+!-- (the history of the adaptive damping, for a continued run)
+  if(nxt_dmpsec) call nxt_write_dmp(impi)
 !-- (fast electrons: the shares of their energy in each cell)
   if(nxn_on) then
      write(fname,'(a,i4.4)') 'output.nltex_nt_',impi

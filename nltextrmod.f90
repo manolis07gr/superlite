@@ -248,6 +248,10 @@ module nltextrmod
   logical,public :: nxt_dmpsec = .false.
   real*8,allocatable :: nxt_dmpu(:,:),nxt_dmpy(:,:)   !(nst,ncell)
   real*8,allocatable :: nxt_dmpw(:)                   !(ncell)
+!-- (the history of a warm start: its output.nltex_dmp_<rank> files, read
+!-- at the first solve with nxt_dmpsec; nxt_write_dmp)
+  character(256) :: nxt_dmpfile = ''
+  logical :: nxt_dmpprint = .false.
   real*8,public :: nxt_dmpstat(2) = 0d0
 !-- electron scattering of line photons trapped in their Sobolev resonance
 !-- zones (in_nltex_vturb >= 0): microturbulent velocity [cm/s] at v = 0
@@ -325,7 +329,7 @@ module nltextrmod
   public :: nxt_tables,nxt_neighbors,nxt_activate,nxt_activate_line,nxt_kpacket
   public :: nxt_bfabs,nxt_bfpick,nxt_nonthermal,nxt_ntdep,nxt_ntrates,nxt_write,nxt_bffreq
   public :: nxt_shares,nxt_dealloc,nxt_emcode,nxt_emloc
-  public :: nxt_write_state,nxt_read_prev,nxt_read_init,nxt_release,nxt_activate_rel
+  public :: nxt_write_state,nxt_write_dmp,nxt_read_prev,nxt_read_init,nxt_release,nxt_activate_rel
   public :: nxt_ali_cell,nxt_ali_off,nxt_ldb,nxt_lsldb,nxt_vtb,nxt_vturbv
   public :: nxt_static_line,nxt_static_tally,nxt_sobolev_neighbors,nxt_act_lookup,nxt_window_tally,nxt_esfar
   public :: nxt_useb,nxt_es_cell,nxt_jbw,nxt_bfac
@@ -748,6 +752,7 @@ subroutine nxt_gas_solve(it,gncell,temp,trad,nelv,neoth,qb,qv,icell1,edep,kap,fc
   if(nxt_dmpsec .and. .not.allocated(nxt_dmpu)) then
      allocate(nxt_dmpu(nxa_nst,nxt_ncell),nxt_dmpy(nxa_nst,nxt_ncell),nxt_dmpw(nxt_ncell))
      nxt_dmpw = -1d0
+     if(len_trim(nxt_dmpfile)>0) call nxt_read_dmp(nxt_dmpprint)
   endif
   do i=1,gncell
      l = icell1 + i - 1
@@ -3145,7 +3150,75 @@ subroutine nxt_read_init(fname,ncell,mass,lprint)
 !-- the radiation field of that state (output.nltex_jmc next to it)
   k = index(fname,'nltex_state',back=.true.)
   if(k>0) call nxt_read_jmc(fname(:k-1)//'nltex_jmc'//fname(k+11:),ncell,mass,lprint)
+!-- and the history of the adaptive damping (output.nltex_dmp_<rank>)
+  if(k>0) nxt_dmpfile = fname(:k-1)//'nltex_dmp_'
+  nxt_dmpprint = lprint
 end subroutine nxt_read_init
+!
+!
+subroutine nxt_write_dmp(irank)
+!-----------------------------------------------------------------------
+! output.nltex_dmp_<rank>: the history of the adaptive damping (dmp_weight)
+! of this rank's cells, the weight and the log populations of the last
+! solve's input and output, so that a run continued from its state with
+! in_nltex_init keeps the weights instead of starting again from
+! nxt_damp.
+!-----------------------------------------------------------------------
+  integer,intent(in) :: irank
+  integer :: iu,l
+  character(32) :: fn
+  if(.not.allocated(nxt_dmpw)) return
+  write(fn,'(a,i4.4)') 'output.nltex_dmp_',irank
+  open(newunit=iu,file=fn,status='replace')
+  write(iu,'(a)') '# SuperLite adaptive NLTE damping: cell, weight; log x of the last solve''s input, output'
+  write(iu,'(a,2i9)') 'nst ncell',nxa_nst,nxt_ncell
+  do l=1,nxt_ncell
+     if(nxt_dmpw(l) <= 0d0) cycle
+     write(iu,'(i7,es16.7e3)') l,nxt_dmpw(l)
+     write(iu,'(1p,8es16.7e3)') nxt_dmpu(:,l)
+     write(iu,'(1p,8es16.7e3)') nxt_dmpy(:,l)
+  enddo
+  close(iu)
+end subroutine nxt_write_dmp
+!
+!
+subroutine nxt_read_dmp(lprint)
+!-----------------------------------------------------------------------
+! The damping history of a warm start (nxt_write_dmp): all its rank files
+! (the number of ranks may differ), by cell index, so only for the same
+! cells and model atoms; otherwise none (the weights start from nxt_damp).
+!-----------------------------------------------------------------------
+  logical,intent(in) :: lprint
+  integer :: iu,ios,irank,nst,nc,l,ncl
+  character(256) :: fn,line
+  real*8 :: w
+  ncl = 0
+  do irank=0,9999
+     write(fn,'(a,i4.4)') trim(nxt_dmpfile),irank
+     open(newunit=iu,file=fn,status='old',action='read',iostat=ios)
+     if(ios/=0) exit
+     read(iu,'(a)') line
+     read(iu,'(a)') line
+     read(line(10:),*,iostat=ios) nst,nc
+     if(ios/=0 .or. nst/=nxa_nst .or. nc/=nxt_ncell) then
+        close(iu)
+        if(lprint) write(6,'(1x,a,1x,a,a)') 'NLTE warm start:',trim(fn), &
+             ' is for other cells or model atoms; no damping history'
+        nxt_dmpw = -1d0
+        return
+     endif
+     do
+        read(iu,*,iostat=ios) l,w
+        if(ios/=0) exit
+        read(iu,*) nxt_dmpu(:,l)
+        read(iu,*) nxt_dmpy(:,l)
+        nxt_dmpw(l) = w
+        ncl = ncl + 1
+     enddo
+     close(iu)
+  enddo
+  if(lprint .and. ncl>0) write(6,'(1x,a,i6,a)') 'NLTE warm start: the damping history of',ncl,' cells'
+end subroutine nxt_read_dmp
 !
 !
 subroutine nxt_read_jmc(fname,ncell,mass,lprint)
