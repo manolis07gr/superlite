@@ -50,6 +50,8 @@ subroutine nltex_gas_update(it)
   endif
   if(lmpi0 .and. it>1 .and. nxt_have_mc) write(6,'(1x,a,i3,a,es9.2,a,es9.2,a)') 'NLTE (it',it, &
        '): largest change of a state above 1e-4 per cell, median',nxt_dxstat(1),', max',nxt_dxstat(2),' (rank 0)'
+  if(lmpi0 .and. it>1 .and. nxt_have_mc .and. nxt_dmpsec) write(6,'(1x,a,f6.3,a,f6.3)') &
+       'NLTE damping (in_nltex_dmpsec): weight of the new solution, median',nxt_dmpstat(1),', smallest',nxt_dmpstat(2)
 !-- electrons per atom
   do i=1,gas_ncell
      if(gas_mass(i)<=0d0) cycle

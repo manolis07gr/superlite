@@ -35,7 +35,8 @@ build test_shockcie  "$src/shockciemod.f90"
 build test_xray     "$src/xraysrcmod.f90"
 build test_rayleigh "$src/rayleighmod.f90"
 build test_overlap  $NLTEX
-tests="test_doppler test_compton test_nlteh test_nltex test_bbsob test_tebal test_superlevel test_estrap test_dopmc test_shockcie test_xray test_rayleigh test_overlap"
+build test_nontherm "$src/nonthermmod.f90"
+tests="test_doppler test_compton test_nlteh test_nltex test_bbsob test_tebal test_superlevel test_estrap test_dopmc test_shockcie test_xray test_rayleigh test_overlap test_nontherm"
 if [ -n "$SL_BUILD" ]; then
   objs=$(find "$SL_BUILD/CMakeFiles/superlite.dir" -name "*.o" ! -name "superlite.f90.o")
   LD=gfortran; command -v mpif90 >/dev/null && grep -q "USE_MPI:BOOL=ON" "$SL_BUILD/CMakeCache.txt" && LD=mpif90

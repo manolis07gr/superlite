@@ -240,6 +240,14 @@ module nltextrmod
 !-- cells of the cell's largest relative change of a state above 1e-4
 !-- (after the damping; nxt_gas_solve)
   real*8,public :: nxt_dxstat(2) = 0d0
+!-- adaptive damping (nxt_dmpsec): the weight of the new solution in each
+!-- cell from the secant slope of its last two solves (dmp_weight), with
+!-- the log populations put into and got out of its last solve, and the
+!-- median and smallest weight over this rank's cells
+  logical,public :: nxt_dmpsec = .false.
+  real*8,allocatable :: nxt_dmpu(:,:),nxt_dmpy(:,:)   !(nst,ncell)
+  real*8,allocatable :: nxt_dmpw(:)                   !(ncell)
+  real*8,public :: nxt_dmpstat(2) = 0d0
 !-- electron scattering of line photons trapped in their Sobolev resonance
 !-- zones (in_nltex_vturb >= 0): microturbulent velocity [cm/s] at v = 0
 !-- and at the outer edge nxt_vmax (linear in v) for the Doppler widths.
@@ -592,6 +600,7 @@ subroutine nxt_dealloc
        grd_emnbf,gas_emnbf,nxt_jwsum,nxt_jwsq,nxt_haem,nxt_haab,nxt_efsum,nxt_efcnt, &
        nxt_lgrp,nxt_isrt,nxt_nug,nxt_dnug,nxt_act,nxt_wlact,nxt_w,nxt_tmact)
   if(allocated(nxt_btab)) deallocate(nxt_btab,nxt_qbq,nxt_bbtab,nxt_jmsum,nxt_fiso)
+  if(allocated(nxt_dmpu)) deallocate(nxt_dmpu,nxt_dmpy,nxt_dmpw)
   if(allocated(nxt_lch)) deallocate(nxt_lch,nxt_bch,nxt_2pch)
   if(allocated(nxt_och)) deallocate(nxt_och)
   if(allocated(nxt_inl)) deallocate(nxt_inl)
@@ -712,7 +721,8 @@ subroutine nxt_gas_solve(it,gncell,temp,trad,nelv,neoth,qb,qv,icell1,edep,kap,fc
   real*8,intent(in),optional :: fcl(gncell),dr(gncell),vel(gncell)
   integer :: i,l,ig,ierr,nfail,k,nc,nnan
   real*8 :: x(nxa_nst),xold(nxa_nst),ne,beta(nxa_nlin),jg(nxt_ng),jb(nxa_nlin)
-  real*8 :: nti(nxa_nst),ntx(nxa_nst),ntot,dxc(gncell),w,efc(nxa_nlin)
+  real*8 :: nti(nxa_nst),ntx(nxa_nst),ntot,dxc(gncell),w,efc(nxa_nlin),wcl(gncell)
+  integer :: nwc
   logical :: ljb(nxa_nlin),lfar
 !-- (diagnostics: cells whose H ground-state rates are written, from the
 !-- environment variable SL_RATEDUMP, a comma-separated list of cell numbers)
@@ -733,6 +743,11 @@ subroutine nxt_gas_solve(it,gncell,temp,trad,nelv,neoth,qb,qv,icell1,edep,kap,fc
   nfail = 0
   nnan = 0
   nc = 0
+  nwc = 0
+  if(nxt_dmpsec .and. .not.allocated(nxt_dmpu)) then
+     allocate(nxt_dmpu(nxa_nst,nxt_ncell),nxt_dmpy(nxa_nst,nxt_ncell),nxt_dmpw(nxt_ncell))
+     nxt_dmpw = -1d0
+  endif
   do i=1,gncell
      l = icell1 + i - 1
      ntot = sum(nelv(:,i))
@@ -864,7 +879,13 @@ subroutine nxt_gas_solve(it,gncell,temp,trad,nelv,neoth,qb,qv,icell1,edep,kap,fc
         nfail = nfail + 1
         x = xold
      elseif(it>1 .and. nxt_have_mc .and. nxt_damp<1d0) then
-        x = max(xold,1d-300)**(1d0-nxt_damp)*x**nxt_damp
+        w = nxt_damp
+        if(nxt_dmpsec) then
+           w = dmp_weight(l,xold,x)
+           nwc = nwc + 1
+           wcl(nwc) = w
+        endif
+        x = max(xold,1d-300)**(1d0-w)*x**w
         call renorm(x)
      endif
      nxt_xloc(:,i) = x
@@ -892,7 +913,64 @@ subroutine nxt_gas_solve(it,gncell,temp,trad,nelv,neoth,qb,qv,icell1,edep,kap,fc
      enddo
      nxt_dxstat = [dxc((nc+1)/2),dxc(nc)]
   endif
+  nxt_dmpstat = 0d0
+  if(nwc>0) then
+     do i=2,nwc
+        w = wcl(i)
+        k = i - 1
+        do while(k>=1)
+           if(wcl(k) <= w) exit
+           wcl(k+1) = wcl(k)
+           k = k - 1
+        enddo
+        wcl(k+1) = w
+     enddo
+     nxt_dmpstat = [wcl((nwc+1)/2),wcl(1)]
+  endif
 contains
+  real*8 function dmp_weight(lc,xo,xs)
+!-- weight of the new solution xs of cell lc, whose input was xo: 1/(1 - g),
+!-- g the slope of the solve's output against its input along the last
+!-- step (the secant of the last two solves, projected on the change of
+!-- the log populations of the states above 1e-4), which cancels the
+!-- dominant mode of the iteration: an oscillation (g < 0) is damped, a
+!-- monotone approach (0 <= g < 1) is not.  In [0.1, 1], the geometric mean
+!-- with the cell's last weight (Monte Carlo noise); nxt_damp without a
+!-- history, the last weight where the step was below 5 %.  With the
+!-- fixed weight 1/2 a slope g = -3 (the strongly coupled ionization of H
+!-- and the metals in the Lyman continuum of the full-metal IIn wind) is
+!-- a period-2 oscillation that does not decay.
+    integer,intent(in) :: lc
+    real*8,intent(in) :: xo(nxa_nst),xs(nxa_nst)
+    real*8 :: u(nxa_nst),y(nxa_nst),du,suu,syu,dmx,g,wn
+    integer :: kk
+    u = log(max(xo,1d-300))
+    y = log(max(xs,1d-300))
+    dmp_weight = nxt_damp
+    if(nxt_dmpw(lc) > 0d0) then
+       suu = 0d0
+       syu = 0d0
+       dmx = 0d0
+       do kk=1,nxa_nst
+          if(max(xo(kk),xs(kk)) < 1d-4) cycle
+          du = u(kk) - nxt_dmpu(kk,lc)
+          suu = suu + du*du
+          syu = syu + (y(kk) - nxt_dmpy(kk,lc))*du
+          dmx = max(dmx,abs(du),abs(y(kk) - u(kk)))
+       enddo
+       dmp_weight = nxt_dmpw(lc)
+       if(suu > 0d0 .and. dmx > 0.05d0) then
+          g = syu/suu
+          wn = 1d0
+          if(g < 0d0) wn = 1d0/(1d0 - g)
+          dmp_weight = min(max(sqrt(max(wn,0.1d0)*nxt_dmpw(lc)),0.1d0),1d0)
+       endif
+    endif
+    nxt_dmpu(:,lc) = u
+    nxt_dmpy(:,lc) = y
+    nxt_dmpw(lc) = dmp_weight
+  end function dmp_weight
+!
   subroutine renorm(xx)
     real*8,intent(inout) :: xx(nxa_nst)
     integer :: je,jo,ns

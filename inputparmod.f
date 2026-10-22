@@ -164,6 +164,11 @@ c-- which takes the radiation of a core along the directions of small
 c-- |Q(mu)| (a wind of nearly constant velocity) for isotropic
 c-- (nltextrmod nxt_jbw).  Homologous flows: the same.
       logical :: in_nltex_jbbeta = .true.
+c-- adaptive damping of the populations between iterations: in each cell
+c-- the weight of the new solution 1/(1 - g), g the slope of the solve's
+c-- output against its input along the last step (secant), in [0.1, 1]
+c-- (nltextrmod dmp_weight); f: the fixed weight in_nlteh_damp
+      logical :: in_nltex_dmpsec = .false.
 c-- incident intensity of the Sobolev NLTE lines in the statistical
 c-- equilibrium: path-length estimator of J_nu in a window this wide
 c-- [km/s] next to each line, on the side the comoving frequency of a
@@ -353,6 +358,7 @@ c-- runtime parameter namelist
      & in_srctype,in_shock_dvmin,in_shock_tmax,in_shock_cie,
      & in_nltex_prev,in_nltex_dtprev,in_nltex_init,in_nltex_hold,
      & in_nltex_bbext,in_nltex_cdest,in_nltex_jbbeta,in_nltex_jbwin,
+     & in_nltex_dmpsec,
      & in_nltex_dis,
      & in_nltex_ali,
      & in_nltex_ldb,in_nltex_vturb,in_nltex_vturbmax,in_nltex_esrates,
@@ -505,6 +511,7 @@ c
       call insertl(in_nltex_bbext,in_l,il)
       call insertl(in_nltex_cdest,in_l,il)
       call insertl(in_nltex_jbbeta,in_l,il)
+      call insertl(in_nltex_dmpsec,in_l,il)
       call insertr(in_nltex_jbwin,in_r,ir)
       call insertl(in_nltex_dis,in_l,il)
       call insertl(in_nltex_esdamp,in_l,il)

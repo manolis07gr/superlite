@@ -229,6 +229,8 @@ program superlite
      nx_pc_on = in_nltex_cdest
      if(lmpi0) write(6,'(1x,a,l2)') 'NLTE lines: continuum destruction of the trapped photons (in_nltex_cdest):',nx_pc_on
      nxt_jbbeta = in_nltex_jbbeta
+     nxt_dmpsec = in_nltex_dmpsec
+     if(lmpi0 .and. nxt_dmpsec) write(6,'(1x,a)') 'NLTE populations: adaptive damping between iterations (in_nltex_dmpsec)'
      if(lmpi0) write(6,'(1x,a,l2)') 'NLTE lines: incident intensity weighted by beta(mu)/beta_bar (in_nltex_jbbeta):', &
           nxt_jbbeta
 !-- level dissolution (occupation probabilities, CMFGEN's DO_DIS)
