@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 """StaNdaRT SN Ia toy model (Blondin et al. 2022) -> SuperLite input.str.
 
+Also the CMFGEN delayed-detonation models of StaNdaRT (DDC10_0.976d.dat,
+DDC25_1.300d.dat: zone centres, masses, elemental and isotopic mass
+fractions at t0 ~ 1 d): all their elements, with the 56Ni -> 56Co -> 56Fe
+chain decayed from t0 to t (the other chains are left as at t0), zones
+bounded halfway between their centres.
+
 The toy model (snia_toy01_2d.dat: zone velocities, masses, composition) is
 expanded homologously to time t, 56Ni -> 56Co -> 56Fe decayed to t, and
 rebinned (mass conserving) to n cells uniform in velocity.  The 'lum'
@@ -36,6 +42,40 @@ def read_model(fname):
     cols = dict(vel=1, dm=2, xige0=4, xni0=5, xime=6, xti=7, xco_cb=8,
                 xca=16, xs=17, xsi=18, xo=19, xc=20)
     return {k: a[:, j] for k, j in cols.items()}
+
+
+def read_ddc(fname):
+    """CMFGEN model of StaNdaRT (DDC10, DDC25): zone edges [km/s], masses [g],
+    t0 [d] and the mass fractions of each element and of 56Ni, 56Co at t0."""
+    t0, hdr, rows = None, None, []
+    for l in open(fname):
+        if l.startswith('# TIME SINCE EXPLOSION'):
+            t0 = float(l.split('=')[1].split()[0])
+        elif l.startswith('#vel'):
+            hdr = l[1:].split()
+        elif l.strip() and not l.startswith('#'):
+            rows.append(l.split())
+    a = np.array(rows, dtype=float)
+    col = {h.split('[')[0].lower(): j for j, h in enumerate(hdr)}
+    v = a[:, col['vel']]
+    vm = 0.5 * (v[1:] + v[:-1])
+    edges = np.concatenate([[max(v[0] - (vm[0] - v[0]), 0.0)], vm, [v[-1] + (v[-1] - vm[-1])]])
+    els = [h for h in hdr[6:] if not any(ch.isdigit() for ch in h)]
+    return dict(t0=t0, edges=edges, dm=a[:, col['dmass']],
+                x={e: a[:, col[e]] for e in els}, ni56=a[:, col['ni56']], co56=a[:, col['co56']])
+
+
+def ddc_comp(m, t):
+    """elemental mass fractions at t [d]: the 56Ni chain decayed from t0."""
+    dt = t - m['t0']
+    n0, c0 = m['ni56'], m['co56']
+    ni = n0 * np.exp(-dt / T_NI)
+    co = c0 * np.exp(-dt / T_CO) + n0 * T_CO / (T_CO - T_NI) * (np.exp(-dt / T_CO) - np.exp(-dt / T_NI))
+    x = dict(m['x'])
+    x['ni'] = x['ni'] - n0 + ni
+    x['co'] = x['co'] - c0 + co
+    x['fe'] = x['fe'] + (n0 + c0) - (ni + co)
+    return x
 
 
 def read_blocks(fname):
@@ -85,25 +125,34 @@ def main():
     p.add_argument('--edep', choices=['code', 'mc', 'gray'], default='code')
     p.add_argument('--npkt', type=int, default=400000)
     a = p.parse_args()
-    name = 'toy01' if 'toy01' in a.model else 'toy06'
-    m = read_model(a.model)
+    base = os.path.basename(a.model).lower()
+    name = next((k for k in ('toy01', 'toy06', 'ddc10', 'ddc25') if k in base), 'toy06')
     t = a.time
+    if name.startswith('ddc'):
+        if a.edep != 'code':
+            sys.exit('--edep mc|gray: toy models only')
+        m = read_ddc(a.model)
+        comp = ddc_comp(m, t)
+        vl, vr = m['edges'][:-1], m['edges'][1:]
+        dm = m['dm']
+    else:
+        m = read_model(a.model)
 # composition at t (per zone): 56Ni chain from X_56Ni0; stable Fe/Ni from X_IGE0
 # with the toy model's relative (Ni, Fe) = (0.1, 0.9)
-    x0 = m['xni0']
-    xni = x0 * np.exp(-t / T_NI) + 0.1 * m['xige0']
-    xco = x0 * T_CO / (T_CO - T_NI) * (np.exp(-t / T_CO) - np.exp(-t / T_NI))
-    xfe = x0 - x0 * np.exp(-t / T_NI) - xco + 0.9 * m['xige0']
-    comp = dict(c=m['xc'], o=m['xo'], si=m['xsi'], s=m['xs'], ca=m['xca'],
-                ti=m['xti'], fe=xfe, co=xco, ni=xni)
+        x0 = m['xni0']
+        xni = x0 * np.exp(-t / T_NI) + 0.1 * m['xige0']
+        xco = x0 * T_CO / (T_CO - T_NI) * (np.exp(-t / T_CO) - np.exp(-t / T_NI))
+        xfe = x0 - x0 * np.exp(-t / T_NI) - xco + 0.9 * m['xige0']
+        comp = dict(c=m['xc'], o=m['xo'], si=m['xsi'], s=m['xs'], ca=m['xca'],
+                    ti=m['xti'], fe=xfe, co=xco, ni=xni)
 # zone edges in velocity [km/s]: uniform zones of width 2*vel(1)
-    dv = 2.0 * m['vel'][0]
-    vl = m['vel'] - 0.5 * dv
-    vr = m['vel'] + 0.5 * dv
+        dv = 2.0 * m['vel'][0]
+        vl = m['vel'] - 0.5 * dv
+        vr = m['vel'] + 0.5 * dv
+        dm = m['dm'] * MSUN
     edges = np.linspace(a.vmin, a.vmax, a.n + 1)
     mass = np.zeros(a.n)
     mfr = {k: np.zeros(a.n) for k in comp}
-    dm = m['dm'] * MSUN
     for j in range(len(dm)):
 # share of zone j in each cell: by volume (velocity^3), uniform density in a zone
         lo = np.clip(edges[:-1], vl[j], vr[j])
@@ -159,7 +208,7 @@ def main():
     vmid = 0.5 * (edges[1:] + edges[:-1])
     temp = np.interp(vmid, arr[:, 0], arr[:, 1])
     tt = t * DAY
-    labels = ['c', 'o', 'si', 's', 'ca', 'ti', 'fe', 'co', 'ni']
+    labels = [k for k in comp if mfr[k].max() > 0.0]
     with open(f'{a.out}/input.str', 'w') as f:
         f.write('# 1D spherical\n')
         f.write('# %8d %10d %d %d %d\n' % (a.n, 1, 1, 8 + len(labels), len(labels)))
