@@ -12,9 +12,15 @@ stored radiation, distributed like the deposition.  temp and rad_temp
 start from that code's temperature (phys_<model>_<code>.txt).
 
 usage: standart2superlite.py <model .dat> <data dir> <time [d]> <out dir>
-       [--code cmfgen] [--n 100] [--vmin 1000] [--vmax 30000]
+       [--code cmfgen] [--n 100] [--vmin 1000] [--vmax 30000] [--edep mc|gray]
+--edep mc (gray): the deposition from the decay of the model's 56Ni computed
+here (Tools/gamma_deposition.py: Monte Carlo gamma-ray transport with
+Compton scattering and photoabsorption, or gray absorption) instead of the
+reference code's; L_bol is then the deposition (no scaling).
 Writes input.str and a summary (L_bol, total deposition, masses) to stdout.
 """
+import os
+import sys
 import argparse
 import numpy as np
 
@@ -76,6 +82,8 @@ def main():
     p.add_argument('--n', type=int, default=100)
     p.add_argument('--vmin', type=float, default=1000.0)
     p.add_argument('--vmax', type=float, default=30000.0)
+    p.add_argument('--edep', choices=['code', 'mc', 'gray'], default='code')
+    p.add_argument('--npkt', type=int, default=400000)
     a = p.parse_args()
     name = 'toy01' if 'toy01' in a.model else 'toy06'
     m = read_model(a.model)
@@ -117,8 +125,22 @@ def main():
     tl, lb, eb = read_lbol(f'{a.data}/lbol_edep_{name}_{a.code}.txt')
     lbol = np.interp(t, tl, lb)
     edtot = np.interp(t, tl, eb)
-# cumulative deposition at the cell edges: edep [erg/s/cm^3] on the
-# reference velocity grid, integrated over r = v t
+# (or the deposition computed here from the model's 56Ni: on the model's
+# zones, the reference's velocity points replaced by them)
+    if a.edep != 'code':
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import gamma_deposition as gd
+        gm = gd.read_model(a.model)
+        vz = np.concatenate([vl, [vr[-1]]]) * 1e5
+        vb, mb, xb, zb = gd.rebin(vz, gm['dm'], gm['xni0'], 200, gm['zmix'])
+        rb = mb / (4.0 / 3.0 * np.pi * ((vb[1:] * t * DAY)**3 - (vb[:-1] * t * DAY)**3))
+        if a.edep == 'mc':
+            dg, dp = gd.deposition_mc(vb, rb, xb, t, npkt=a.npkt, zmix=zb)
+        else:
+            dg, dp, _, _ = gd.deposition(vb, rb, xb, t)
+        ve = 0.5 * (vb[1:] + vb[:-1]) / 1e5
+        edt = dg + dp
+        lbol = None
     r = ve * 1e5 * t * DAY
     rmid = 0.5 * (r[1:] + r[:-1])
     re = np.concatenate([[0.0], rmid, [r[-1] + 0.5 * (r[-1] - r[-2])]])
@@ -127,6 +149,9 @@ def main():
     redge = edges * 1e5 * t * DAY
     lum = np.interp(redge, re, cum)
     ltot_grid = lum[-1]
+    if lbol is None:
+        lbol = ltot_grid
+        edtot = cum[-1]
     lum = lum * lbol / max(ltot_grid, 1e-300)
     ph = read_blocks(f'{a.data}/phys_{name}_{a.code}.txt')
     tk = min(ph, key=lambda x: abs(x - t))

@@ -682,6 +682,7 @@ c     -----------------------------
       use inputparmod, only:in_nltex
       use nlteatommod, only:nxa_nst,nxa_nel
       use nltextrmod
+      use nltentmod, only:nxn_on,nxn_qloc,nxn_q
       use bbsobmod, only:bbs_on,gas_capsc,grd_capsc,gas_fray,grd_fray
       implicit none
 ************************************************************************
@@ -759,6 +760,10 @@ c-- NLTE populations, element densities and bound-free opacity
        call mpi_allgatherv(gas_emnbf,grp_ng*gas_ncell,MPI_REAL,
      &   grd_emnbf,grp_ng*counts,grp_ng*displs,MPI_REAL,
      &   MPI_COMM_WORLD,ierr)
+c-- the deposition channels of fast electrons (nltentmod)
+       if(nxn_on) call mpi_allgatherv(nxn_qloc,(nxa_nst+1)*gas_ncell,
+     &   MPI_REAL8,nxn_q,(nxa_nst+1)*counts,(nxa_nst+1)*displs,
+     &   MPI_REAL8,MPI_COMM_WORLD,ierr)
       endif
 c-- line scattering opacity
       if(bbs_on) then

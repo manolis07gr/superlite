@@ -98,6 +98,7 @@ c
       use particlemod
       use inputparmod, only:in_nltex
       use nltextrmod
+      use nltentmod, only:nxn_on,nxn_qloc,nxn_q
       use bbsobmod, only:bbs_on,gas_capsc,grd_capsc,gas_fray,grd_fray
 ************************************************************************
 * Broadcast the data that changes with time.
@@ -125,6 +126,7 @@ c-- NLTE hydrogen
        nxt_nel = nxt_nelloc
        grd_capnbf = gas_capnbf
        grd_emnbf = gas_emnbf
+       if(nxn_on) nxn_q = nxn_qloc
       endif
 c-- line scattering opacity
       if(bbs_on) grd_capsc = gas_capsc

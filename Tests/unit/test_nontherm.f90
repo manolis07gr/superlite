@@ -18,8 +18,9 @@ program test_nontherm
   real*8,parameter :: lyf(5) = [0.4162d0, 0.0791d0, 0.0290d0, 0.0139d0, 0.0078d0]
   real*8 :: xev(7) = [1d-4, 1d-3, 1d-2, 3d-2, 0.1d0, 0.3d0, 0.9d0]
   real*8 :: ithr(1),ijop(1),ionn(1),exn(nx),eps(nx),fh,ni(1),nexc(nx),fi,fe,sh,si,se,dmax,w0
-  real*8 :: fh1,fh2
-  real*8,allocatable :: sigi(:,:),sige(:,:)
+  real*8 :: fh1,fh2,lyfp(nx),whe
+  integer :: kx(nx)
+  real*8,allocatable :: sigi(:,:)
   integer :: i,k,nfail
 !
   nfail = 0
@@ -45,6 +46,10 @@ program test_nontherm
   write(*,'(a,f7.4,a,f7.4)') '  heating share at x_e = 0.01 with 0.5 eV bins',fh1,', 1 eV bins',fh2
   write(*,'(a,f6.3)') '  largest difference from Shull & van Steenberg:',dmax
   if(dmax > 0.1d0 .or. abs(w0/36.3d0 - 1d0) > 0.1d0 .or. abs(fh1-fh2) > 0.01d0) nfail = nfail + 1
+!-- neutral helium
+  call he_run(whe)
+  write(*,'(a,f6.1,a)') '  work per ion pair of neutral helium',whe,' eV (measured 41.3-42.3 eV; Dalgarno et al. 1999: 46 eV)'
+  if(whe < 38d0 .or. whe > 50d0) nfail = nfail + 1
   if(nfail > 0) then
      write(*,'(a)') 'test_nontherm: FAILED'
      stop 1
@@ -54,13 +59,14 @@ contains
   subroutine setup(de)
     real*8,intent(in) :: de
     call nt_grid(3000d0,de)
-    if(allocated(sigi)) deallocate(sigi,sige)
-    allocate(sigi(nt_ne,1),sige(nt_ne,nx))
+    if(allocated(sigi)) deallocate(sigi)
+    allocate(sigi(nt_ne,1))
     call nt_arfit(13.6d0,22.8d0,-12.0d0,1.9d0,-22.6d0,sigi(:,1))
     do k=1,nx
        eps(k) = 13.6d0*(1d0 - 1d0/(k+1)**2)
-       call nt_vreg(eps(k),lyf(k),sige(:,k))
     enddo
+    lyfp = lyf
+    kx = nt_kneu
   end subroutine setup
   subroutine run(xe,fheat,fion,fexc)
     real*8,intent(in) :: xe
@@ -69,8 +75,27 @@ contains
     ijop = 8d0
     ionn = 1d9*(1d0 - xe)
     exn = 1d9*(1d0 - xe)
-    call nt_solve(1,ithr,ijop,ionn,sigi,nx,eps,exn,sige,1d9*xe,1d4,3000d0,fheat,ni,nexc)
+    call nt_solve(1,ithr,ijop,ionn,sigi,nx,eps,kx,lyfp,exn,1d9*xe,3000d0,fheat,ni,nexc)
     fion = 13.6d0*ni(1)
     fexc = sum(eps*nexc)
   end subroutine run
+  subroutine he_run(w)
+!-- He I (x_e = 1e-6): ionization by the fit of Arnaud & Rothenflug, the
+!-- allowed 1s2 1S - 1snp 1P lines (n = 2-5) and the forbidden 2 3S, 2 1S
+!-- and 2 3P with constant collision strengths
+    real*8,intent(out) :: w
+    integer,parameter :: nh = 7
+    real*8 :: he(nh),hp(nh),hn(nh),hx(nh),sg(1),fhh
+    integer :: hk(nh)
+    he = [21.218d0, 23.087d0, 23.742d0, 24.046d0, 19.820d0, 20.616d0, 20.964d0]
+    hp = [0.2762d0, 0.0734d0, 0.0302d0, 0.0153d0, 0.068d0, 0.035d0, 0.022d0]
+    hk = [nt_kneu, nt_kneu, nt_kneu, nt_kneu, nt_kom, nt_kom, nt_kom]
+    hn = 1d9
+    call nt_grid(3000d0,0.5d0)
+    deallocate(sigi)
+    allocate(sigi(nt_ne,1))
+    call nt_arfit(24.587d0,17.8d0,-11.0d0,7.0d0,-23.2d0,sigi(:,1))
+    call nt_solve(1,[24.587d0],[0.6d0*24.587d0],[1d9],sigi,nh,he,hk,hp,hn,1d3,3000d0,fhh,sg,hx)
+    w = 24.587d0/(24.587d0*sg(1))
+  end subroutine he_run
 end program test_nontherm

@@ -9,11 +9,14 @@ subroutine nltex_gas_update(it)
   use gridmod
   use nlteatommod, only:nxa_nel,nxa_el
   use nltextrmod
-  use mpimod, only:lmpi0
-  use inputparmod, only:in_nltex_ali,in_nltex_ldb
+  use mpimod, only:lmpi0,impi
+  use inputparmod, only:in_nltex_ali,in_nltex_ldb,in_nt_lumg,in_srctype
+  use sourcemod, only:src_tsh
+  use nltentmod, only:nxn_on,nxn_sloc
   implicit none
   integer,intent(in) :: it
   integer :: i,l,iel
+  character(32) :: fname
   real*8 :: nelv(nxa_nel,gas_ncell),neoth(gas_ncell),qb(gas_ncell),qv(gas_ncell)
   real*8 :: edep(gas_ncell),dr(gas_ncell),vel(gas_ncell)
 !
@@ -41,6 +44,10 @@ subroutine nltex_gas_update(it)
      edep(i) = 0d0
      if(it>1 .and. nxt_have_mc .and. gas_mass(i)>0d0) &
           edep(i) = nxt_ntdep(nxt_ng,nxt_nug,nxt_dnug,nxt_jg(:,l),gas_cap(:,i))
+!-- and the share in_nt_lumg of the injected energy (radioactive decay)
+     if(nxn_on .and. in_nt_lumg>0d0 .and. in_srctype=='lumg' .and. gas_mass(i)>0d0) then
+        if(src_tsh(l)<=0d0) edep(i) = edep(i) + in_nt_lumg*grd_emit(l)/gas_volcl(i)
+     endif
   enddo
   if(in_nltex_ali .or. in_nltex_ldb>0d0) then
      call nxt_gas_solve(it,gas_ncell,gas_temp,gas_radtemp,nelv,neoth,qb,qv,gas_icell1,edep, &
@@ -52,6 +59,17 @@ subroutine nltex_gas_update(it)
        '): largest change of a state above 1e-4 per cell, median',nxt_dxstat(1),', max',nxt_dxstat(2),' (rank 0)'
   if(lmpi0 .and. it>1 .and. nxt_have_mc .and. nxt_dmpsec) write(6,'(1x,a,f6.3,a,f6.3)') &
        'NLTE damping (in_nltex_dmpsec): weight of the new solution, median',nxt_dmpstat(1),', smallest',nxt_dmpstat(2)
+!-- (fast electrons: the shares of their energy in each cell)
+  if(nxn_on) then
+     write(fname,'(a,i4.4)') 'output.nltex_nt_',impi
+     open(42,file=fname,status='replace')
+     write(42,'(a,i3)') '# fast electrons (Spencer-Fano): shares of their energy, iteration',it
+     write(42,'(a)') '#  cell   edep[erg/s/cm^3]   heat      ionization  excitation'
+     do i=1,gas_ncell
+        write(42,'(i7,es14.4,3f12.5)') gas_icell1+i-1,edep(i),nxn_sloc(:,i)
+     enddo
+     close(42)
+  endif
 !-- electrons per atom
   do i=1,gas_ncell
      if(gas_mass(i)<=0d0) cycle

@@ -16,7 +16,9 @@
 #             'wi' (default; those missing from Opacity-Project cross-sections),
 #             'auto,wi', 'auto' or 'none'; DIE_FILE another file name of the
 #             data set (htdr_data), VSM_DIE the smoothing velocity (1000 km/s)
-# select other atoms.
+# select other atoms.  The directory also gets chgexch.dat (charge exchange)
+# and nt_ar.dat (subshell ionization by fast electrons) when the data set
+# has them.
 set -e
 here=$(cd "$(dirname "$0")" && pwd)
 A=${1:?CMFGEN atomic data directory (the one containing HYD, HE, CARB, ...)}
@@ -119,3 +121,6 @@ done
 # chgexch.dat from the model-atom directory, see in_nltex_chgexch)
 cx="$A/misc/chg_exch_data.30oct14"
 [ -f "$cx" ] && python3 -I "$here/cmfgen2superlite_chgexch.py" "$cx" "$out/chgexch.dat"
+# subshell ionization cross-sections for the non-thermal electrons
+# (SuperLite reads nt_ar.dat from the model-atom directory, see in_nt_sf)
+ls "$A"/misc/arnaud_rothenflug_* >/dev/null 2>&1 && python3 -I "$here/cmfgen2superlite_nt.py" "$A" "$out/nt_ar.dat"

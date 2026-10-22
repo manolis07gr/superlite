@@ -33,6 +33,7 @@ program superlite
   use nltedismod, only:nxd_on,nxd_setup
   use bbsobmod
   use tebalmod, only:te_damp,te_ntemin,te_zsolve
+  use nltentmod, only:nxn_on,nxn_emax,nxn_de,nxn_init
   use shockciemod, only:shc_read,shc_setup,shc_nel,shc_elz
 
   implicit none
@@ -276,6 +277,15 @@ program superlite
      endif
      nxt_tau0 = in_nlteh_tau0
      nxt_ntemin = in_nt_emin*pc_ev
+!-- fast electrons: Spencer-Fano degradation with all NLTE species
+     if(in_nt_sf) then
+        nxn_on = .true.
+        nxn_emax = in_nt_sfemax
+        nxn_de = in_nt_sfde
+        call nxn_init(in_nltex_dir,grd_ncell,ncell,lmpi0)
+        if(lmpi0 .and. in_nt_lumg>0d0) write(6,'(1x,a,f6.3,a)') 'fast electrons deposit',in_nt_lumg, &
+             ' of the lumg energy of each cell (in_nt_lumg)'
+     endif
      if(lmpi0) then
         write(6,'(1x,a,i3,a,i3,a,i6,a,i6,a)') 'NLTE:',nxa_nel,' elements,',nxa_nion,' ions,', &
              nxa_nst,' states,',nxa_nlin,' lines (Sobolev resonances, macro-atom)'

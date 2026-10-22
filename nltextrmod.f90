@@ -51,6 +51,7 @@ module nltextrmod
   use nltexmod
   use nltedismod
   use nltehmod, only:bplanck,nlteh_twophoton_y,nlteh_svs
+  use nltentmod, only:nxn_on,nxn_rates,nxn_done,nxn_pick
   use randommod
   implicit none
   private
@@ -761,6 +762,11 @@ subroutine nxt_gas_solve(it,gncell,temp,trad,nelv,neoth,qb,qv,icell1,edep,kap,fc
 !-- with nxt_hold)
      if(nxt_warm .and. (it==1 .or. .not.nxt_have_mc .or. nxt_hold)) then
         nxt_neloc(i) = neoth(i) + free_el(nelv(:,i),nxt_xloc(:,i))
+!-- (the deposition channels of the fast electrons all the same)
+        if(nxn_on) then
+           call nxn_rates(i,nelv(:,i),nxt_xloc(:,i),nxt_neloc(i),temp(i),edep(i),nti)
+           call nxn_done
+        endif
         cycle
      endif
      if(it==1 .or. .not.nxt_have_mc) then
@@ -791,7 +797,14 @@ subroutine nxt_gas_solve(it,gncell,temp,trad,nelv,neoth,qb,qv,icell1,edep,kap,fc
         endif
      endif
      xold = x
-     call nxt_ntrates(nelv(:,i),x,edep(i),nti,ntx)
+!-- fast electrons: Spencer-Fano with all NLTE species (nltentmod), or the
+!-- shares of Shull & van Steenberg for H and He
+     if(nxn_on) then
+        call nxn_rates(i,nelv(:,i),x,neoth(i)+free_el(nelv(:,i),x),temp(i),edep(i),nti)
+        ntx = 0d0
+     else
+        call nxt_ntrates(nelv(:,i),x,edep(i),nti,ntx)
+     endif
 !-- (level dissolution: the cell's parameters with the populations from
 !-- which the solution starts)
      nx_dis = 0d0
@@ -836,6 +849,7 @@ subroutine nxt_gas_solve(it,gncell,temp,trad,nelv,neoth,qb,qv,icell1,edep,kap,fc
              nxt_nug,nxt_dnug,jg,jb,ljb,nti,ntx,x,ne,beta,ierr)
      endif
      call nxt_ali_off
+     if(nxn_on) call nxn_done
      nx_vtb = -1d0
      nx_dis = 0d0
 !-- (diagnostics: the net flows into the ground state of H [1/s per H
@@ -2550,14 +2564,27 @@ end subroutine nxt_activate_line
 !
 !
 pure subroutine nxt_nonthermal(ic,state,kind,idx,wlc)
-!-- energy of a fast photoelectron in cell ic: heat (k-packet), ionization
-!-- (macro-atom in the continuum) or excitation of H I and He I with the
-!-- Shull & van Steenberg (1985) shares
+!-- energy of a fast electron in cell ic: heat (k-packet), ionization
+!-- (macro-atom in the continuum) or excitation, with the shares of the
+!-- Spencer-Fano solution of the cell (nltentmod), or for H I and He I
+!-- those of Shull & van Steenberg (1985)
   integer,intent(in) :: ic
   type(rnd_t),intent(inout) :: state
   integer,intent(out) :: kind,idx
   real*8,intent(out) :: wlc
   real*8 :: fh,fih,feh,fihe,fehe,r,xion
+  integer :: iel,s
+!-- (Spencer-Fano with all NLTE species: the channel shares of the cell)
+  if(nxn_on) then
+     call rnd_r(r,state)
+     call nxn_pick(ic,r,iel,s)
+     if(iel==0) then
+        call nxt_kpacket(ic,state,kind,idx,wlc)
+     else
+        call nxt_activate(ic,iel,s,state,kind,idx,wlc)
+     endif
+     return
+  endif
   if(nxt_elh==0) then
      call nxt_kpacket(ic,state,kind,idx,wlc)
      return

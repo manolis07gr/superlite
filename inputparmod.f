@@ -301,6 +301,18 @@ c-- photons above in_nt_emin [eV] absorbed by the gas make fast
 c-- photoelectrons that ionize and excite H (Shull & van Steenberg 1985;
 c-- requires in_nlteh); 0: all absorbed energy heats the gas
       real*8 :: in_nt_emin = 0d0
+c-- the energy of fast electrons (in_nt_emin, in_nt_lumg) shared among
+c-- heating, ionization and excitation of all NLTE species by the
+c-- Spencer-Fano degradation of electrons injected at in_nt_sfemax [eV] on
+c-- a grid of in_nt_sfde [eV] (nltentmod); f: Shull & van Steenberg's
+c-- shares for H I and He I
+      logical :: in_nt_sf = .false.
+      real*8 :: in_nt_sfemax = 1000d0
+      real*8 :: in_nt_sfde = 1d0
+c-- share of the 'lumg' energy injected in a cell that is deposited by
+c-- fast electrons (gamma-rays and positrons of radioactive decay; needs
+c-- in_nt_sf), the rest is thermal
+      real*8 :: in_nt_lumg = 0d0
 c-- free-free opacity with each element as a fully ionized atom of
 c-- charge Z (released code) instead of its ions from the EOS
       logical :: in_fflegacy = .false.
@@ -371,7 +383,8 @@ c-- runtime parameter namelist
      & in_bbsobolev,in_bbeps,in_rayleigh,in_tesolve,in_te_damp,
      & in_te_zsolve,
      & in_tion,
-     & in_nt_emin,in_fflegacy,
+     & in_nt_emin,in_nt_sf,in_nt_sfemax,in_nt_sfde,in_nt_lumg,
+     & in_fflegacy,
 !phys opac
      & in_opacmixrossel,
      & in_nobbopac,in_nobfopac,in_noffopac,in_nothmson,
@@ -536,6 +549,10 @@ c
       call inserti(in_te_zsolve,in_i,ii)
       call insertc(in_tion,in_c,ic)
       call insertr(in_nt_emin,in_r,ir)
+      call insertl(in_nt_sf,in_l,il)
+      call insertr(in_nt_sfemax,in_r,ir)
+      call insertr(in_nt_sfde,in_r,ir)
+      call insertr(in_nt_lumg,in_r,ir)
       call insertl(in_fflegacy,in_l,il)
       call insertl(in_nobbopac,in_l,il)
       call insertl(in_nobfopac,in_l,il)
@@ -739,6 +756,11 @@ c
        if(in_nltex_dtprev<=0d0) stop 'in_nltex_dtprev: must be > 0'
       endif
       if(in_nt_emin>0d0.and..not.in_nltex) stop 'in_nt_emin: NLTE'
+      if(in_nt_sf.and..not.in_nltex) stop 'in_nt_sf: NLTE'
+      if(in_nt_lumg>0d0.and..not.in_nt_sf) stop 'in_nt_lumg: in_nt_sf'
+      if(in_nt_lumg>0d0.and.in_srctype/='lumg')
+     &  stop 'in_nt_lumg: in_srctype=lumg'
+      if(in_nt_lumg<0d0.or.in_nt_lumg>1d0) stop 'in_nt_lumg: [0,1]'
       if(in_nltex_hold.and.trim(in_nltex_init)=='none')
      &  stop 'in_nltex_hold: needs in_nltex_init'
       if(in_nltex_jbwin<0d0) stop 'in_nltex_jbwin < 0'

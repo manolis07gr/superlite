@@ -32,6 +32,7 @@ module nltexmod
   use nltedismod
   use nltehmod, only:nlteh_beta,bplanck
   use elemdatamod, only:elem_data
+  use nltentmod, only:nxn_xn,nxn_xl,nxn_xu,nxn_xr
   implicit none
   private
   real*8,parameter :: pi = 3.141592653589793d0
@@ -1181,7 +1182,10 @@ subroutine nx_el_matrix(iel,ne,r,jl,beta,nti,ntx,m)
 ! and escape probability of the element's lines (in the order of the
 ! global list); nti(s), ntx(s): non-thermal ionization of s and excitation
 ! from s (its lowest level) into the upper level of the strongest line
-! from there [1/s].  Lines within a super-level drop out.
+! from there [1/s]; and the non-thermal excitations between states of the
+! Spencer-Fano solution of the cell (nltentmod nxn_xl, nxn_xu, nxn_xr,
+! global states, per particle of the lower one).  Lines within a
+! super-level drop out.
 !-----------------------------------------------------------------------
   integer,intent(in) :: iel
   real*8,intent(in) :: ne
@@ -1252,6 +1256,14 @@ subroutine nx_el_matrix(iel,ne,r,jl,beta,nti,ntx,m)
            if(u/=s) m(u,s) = m(u,s) + ntx(s)
         endif
      enddo
+  enddo
+!-- non-thermal excitation of the Spencer-Fano solution
+  o = nxa_el(iel)%xoff
+  do k=1,nxn_xn
+     l = nxn_xl(k) - o
+     u = nxn_xu(k) - o
+     if(l<1 .or. l>ns .or. u<1 .or. u>ns) cycle
+     m(u,l) = m(u,l) + nxn_xr(k)
   enddo
   do s=1,ns
      m(s,s) = 0d0

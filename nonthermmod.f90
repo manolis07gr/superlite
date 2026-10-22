@@ -15,21 +15,27 @@ module nonthermmod
 !  - ionization p (threshold I): the primary to E - I - e and the
 !    secondary to e, e in [0, (E-I)/2] with the distribution of Opal,
 !    Peterson & Beaty (1971), 1/(1 + (e/J)^2), integrated over each bin;
-!  - Coulomb losses to the thermal electrons, n_e (2 pi e^4/E)
-!    ln(4E/zeta), zeta = 7.40e-11 (n_e/T_e)^1/2 eV (Xu & McCray 1991), as
-!    a flux in energy (upwind).
+!  - Coulomb losses to the thermal electrons, n_e (2 pi e^4/E) ln(2E/xi),
+!    xi = hbar omega_p the plasma energy, and below 14 eV
+!    ln(m v^3/(gamma e^2 omega_p)) (Kozma & Fransson 1992; as CMFGEN), as a
+!    flux in energy (upwind).
 ! Electrons that fall below the grid, and the Coulomb losses, heat.
 ! Cross-sections: Lotz (1967) for the subshells of an ion, 4.5e-14 q
 ! ln(E/I)/(E I) cm^2 (10-15 % above the measured ones for H I), or the
-! fits of Arnaud & Rothenflug (1985) where known; the effective Gaunt
-! factor form of van Regemorter
-! (1962) for allowed excitations, (8 pi/sqrt 3) pi a0^2 (R^2/(E eps)) f g,
-! g = max(0.2, (sqrt 3/2 pi) ln(E/eps)).
+! subshell fits of Arnaud & Rothenflug (1985); excitation (nt_xsec) by the
+! effective Gaunt factor form of van Regemorter (1962) for allowed
+! transitions, (8 pi^2/sqrt 3) a0^2 (R^2/(E eps)) f g(E/eps), with g of
+! neutral atoms (0 at the threshold) or of ions (0.2 near it), or with a
+! collision strength constant in energy, pi a0^2 (R/E) Omega/g_l, for the
+! forbidden ones (as CMFGEN's non-thermal solver).
 !-----------------------------------------------------------------------
   implicit none
   private
-  public :: nt_grid, nt_lotz, nt_arfit, nt_vreg, nt_solve
+  public :: nt_grid, nt_lotz, nt_arfit, nt_xsec, nt_gbar, nt_solve
   public :: nt_ne, nt_de, nt_e
+!-- kinds of excitation: allowed in a neutral atom, allowed in an ion,
+!-- constant collision strength
+  integer,parameter,public :: nt_kneu = 1, nt_kion = 2, nt_kom = 3
 !
   integer :: nt_ne = 0
   real*8 :: nt_de = 1d0
@@ -37,8 +43,12 @@ module nonthermmod
 !
   real*8,parameter :: a0 = 5.29177210903d-9, ryd = 13.605693122994d0
   real*8,parameter :: pi = 3.1415926535897932d0
+  real*8,parameter :: qe = 4.80320471d-10, evg = 1.602176634d-12, mel = 9.1093837d-28
+  real*8,parameter :: hbar = 1.054571817d-27, eulg = 0.5772156649d0
 !-- 2 pi e^4 [eV^2 cm^2]
-  real*8,parameter :: e4 = 2d0*pi*(4.80320471d-10)**4/(1.602176634d-12)**2
+  real*8,parameter :: e4 = 2d0*pi*qe**4/evg**2
+!-- van Regemorter: (8 pi^2/sqrt 3) a0^2 R^2 [cm^2 eV^2]
+  real*8,parameter :: cvr = 8d0*pi*pi/sqrt(3d0)*a0*a0*ryd*ryd
 !
 contains
 !
@@ -91,56 +101,89 @@ pure subroutine nt_arfit(thr,a,b,c,d,sig)
 end subroutine nt_arfit
 !
 !
-pure subroutine nt_vreg(eps,f,sig)
-!-- excitation cross-section of an allowed transition of energy eps [eV] and
-!-- absorption oscillator strength f (van Regemorter 1962)
-  real*8,intent(in) :: eps,f
-  real*8,intent(out) :: sig(nt_ne)
-  integer :: i
-  real*8 :: g
-  sig = 0d0
-  do i=1,nt_ne
-     if(nt_e(i) <= eps) cycle
-     g = max(0.2d0,sqrt(3d0)/(2d0*pi)*log(nt_e(i)/eps))
-     sig(i) = 8d0*pi/sqrt(3d0)*pi*a0**2*ryd**2/(nt_e(i)*eps)*f*g
-  enddo
-end subroutine nt_vreg
+pure function nt_gbar(kind,u) result(g)
+!-- effective Gaunt factor of an allowed excitation at E = u eps (van
+!-- Regemorter 1962), as a function of x = sqrt(u - 1): x (1 + x) 0.074
+!-- near the threshold of a neutral atom, 0.2 near that of an ion (up to
+!-- x = 1.2212, where the two meet), a quadratic in x up to x = 6, and the
+!-- Bethe limit (sqrt 3/2 pi) ln u above
+  integer,intent(in) :: kind
+  real*8,intent(in) :: u
+  real*8 :: g,x2,x
+  g = 0d0
+  x2 = u - 1d0
+  if(x2 <= 0d0) return
+  if(kind==nt_kion .and. x2 <= 1.4913889d0) then
+     g = 0.2d0
+  elseif(x2 <= 0.64d0) then
+     x = sqrt(x2)
+     g = 0.074d0*x*(1d0 + x)
+  elseif(x2 <= 36d0) then
+     x = sqrt(x2)
+     g = -0.0745397d0 + x*(0.232715d0 - 0.00647558d0*x)
+  else
+     g = 0.105d0 + log(x2)/3.6276d0
+  endif
+  g = max(g,0d0)
+end function nt_gbar
 !
 !
-subroutine nt_solve(nion,ithr,ijop,ion_n,ion_sig,nexc,xeps,exc_n,exc_sig,ne,te,e0,fheat,nion_ev,nexc_ev)
+pure function nt_xsec(kind,eps,par,e) result(s)
+!-- excitation cross-section [cm^2] at electron energy e [eV] of a
+!-- transition of energy eps [eV]: allowed (kind nt_kneu, nt_kion; par =
+!-- the absorption oscillator strength f) or with the constant collision
+!-- strength (nt_kom; par = Omega/g_l)
+  integer,intent(in) :: kind
+  real*8,intent(in) :: eps,par,e
+  real*8 :: s
+  s = 0d0
+  if(e <= eps .or. eps <= 0d0) return
+  if(kind==nt_kom) then
+     s = pi*a0*a0*ryd/e*par
+  else
+     s = cvr*par/(e*eps)*nt_gbar(kind,e/eps)
+  endif
+end function nt_xsec
+!
+!
+subroutine nt_solve(nion,ithr,ijop,ion_n,ion_sig,nexc,xeps,xkind,xpar,exc_n,ne,e0,fheat,nion_ev,nexc_ev)
 !-----------------------------------------------------------------------
 ! One electron injected at e0 (<= the top of the grid): the share of its
 ! energy that heats (fheat; the rest goes into ionization and excitation)
 ! and the ionizations and excitations of each process per eV of injected
 ! energy (nion_ev, nexc_ev).  Processes: nion ionizations (threshold ithr
 ! [eV], Opal width ijop [eV], density ion_n of the ion [cm^-3], cross-
-! section ion_sig on the grid [cm^2]) and nexc excitations (energy xeps,
-! density exc_n of the lower level, cross-section exc_sig); the thermal
-! electrons ne [cm^-3] at te [K].  Only ratios of the densities matter.
+! section ion_sig on the grid [cm^2]) and nexc excitations (energy xeps
+! [eV], kind xkind and parameter xpar of nt_xsec, density exc_n of the
+! lower level); the thermal electrons ne [cm^-3].  A process with zero
+! density is left out.
 !-----------------------------------------------------------------------
   integer,intent(in) :: nion,nexc
   real*8,intent(in) :: ithr(nion),ijop(nion),ion_n(nion),ion_sig(nt_ne,nion)
-  real*8,intent(in) :: xeps(nexc),exc_n(nexc),exc_sig(nt_ne,nexc)
-  real*8,intent(in) :: ne,te,e0
+  real*8,intent(in) :: xeps(nexc),xpar(nexc),exc_n(nexc)
+  integer,intent(in) :: xkind(nexc)
+  real*8,intent(in) :: ne,e0
   real*8,intent(out) :: fheat,nion_ev(nion),nexc_ev(nexc)
-  real*8 :: y(nt_ne),arr(nt_ne),stot(nt_ne),coul(nt_ne),zeta,cfl,num,emax,an,ea,eb,pa,pb,de
-  integer :: i,k,p,i0,ka,kb
+  real*8 :: y(nt_ne),arr(nt_ne),stot(nt_ne),coul(nt_ne),cfl,num,emax,an,ea,eb,pa,de,st
+  real*8 :: sx(nexc),da(nt_ne/2+1,nion)
+  integer :: i,k,p,i0,kb
   real*8 :: fion,fexc
 !
   de = nt_de
   i0 = min(max(int(e0/de + 0.5d0),1),nt_ne)
-!-- collision rate per unit path at each energy, and the Coulomb loss
+!-- ionization rate per unit path at each energy, the Coulomb loss, and
+!-- the Opal integrals over the full bins of the secondary energy,
+!-- atan((k+1/2) de/J) - atan((k-1/2) de/J) (from 0 for k = 1)
   stot = 0d0
   do p=1,nion
+     if(ion_n(p) <= 0d0) cycle
      stot = stot + ion_n(p)*ion_sig(:,p)
+     da(1,p) = atan(1.5d0*de/ijop(p))
+     do k=2,size(da,1)
+        da(k,p) = atan((k+0.5d0)*de/ijop(p)) - atan((k-0.5d0)*de/ijop(p))
+     enddo
   enddo
-  do p=1,nexc
-     stot = stot + exc_n(p)*exc_sig(:,p)
-  enddo
-  zeta = 7.40d-11*sqrt(max(ne,1d-30)/max(te,1d0))
-  do i=1,nt_ne
-     coul(i) = ne*e4/nt_e(i)*log(max(4d0*nt_e(i)/zeta,1.0001d0))
-  enddo
+  call nt_coulomb(ne,coul)
 !
   y = 0d0
   arr = 0d0
@@ -150,34 +193,46 @@ subroutine nt_solve(nion,ithr,ijop,ion_n,ion_sig,nexc,xeps,exc_n,exc_sig,ne,te,e
   do i=i0,1,-1
      cfl = 0d0
      if(i < i0) cfl = coul(i+1)*y(i+1)
+!-- the excitation rates at this energy
+     st = stot(i)
+     do p=1,nexc
+        sx(p) = 0d0
+        if(exc_n(p) <= 0d0 .or. nt_e(i) <= xeps(p)) cycle
+        sx(p) = exc_n(p)*nt_xsec(xkind(p),xeps(p),xpar(p),nt_e(i))
+        st = st + sx(p)
+     enddo
 !-- y de (stot + coul/de) = arrivals + the Coulomb flux from above
-     y(i) = (arr(i) + cfl)/(de*stot(i) + coul(i))
+     y(i) = (arr(i) + cfl)/(de*st + coul(i))
      if(i == 1) exit
 !-- excitations: to E - eps
      do p=1,nexc
-        num = exc_n(p)*exc_sig(i,p)*y(i)*de
-        if(num <= 0d0) cycle
+        if(sx(p) <= 0d0) cycle
+        num = sx(p)*y(i)*de
         nexc_ev(p) = nexc_ev(p) + num
         call push(nt_e(i)-xeps(p),num)
      enddo
 !-- ionizations: the primary to E - I - e, the secondary to e
      do p=1,nion
+        if(ion_n(p) <= 0d0 .or. nt_e(i) <= ithr(p)) cycle
         num = ion_n(p)*ion_sig(i,p)*y(i)*de
-        if(num <= 0d0 .or. nt_e(i) <= ithr(p)) cycle
+        if(num <= 0d0) cycle
         nion_ev(p) = nion_ev(p) + num
         emax = 0.5d0*(nt_e(i) - ithr(p))
         an = atan(emax/ijop(p))
-!-- the secondary energy in the bins [k-1/2, k+1/2] de (clipped to [0, emax]);
-!-- each piece pushed at its mean energy (the bin centre, or the clipped
-!-- interval's centre)
-        ka = 1
+!-- the secondary energy in the bins [k-1/2, k+1/2] de (from 0 in the first,
+!-- clipped to emax in the last); each piece pushed at its mean energy
         kb = max(int(emax/de + 0.5d0),1)
-        do k=ka,kb
-           ea = max((k-0.5d0)*de,0d0)
-           if(k == ka) ea = 0d0
-           eb = min((k+0.5d0)*de,emax)
-           if(eb <= ea) cycle
-           pa = (atan(eb/ijop(p)) - atan(ea/ijop(p)))/an
+        do k=1,kb
+           ea = (k-0.5d0)*de
+           if(k == 1) ea = 0d0
+           eb = (k+0.5d0)*de
+           if(eb < emax) then
+              pa = da(k,p)/an
+           else
+              eb = emax
+              if(eb <= ea) cycle
+              pa = (an - atan(ea/ijop(p)))/an
+           endif
            call push(0.5d0*(ea+eb),num*pa)
            call push(nt_e(i)-ithr(p)-0.5d0*(ea+eb),num*pa)
         enddo
@@ -217,6 +272,29 @@ contains
     arr(kk+1) = arr(kk+1) + w*nn
   end subroutine push
 end subroutine nt_solve
+!
+!
+pure subroutine nt_coulomb(ne,coul)
+!-- energy loss per unit path to the thermal electrons [eV/cm] on the grid:
+!-- n_e (2 pi e^4/E) ln(2E/(hbar omega_p)) at E >= 14 eV, below that
+!-- ln(m v^3/(gamma e^2 omega_p)), gamma = 0.5772 (Kozma & Fransson 1992)
+  real*8,intent(in) :: ne
+  real*8,intent(out) :: coul(nt_ne)
+  real*8 :: wp,xi,v,e,lg
+  integer :: i
+  wp = sqrt(4d0*pi*max(ne,1d-30)*qe*qe/mel)
+  xi = hbar*wp/evg
+  do i=1,nt_ne
+     e = nt_e(i)
+     if(e >= 14d0) then
+        lg = log(2d0*e/xi)
+     else
+        v = sqrt(2d0*e*evg/mel)
+        lg = log(mel*v**3/(eulg*qe*qe*wp))
+     endif
+     coul(i) = ne*e4/e*max(lg,1d-3)
+  enddo
+end subroutine nt_coulomb
 !
 end module nonthermmod
 ! vim: fdm=marker

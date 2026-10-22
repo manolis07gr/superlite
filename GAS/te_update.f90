@@ -16,12 +16,13 @@ subroutine te_update(it)
   use nltexmod, only:nx_solve_cell,nx_jline,nx_vtb
   use nltextrmod
   use tebalmod
+  use nltentmod, only:nxn_on,nxn_rates,nxn_done,nxn_fhc
   use xraysrcmod, only:xs_on,xs_px
   use mpimod, only:lmpi0,impi
   implicit none
   integer,intent(in) :: it
   integer :: i,l,ierr,nfail,iel,k
-  real*8 :: neoth,qb,qv,gext,tnew,dmax,dmin,edep,ne,tsol
+  real*8 :: neoth,qb,qv,gext,tnew,dmax,dmin,edep,ne,tsol,edl
   real*8 :: nel(nxa_nel),x(nxa_nst),nti(nxa_nst),ntx(nxa_nst),beta(nxa_nlin),terms(te_nterm)
   real*8 :: jl(nxa_nlin)
   real*4 :: capabs(nxt_ng)
@@ -83,8 +84,20 @@ subroutine te_update(it)
      endif
      gext = max(gext,0d0)
 !-- fast photoelectrons: non-thermal ionization and excitation of H and He
+!-- (Shull & van Steenberg), or of all NLTE species (Spencer-Fano,
+!-- nltentmod) with the share in_nt_lumg of the injected energy, of which
+!-- only the heat share heats
      edep = nxt_ntdep(nxt_ng,nxt_nug,nxt_dnug,nxt_jg(:,l),gas_cap(:,i))
-     call nxt_ntrates(nel,nxt_xloc(:,i),edep,nti,ntx)
+     if(nxn_on) then
+        edl = 0d0
+        if(in_nt_lumg>0d0 .and. in_srctype=='lumg' .and. src_tsh(l)<=0d0) &
+             edl = in_nt_lumg*grd_emit(l)/gas_volcl(i)
+        call nxn_rates(i,nel,nxt_xloc(:,i),nxt_neloc(i),gas_temp(i),edep+edl,nti)
+        ntx = 0d0
+        gext = max(gext - (1d0 - nxn_fhc)*edl,0d0)
+     else
+        call nxt_ntrates(nel,nxt_xloc(:,i),edep,nti,ntx)
+     endif
 !-- absorption by the LTE elements (NLTE bound-free is in the NLTE terms)
      capabs = gas_cap(:,i) - gas_capnbf(:,i)
 !-- (accelerated lambda iteration of the bound-free transitions)
@@ -132,6 +145,7 @@ subroutine te_update(it)
         write(41,'(i7,2f12.1,6es12.4)') l,tnew,gas_temp(i),terms
      endif
      call nxt_ali_off
+     if(nxn_on) call nxn_done
      nx_vtb = -1d0
      dmax = max(dmax,tnew/gas_temp(i))
      dmin = min(dmin,tnew/gas_temp(i))

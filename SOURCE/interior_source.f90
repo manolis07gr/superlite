@@ -41,7 +41,7 @@ subroutine interior_source!(it)
 !-- lumg source: emission with the local emissivity (macro-atom with NLTE H)
   integer :: kind,idx
   real*8 :: wlc,thelp
-  logical :: lxr,lrel
+  logical :: lxr,lrel,lnt
   type(packet),pointer :: ptcl
 !-- statement functions
   integer :: l
@@ -144,8 +144,17 @@ subroutine interior_source!(it)
                  lrel = r1<nxt_prel(l)
               endif
            endif
+!-- (the share in_nt_lumg deposited by fast electrons: heat, ionization or
+!-- excitation by the Spencer-Fano shares of the cell)
+           lnt = .false.
+           if(.not.lrel .and. in_nt_lumg>0d0) then
+              call rnd_r(r1,rnd_state)
+              lnt = r1<in_nt_lumg
+           endif
            if(lrel) then
               call nxt_activate_rel(l,rnd_state,kind,idx,wlc)
+           elseif(lnt) then
+              call nxt_nonthermal(l,rnd_state,kind,idx,wlc)
            else
               call nxt_kpacket(l,rnd_state,kind,idx,wlc)
            endif

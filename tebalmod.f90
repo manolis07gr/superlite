@@ -30,8 +30,9 @@ module tebalmod
 !  * heating not carried by the radiation field: energy injected in the
 !    cell outside shocks ('lumg' source)
 !  * photons above te_ntemin make fast photoelectrons: only the heat share
-!    fh (Shull & van Steenberg 1985) of their absorption heats the gas, the
-!    rest ionizes and excites H and He (rates nti, ntx in the populations)
+!    fh (Shull & van Steenberg 1985, or the Spencer-Fano solution of the
+!    cell, nltentmod) of their absorption heats the gas, the rest ionizes
+!    and excites H and He, or all NLTE species (rates in the populations)
 !
 ! f is bracketed in log T (steps of 5, 10, 20, 30 % ... from the old
 ! temperature) and the root found by secant steps (Illinois) to 0.1 %;
@@ -48,6 +49,7 @@ module tebalmod
   use nltedismod
   use nltexmod, only:nx_solve_cell,nx_cx_heat,nx_jline,nx_ovl_cell,nx_ovl_keep,nxo_npair,nx_dis
   use nltextrmod, only:nxt_shares,nxt_elh,nxt_elhe
+  use nltentmod, only:nxn_on,nxn_fhc
   implicit none
   private
   real*8,parameter :: pi = 3.141592653589793d0
@@ -71,7 +73,13 @@ pure function te_heatshare(nel,x) result(fh)
   real*8,intent(in) :: nel(nxa_nel),x(nxa_nst)
   real*8 :: fh,fih,feh,fihe,fehe,y
   fh = 1d0
-  if(te_ntemin <= 0d0 .or. nxt_elh==0) return
+  if(te_ntemin <= 0d0) return
+!-- (Spencer-Fano with all NLTE species: the heat share of the cell)
+  if(nxn_on) then
+     fh = nxn_fhc
+     return
+  endif
+  if(nxt_elh==0) return
   y = 0d0
   if(nxt_elhe>0 .and. nel(nxt_elh)>0d0) y = 12d0*nel(nxt_elhe)/nel(nxt_elh)
   call nxt_shares(x(nxa_el(nxt_elh)%xoff+nxa_el(nxt_elh)%ns),y,fh,fih,feh,fihe,fehe)
