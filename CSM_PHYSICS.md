@@ -1324,6 +1324,16 @@ Ca and C in O-rich gas.
 
 ## 5. Running
 
+Build type: CMake now builds Release (-O3) unless `CMAKE_BUILD_TYPE` is given;
+before, a build without it had no optimization (-O0). On toy01 (t01 atoms, 2
+ranks, 2¹⁸ packets) -O3 takes 1234 s for two iterations against 1820 s at -O0
+(transport 1.43 times, the NLTE update 2 times faster), with identical results
+for the same random numbers. Memory: the per-line arrays of the transport are
+(lines × cells) on every rank; with the super-level atoms of a supernova (3.8×10⁵
+lines, 100 cells) each takes 300 MB. The tallies of `in_nltex_jbwin` and
+`in_nltex_esrates` are allocated only with those options and the MPI sums are
+in place: 3.4 GB per rank instead of 4.5 GB. Plan two such ranks per 8 GB.
+
 ```
 cmake -DUSE_MPI=ON <src> && make
 python3 Tools/stella2superlite_csm.py mesa.day020_post_Lbol_max.data -o run --tau-max 50
