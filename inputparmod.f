@@ -172,6 +172,10 @@ c-- the weight of the new solution 1/(1 - g), g the slope of the solve's
 c-- output against its input along the last step (secant), in [0.1, 1]
 c-- (nltextrmod dmp_weight); f: the fixed weight in_nlteh_damp
       logical :: in_nltex_dmpsec = .false.
+c-- weight of the previous iterations in the Monte Carlo group J of the
+c-- NLTE rates (exponential average against the noise of thin cells; 0:
+c-- none)
+      real*8 :: in_nltex_javg = 0d0
 c-- incident intensity of the Sobolev NLTE lines in the statistical
 c-- equilibrium: path-length estimator of J_nu in a window this wide
 c-- [km/s] next to each line, on the side the comoving frequency of a
@@ -382,7 +386,7 @@ c-- runtime parameter namelist
      & in_srctype,in_shock_dvmin,in_shock_tmax,in_shock_cie,
      & in_nltex_prev,in_nltex_dtprev,in_nltex_init,in_nltex_hold,
      & in_nltex_bbext,in_nltex_cdest,in_nltex_jbbeta,in_nltex_jbwin,
-     & in_nltex_dmpsec,
+     & in_nltex_dmpsec,in_nltex_javg,
      & in_nltex_dis,
      & in_nltex_ali,
      & in_nltex_ldb,in_nltex_vturb,in_nltex_vturbmax,in_nltex_esrates,
@@ -538,6 +542,7 @@ c
       call insertl(in_nltex_cdest,in_l,il)
       call insertl(in_nltex_jbbeta,in_l,il)
       call insertl(in_nltex_dmpsec,in_l,il)
+      call insertr(in_nltex_javg,in_r,ir)
       call insertr(in_nltex_jbwin,in_r,ir)
       call insertl(in_nltex_dis,in_l,il)
       call insertl(in_nltex_esdamp,in_l,il)
@@ -776,6 +781,8 @@ c
       if(in_nt_lumg>0d0.and.in_srctype/='lumg')
      &  stop 'in_nt_lumg: in_srctype=lumg'
       if(in_nt_lumg<0d0.or.in_nt_lumg>1d0) stop 'in_nt_lumg: [0,1]'
+      if(in_nltex_javg<0d0.or.in_nltex_javg>=1d0)
+     &  stop 'in_nltex_javg: [0,1)'
       if(in_lumg_rad<0d0.or.in_nt_lumg+in_lumg_rad>1d0)
      &  stop 'in_lumg_rad: [0,1-in_nt_lumg]'
       if(in_lumg_rad>0d0.and.in_srctype/='lumg')

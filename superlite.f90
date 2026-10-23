@@ -231,6 +231,9 @@ program superlite
      if(lmpi0) write(6,'(1x,a,l2)') 'NLTE lines: continuum destruction of the trapped photons (in_nltex_cdest):',nx_pc_on
      nxt_jbbeta = in_nltex_jbbeta
      nxt_dmpsec = in_nltex_dmpsec
+     nxt_javg = in_nltex_javg
+     if(lmpi0 .and. nxt_javg>0d0) write(6,'(1x,a,f5.2,a)') &
+          'NLTE group J: weight',nxt_javg,' of the previous iterations (in_nltex_javg)'
      if(lmpi0 .and. nxt_dmpsec) write(6,'(1x,a)') 'NLTE populations: adaptive damping between iterations (in_nltex_dmpsec)'
      if(lmpi0) write(6,'(1x,a,l2)') 'NLTE lines: incident intensity weighted by beta(mu)/beta_bar (in_nltex_jbbeta):', &
           nxt_jbbeta

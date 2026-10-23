@@ -99,6 +99,10 @@ module nltextrmod
 !-- (sum of the contributions and of their squares), and the widths to the
 !-- blue and red of each active line (up to the next active line)
   real*8,public :: nxt_jbwin = 0d0
+!-- (nxt_javg: weight of the previous iterations in the group J, an
+!-- exponential average against the Monte Carlo noise; nxt_store_jg)
+  real*8,public :: nxt_javg = 0d0
+  real*8,allocatable :: nxt_jgh(:,:)  !(ng,ncell) the average so far
   real*8,allocatable,public :: nxt_jwsum(:,:),nxt_jwsq(:,:) !(nlin,ncell)
   real*8,allocatable :: nxt_wwb(:),nxt_wwr(:) !(nlin) by active index
 !-- (diagnostics, output.nlteh: Halpha emitted by the macro-atom and absorbed
@@ -1068,6 +1072,13 @@ subroutine nxt_store_jg(ncell,ng,jrad,vol)
   integer :: i
   do i=1,ncell
      nxt_jg(:,i) = jrad(:,i)/(4d0*pi*vol(i)*nxt_dnug)
+!-- (nxt_javg: averaged with the previous iterations, from the second
+!-- estimate of the run on)
+     if(nxt_javg>0d0) then
+        if(allocated(nxt_jgh)) then
+           nxt_jg(:,i) = (1d0-nxt_javg)*nxt_jg(:,i) + nxt_javg*nxt_jgh(:,i)
+        endif
+     endif
 !-- (the Monte Carlo radiation has its tallied angular distribution;
 !-- isotropic without flights)
      if(allocated(nxt_fiso)) then
@@ -1078,6 +1089,10 @@ subroutine nxt_store_jg(ncell,ng,jrad,vol)
         endwhere
      endif
   enddo
+  if(nxt_javg>0d0) then
+     if(.not.allocated(nxt_jgh)) allocate(nxt_jgh(ng,ncell))
+     nxt_jgh = nxt_jg
+  endif
   if(allocated(nxt_jgc)) then
      if(size(nxt_jgc,1)==ng .and. size(nxt_jgc,2)==ncell) nxt_jgc = nxt_jg
   endif
