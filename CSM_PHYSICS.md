@@ -1271,6 +1271,40 @@ the outer layers of toy01 at 19.5 d. A Compton-scattered γ-ray is degraded
 near where it scatters. Without photoabsorption (below ~150 keV in Fe-group
 matter) the deposited share at 41 d is 0.545.
 
+### 4.6 StaNdaRT DDC10: O-rich outer ejecta at 18.7 d
+
+CMFGEN's delayed-detonation model DDC10 of StaNdaRT (`Tools/standart2superlite.py`,
+100 zones from 874 to 30 000 km/s, the ⁵⁶Ni chain decayed to 18.72 d; CMFGEN's
+deposition scaled to its L_bol = 1.35×10⁴³ erg/s, 0.8645 of it through the fast
+electrons), the CMFGEN-like super-level atoms of C I–IV, O I–IV, Ne I–III, Mg I–III,
+Si I–IV, S I–IV, Ca I–IV, Fe I–VI, Co and Ni II–V, 12 iterations (`ddc10_t1`).
+O dominates from 18 000 km/s out (0.57–0.67 by mass), C beyond 24 000 km/s.
+
+| v [km/s] | 3000 | 9000 | 15 000 | 18 000 | 22 000 | 26 000 |
+|---|---|---|---|---|---|---|
+| T_e SuperLite [K] | 20 861 | 15 275 | 9129 | 7662 | 7696 | 7906 |
+| T_e CMFGEN [K] | 19 857 | 12 695 | 9328 | 7801 | 8873 | 8338 |
+| T_e Sedona, SuperNu, URILIGHT [K] | 20 000–22 700 | 12 100–13 600 | 7300–7700 | 5800–6500 | 4900–5700 | 5000–5200 |
+| O III SuperLite | 0.99 | 0.39 | 0.022 | 0.0066 | 0.043 | 0.048 |
+| O III CMFGEN | 0.99 | 0.16 | 0.065 | 0.11 | 0.27 | 0.20 |
+| C III SuperLite | 0.91 | 1.00 | 0.048 | 0.020 | 0.072 | 0.089 |
+| C III CMFGEN | 0.50 | 0.99 | 0.15 | 0.57 | 0.84 | 0.58 |
+| Ca IV SuperLite | 0.094 | 0.0081 | 8.6e-4 | 1.5e-4 | 1.5e-3 | 1.4e-3 |
+| Ca IV CMFGEN | 0.39 | 0.039 | 0.018 | 0.021 | 0.047 | 0.061 |
+
+n_e within 15 % of CMFGEN's everywhere. In the O-rich layers only SuperLite
+and CMFGEN have the higher stages: there the codes without non-thermal
+ionization at this epoch (ARTIS, Sedona, SuperNu, URILIGHT) have O III
+10⁻²⁷–10⁻⁵, Ca IV 10⁻³⁵–10⁻⁶ and C III 10⁻¹⁷–10⁻⁶ beyond 15 000 km/s, so
+these stages come from the fast electrons. SuperLite's are below CMFGEN's by
+2–16 (O III), 3–30 (C III) and 15–140 (Ca IV), with T_e and n_e close to
+CMFGEN's; the fast electrons put 9 % of their energy into ionization there
+and 85 % into heat. Inside, the core is too ionized out to 9000 km/s (Si IV
+0.92 against 0.17, Fe IV 0.96 against 0.30), as toy01's core is too hot.
+Not yet traced: the ionization share of the degradation (CMFGEN's own share
+is not published) and the charge exchange and photoionization of the trace
+Ca and C in O-rich gas.
+
 ## 5. Running
 
 ```
