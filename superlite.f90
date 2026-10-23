@@ -479,6 +479,7 @@ program superlite
         call nxt_store_jg(grd_ncell,grp_ng,grd_jrad,grd_vol)
         call nxt_ldb(grd_ncell,grp_ng,grd_vol,grd_xarr(2:grd_ncell+1)-grd_xarr(1:grd_ncell), &
              grd_tempinv,grd_cap,grd_capemit,grd_planck,grd_spk,grd_nlump,grd_glump)
+        call nxt_fstarved(grd_ncell,grp_ng)
         call nxt_jfill_cells(grd_ncell,grp_ng)
         call nxt_tally_finish(grd_ncell,grd_vol)
 !-- formal integral of the emergent spectrum with the radiation field of the

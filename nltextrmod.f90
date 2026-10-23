@@ -184,9 +184,15 @@ module nltextrmod
 !-- band are chosen with probability q = max(P, min(nxt_fbias P, nxt_fqmax))
 !-- instead of their share P, the packet weighted by P/q, the other channels
 !-- by (1-P)/(1-q) (nxt_bpick); the band of a thin wind no packet would
-!-- reach otherwise
+!-- reach otherwise.  Only in the cells where at least a quarter of the band's
+!-- groups had no flight in the last iteration (nxt_fstarved): elsewhere a
+!-- packet meets thousands of macro-atom events, and the product of its
+!-- weights, of mean 1, is carried by exponentially rare packets (with the
+!-- bias everywhere the emergent luminosity fell to a fifth within an
+!-- iteration of the IIn wind)
   real*8,public :: nxt_fbias = 0d0, nxt_fwl1 = 0d0, nxt_fwl2 = 0d0
-  real*8,parameter :: nxt_fqmax = 0.5d0
+  real*8,parameter :: nxt_fqmax = 0.1d0
+  logical,allocatable :: nxt_fcell(:)         !(ncell) the band is starved in the cell
   logical,allocatable :: nxt_chin(:)          !(nch) the channel emits in the band
   logical,allocatable :: nxt_kin(:)           !(nko)
   real*8,allocatable :: nxt_chp(:,:)          !(nst,ncell) share P of the state's channels in the band
@@ -345,7 +351,8 @@ module nltextrmod
   integer,parameter :: em_ovl = 6
   integer,allocatable :: nxt_och(:)          !(npair) channel of each pair (0: none)
 !
-  public :: nxt_init,nxt_alloc_opt,nxt_jfill_cells,nxt_bpick,nxt_gas_solve,nxt_store_jg,nxt_tally_reset,nxt_tally_finish
+  public :: nxt_init,nxt_alloc_opt,nxt_jfill_cells,nxt_bpick,nxt_fstarved, &
+       nxt_gas_solve,nxt_store_jg,nxt_tally_reset,nxt_tally_finish
   public :: nxt_tables,nxt_neighbors,nxt_activate,nxt_activate_line,nxt_kpacket
   public :: nxt_bfabs,nxt_bfpick,nxt_nonthermal,nxt_ntdep,nxt_ntrates,nxt_write,nxt_bffreq
   public :: nxt_shares,nxt_dealloc,nxt_emcode,nxt_emloc
@@ -2481,6 +2488,15 @@ subroutine nxt_fband(ncell)
      enddo
   endif
   do ic=1,ncell
+     if(.not.allocated(nxt_fcell)) then
+        nxt_chp(:,ic) = 0d0
+        nxt_kp(ic) = 0d0
+        cycle
+     elseif(.not.nxt_fcell(ic)) then
+        nxt_chp(:,ic) = 0d0
+        nxt_kp(ic) = 0d0
+        cycle
+     endif
      do j=1,nst
         nxt_chp(j,ic) = 0d0
         c0 = 0d0
@@ -2502,6 +2518,29 @@ contains
     inband = wl >= nxt_fwl1 .and. wl <= f*nxt_fwl2
   end function inband
 end subroutine nxt_fband
+!
+!
+subroutine nxt_fstarved(ncell,ng)
+!-- (nxt_fbias) the cells where at least a quarter of the groups of the band
+!-- had no flight in this iteration (before nxt_jfill_cells): the emission
+!-- of the next is biased there
+  integer,intent(in) :: ncell,ng
+  integer :: ic,g,n,n0
+  real*8 :: wl
+  if(nxt_fbias <= 1d0) return
+  if(.not.allocated(nxt_fcell)) allocate(nxt_fcell(ncell))
+  do ic=1,ncell
+     n = 0
+     n0 = 0
+     do g=1,ng
+        wl = cc/nxt_nug(g)
+        if(wl < nxt_fwl1 .or. wl > nxt_fwl2) cycle
+        n = n + 1
+        if(nxt_jg(g,ic) <= 0d0) n0 = n0 + 1
+     enddo
+     nxt_fcell(ic) = n > 0 .and. 4*n0 >= n
+  enddo
+end subroutine nxt_fstarved
 !
 !
 pure subroutine nxt_bpick(cum,lin,pin,state,i,wt)

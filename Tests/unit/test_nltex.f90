@@ -143,7 +143,7 @@ contains
   subroutine fbias_tests
 !-- emission biased into a band (nxt_bpick): the weighted frequency of
 !-- each outcome is its probability, the band is chosen with probability
-!-- q = min(nxt_fbias P, 1/2)
+!-- q = min(nxt_fbias P, 1/10)
     integer,parameter :: m = 6, ns = 2000000
     real*8 :: p(m), cum(m), tal(m), wt, dmx, qb, fb, sg
     logical :: lin(m)
@@ -176,14 +176,14 @@ contains
           cycle
        endif
 !-- (relative to the binomial error of the biased draws)
-       qb = merge(0.15d0*p(j)/1.5d-3, (1d0 - 0.15d0)*p(j)/(1d0 - 1.5d-3), lin(j))
+       qb = merge(0.1d0*p(j)/1.5d-3, (1d0 - 0.1d0)*p(j)/(1d0 - 1.5d-3), lin(j))
        sg = sqrt(qb*(1d0 - qb)/ns)/qb
        dmx = max(dmx, abs(tal(j)/p(j) - 1d0)/sg)
     enddo
     fb = dble(nb)/ns
     write(*,'(a,f6.2,a,f7.4,a)') '  biased emission: largest deviation of the weighted frequencies', dmx, &
-         ' sigma; band chosen', fb, ' (0.15)'
-    if(dmx > 4.5d0 .or. abs(fb - 0.15d0) > 3d-3) nfail = nfail + 1
+         ' sigma; band chosen', fb, ' (0.10)'
+    if(dmx > 4.5d0 .or. abs(fb - 0.1d0) > 3d-3) nfail = nfail + 1
     nxt_fbias = fsave
   end subroutine fbias_tests
 !
