@@ -7,7 +7,7 @@ subroutine nltex_gas_update(it)
 !-----------------------------------------------------------------------
   use gasmod
   use gridmod
-  use nlteatommod, only:nxa_nel,nxa_el
+  use nlteatommod, only:nxa_nel,nxa_el,nxa_nlin
   use nltextrmod
   use mpimod, only:lmpi0,impi
   use inputparmod, only:in_nltex_ali,in_nltex_ldb,in_nt_lumg,in_srctype
@@ -57,6 +57,8 @@ subroutine nltex_gas_update(it)
   endif
   if(lmpi0 .and. it>1 .and. nxt_have_mc) write(6,'(1x,a,i3,a,es9.2,a,es9.2,a)') 'NLTE (it',it, &
        '): largest change of a state above 1e-4 per cell, median',nxt_dxstat(1),', max',nxt_dxstat(2),' (rank 0)'
+  if(lmpi0 .and. nxt_nactl>0) write(6,'(1x,a,i8,a,i8,a,es8.1,a)') 'NLTE lines: transport steps at',nxt_nactl, &
+       ' of',nxa_nlin,' lines (Sobolev depth above',nxt_taumin,' somewhere)'
   if(lmpi0 .and. it>1 .and. nxt_have_mc .and. nxt_dmpsec) write(6,'(1x,a,f6.3,a,f6.3)') &
        'NLTE damping (in_nltex_dmpsec): weight of the new solution, median',nxt_dmpstat(1),', smallest',nxt_dmpstat(2)
 !-- (the history of the adaptive damping, for a continued run)

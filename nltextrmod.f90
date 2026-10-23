@@ -66,6 +66,7 @@ module nltextrmod
   real*8,public :: nxt_tau0 = 0d0         !benchmark: pure-scattering H-alpha with this Sobolev depth
   real*8,public :: nxt_ntemin = 0d0       !photons above this energy [erg] make fast photoelectrons (0: off)
   real*8,public :: nxt_taumin = 1d-4      !active lines: Sobolev depth above this somewhere
+  integer,public :: nxt_nactl = 0         !(the number of active lines of the last tables, for the log)
   logical,public :: nxt_jbbeta = .false.  !resonance estimator weighted by beta(mu)/beta_bar (nxt_jbw)
 !
   integer,public :: nxt_ncell = 0, nxt_ng = 0
@@ -1738,6 +1739,7 @@ subroutine nxt_tables(ncell,tempinv,radtemp,capemitgrey,xarr,vxarr)
      endif
   enddo
   call nxt_act_lookup
+  nxt_nactl = nxt_nact
 contains
   subroutine ovl_tables
 !-- overlapping lines in cell ic (nltexmod's zones, nx_ovl_cell, with the

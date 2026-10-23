@@ -232,6 +232,7 @@ program superlite
      nxt_jbbeta = in_nltex_jbbeta
      nxt_dmpsec = in_nltex_dmpsec
      nxt_javg = in_nltex_javg
+     nxt_taumin = in_nltex_taumin
      if(lmpi0 .and. nxt_javg>0d0) write(6,'(1x,a,f5.2,a)') &
           'NLTE group J: weight',nxt_javg,' of the previous iterations (in_nltex_javg)'
      if(lmpi0 .and. nxt_dmpsec) write(6,'(1x,a)') 'NLTE populations: adaptive damping between iterations (in_nltex_dmpsec)'
