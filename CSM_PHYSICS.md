@@ -1332,7 +1332,8 @@ for the same random numbers. Memory: the per-line arrays of the transport are
 (lines × cells) on every rank; with the super-level atoms of a supernova (3.8×10⁵
 lines, 100 cells) each takes 300 MB. The tallies of `in_nltex_jbwin` and
 `in_nltex_esrates` are allocated only with those options and the MPI sums are
-in place: 3.4 GB per rank instead of 4.5 GB. Plan two such ranks per 8 GB.
+in place: 3.4–3.6 GB per rank instead of 4.5 GB. Two such runs of two ranks each
+exceeded the 16 GB container (one was killed for memory): plan about 4 GB per rank.
 
 ```
 cmake -DUSE_MPI=ON <src> && make
