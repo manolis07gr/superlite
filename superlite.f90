@@ -233,6 +233,7 @@ program superlite
      nxt_dmpsec = in_nltex_dmpsec
      nxt_javg = in_nltex_javg
      nxt_taumin = in_nltex_taumin
+     nxt_jfill = in_nltex_jfill
      if(lmpi0 .and. nxt_javg>0d0) write(6,'(1x,a,f5.2,a)') &
           'NLTE group J: weight',nxt_javg,' of the previous iterations (in_nltex_javg)'
      if(lmpi0 .and. nxt_dmpsec) write(6,'(1x,a)') 'NLTE populations: adaptive damping between iterations (in_nltex_dmpsec)'
@@ -473,6 +474,7 @@ program superlite
         call nxt_store_jg(grd_ncell,grp_ng,grd_jrad,grd_vol)
         call nxt_ldb(grd_ncell,grp_ng,grd_vol,grd_xarr(2:grd_ncell+1)-grd_xarr(1:grd_ncell), &
              grd_tempinv,grd_cap,grd_capemit,grd_planck,grd_spk,grd_nlump,grd_glump)
+        call nxt_jfill_cells(grd_ncell,grp_ng)
         call nxt_tally_finish(grd_ncell,grd_vol)
 !-- formal integral of the emergent spectrum with the radiation field of the
 !-- last in_fi_navg iterations

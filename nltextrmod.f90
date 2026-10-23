@@ -103,6 +103,10 @@ module nltextrmod
 !-- (nxt_javg: weight of the previous iterations in the group J, an
 !-- exponential average against the Monte Carlo noise; nxt_store_jg)
   real*8,public :: nxt_javg = 0d0
+!-- (nxt_jfill > 0: a group without Monte Carlo flights in a cell takes J
+!-- interpolated in log J between the nearest groups with flights, at most
+!-- nxt_jfill groups away on each side; nxt_store_jg)
+  integer,public :: nxt_jfill = 0
   real*8,allocatable :: nxt_jgh(:,:)  !(ng,ncell) the average so far
   real*8,allocatable,public :: nxt_jwsum(:,:),nxt_jwsq(:,:) !(nlin,ncell)
   real*8,allocatable :: nxt_wwb(:),nxt_wwr(:) !(nlin) by active index
@@ -330,7 +334,7 @@ module nltextrmod
   integer,parameter :: em_ovl = 6
   integer,allocatable :: nxt_och(:)          !(npair) channel of each pair (0: none)
 !
-  public :: nxt_init,nxt_alloc_opt,nxt_gas_solve,nxt_store_jg,nxt_tally_reset,nxt_tally_finish
+  public :: nxt_init,nxt_alloc_opt,nxt_jfill_cells,nxt_gas_solve,nxt_store_jg,nxt_tally_reset,nxt_tally_finish
   public :: nxt_tables,nxt_neighbors,nxt_activate,nxt_activate_line,nxt_kpacket
   public :: nxt_bfabs,nxt_bfpick,nxt_nonthermal,nxt_ntdep,nxt_ntrates,nxt_write,nxt_bffreq
   public :: nxt_shares,nxt_dealloc,nxt_emcode,nxt_emloc
@@ -1098,6 +1102,52 @@ subroutine nxt_store_jg(ncell,ng,jrad,vol)
      if(size(nxt_jgc,1)==ng .and. size(nxt_jgc,2)==ncell) nxt_jgc = nxt_jg
   endif
 end subroutine nxt_store_jg
+!
+!
+subroutine nxt_jfill_cells(ncell,ng)
+!-----------------------------------------------------------------------
+! (nxt_jfill > 0) The groups of a cell with J = 0 after nxt_store_jg and
+! nxt_ldb (no flight crossed them, no DDMC lump or detailed balance gave
+! them a J) take J interpolated in log J against log nu between the
+! nearest groups with J > 0, at most nxt_jfill groups away on each side:
+! the far UV of a thin wind, where a group of a few hundred km/s gets a
+! few packets per iteration and a J of zero would stop the photoionization
+! of the levels with edges there (the 912-1064 A band of the full-metal
+! IIn wind beyond 1.3e15 cm: O I 2p4 1D, C I).  nxt_jgc as nxt_jg.
+!-----------------------------------------------------------------------
+  integer,intent(in) :: ncell,ng
+  integer :: i
+  if(nxt_jfill <= 0) return
+  do i=1,ncell
+     call jfill(nxt_jg(:,i))
+     if(allocated(nxt_jgc)) then
+        if(size(nxt_jgc,1)==ng .and. size(nxt_jgc,2)==ncell) call jfill(nxt_jgc(:,i))
+     endif
+  enddo
+contains
+  subroutine jfill(jj)
+    real*8,intent(inout) :: jj(ng)
+    real*8 :: j0(ng),w
+    integer :: g,ga,gb
+    j0 = jj
+    do g=1,ng
+       if(j0(g) > 0d0) cycle
+       ga = g - 1
+       do while(ga >= max(1,g-nxt_jfill))
+          if(j0(ga) > 0d0) exit
+          ga = ga - 1
+       enddo
+       gb = g + 1
+       do while(gb <= min(ng,g+nxt_jfill))
+          if(j0(gb) > 0d0) exit
+          gb = gb + 1
+       enddo
+       if(ga < max(1,g-nxt_jfill) .or. gb > min(ng,g+nxt_jfill)) cycle
+       w = log(nxt_nug(g)/nxt_nug(ga))/log(nxt_nug(gb)/nxt_nug(ga))
+       jj(g) = exp((1d0-w)*log(j0(ga)) + w*log(j0(gb)))
+    enddo
+  end subroutine jfill
+end subroutine nxt_jfill_cells
 !
 !
 subroutine nxt_ldb(ncell,ng,vol,dr,tempinv,cap,capemit,planck,spk,nlump,glump)
