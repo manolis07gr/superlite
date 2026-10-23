@@ -50,7 +50,12 @@ program cell_jtest
   logical,allocatable :: ljb(:)
   real*8 :: qb,qv,ne,nu1,nu2,s,w,nu0,dr,xo(2),wlmax,ovl,vturb
   logical :: lg,ll,ldmp,cdest
+  integer :: mxit,ierr1,nit1
 !
+!-- (SL_MAXIT: iteration limit of the statistical equilibrium, default 300)
+  mxit = 300
+  call get_environment_variable('SL_MAXIT',arg,status=ios)
+  if(ios==0 .and. len_trim(arg)>0) read(arg,*) mxit
   call get_command_argument(1,run)
   call get_command_argument(2,arg)
   nc = count([(arg(i:i)==',',i=1,len_trim(arg))]) + 1
@@ -254,16 +259,20 @@ program cell_jtest
         if(iv==1) then
            call nxt_ali_off
            call nx_solve_cell(hdr(4,ic),hdr(4,ic),nel,0d0,qb,qv,ng,nxt_nug,nxt_dnug,nxt_jg(:,ic),nxt_jb(:,ic), &
-                nxt_ljb(:,ic),nti,ntx,x,ne,beta,ierr)
+                nxt_ljb(:,ic),nti,ntx,x,ne,beta,ierr,maxit=mxit)
            xo = [x(1),x(2)]
+           ierr1 = ierr
+           nit1 = nx_nits
         else
            call nxt_ali_cell(ng,kap,1d0,dr,lali=.false.)
-           call nx_solve_cell(hdr(4,ic),hdr(4,ic),nel,0d0,qb,qv,ng,nxt_nug,nxt_dnug,jg,jb,ljb,nti,ntx,x,ne,beta,ierr)
+           call nx_solve_cell(hdr(4,ic),hdr(4,ic),nel,0d0,qb,qv,ng,nxt_nug,nxt_dnug,jg,jb,ljb,nti,ntx,x,ne,beta,ierr, &
+                maxit=mxit)
            call nxt_ali_off
         endif
         if(ldmp) call dump(iv)
      enddo
-     write(*,'(i5,es12.4,4es15.4,a,i2)') ic,0.5d0*(str(1,ic)+str(2,ic)),xo(1),x(1),xo(2),x(2),'  ierr',ierr
+     write(*,'(i5,es12.4,4es15.4,a,2i2,a,2i6)') ic,0.5d0*(str(1,ic)+str(2,ic)),xo(1),x(1),xo(2),x(2),'  ierr',ierr1,ierr, &
+          '  its',nit1,nx_nits
   enddo
 contains
   subroutine dump(jv)

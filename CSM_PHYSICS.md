@@ -961,8 +961,24 @@ iterations, and of the formal integral):
   1000–1064 Å is 1.2–1.9 times `ies`'s out to 3.4×10¹⁵ cm (empty only
   beyond 4×10¹⁵ cm, where `ies`'s is 10⁻³ of the neighbouring bands'), so
   the band goes dark in the free runs because SuperLite's own O I is
-  3–4 times CMFGEN's. The remaining difference is in the rates of the
-  loop (cell 50 with `blk`'s J: x(H I) 0.030 against `ies`'s 0.023).
+  3–4 times CMFGEN's. The rates themselves agree: started from `ies`'s
+  populations (`cell_jtest` on `ies_ovl`: `ies`'s state, the J of
+  `cmf_m002re_hold`, the overlap on, `SL_MAXIT=3000` so that every solve
+  converges) SuperLite's statistical equilibrium keeps x(H I) within 1 %
+  of `ies`'s at 1.7, 2.4, 3.1, 3.7 and 4.4×10¹⁵ cm. There the ground
+  state's budget is that of CMFGEN's HIPRRR: the Bowen inflow (Lyβ,
+  5.5×10⁻⁷ s⁻¹ per H) leaves by net Lyman-continuum photoionization
+  (3.4×10⁻⁷, a few 10⁻³ of the gross rates) and charge exchange (1.2×10⁻⁷);
+  CMFGEN's net photoionization of the ground state is also about three
+  times its net charge exchange. What holds the outer wind ionized is that
+  small excess of J over S in a Lyman continuum thick across each cell
+  (τ ~ 10³–10⁴). With the Lyman continuum in local detailed balance
+  (J = S, Λ* = 1: any `cell_jtest` mode with the external J, even with no
+  external J below 1250 Å) the same cells go to x(H I) 0.043–0.13, two to
+  three times `ies`'s. In the free runs those groups are in local
+  detailed balance (`in_nltex_ldb = 30`, DDMC), J = S with no radiation
+  from elsewhere (J_ext = 0 in `output.nltex_ldb`), while on CMFGEN's
+  populations the Monte Carlo J there is 1.07–1.42 S at 1.6–4.4×10¹⁵ cm.
 * The Balmer jump of the full-metal wind. Against the optical continuum
   (4000–8300 Å), SuperLite's Balmer continuum (3000–3646 Å) is 11–16 %
   too bright with Sobolev lines (against CMFGEN's Sobolev model) and
