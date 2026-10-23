@@ -935,11 +935,9 @@ c
 c-- sum of x over all ranks (in place)
       integer,intent(in) :: n
       real*8,intent(inout) :: x(n)
-      real*8,allocatable :: snd(:)
-      allocate(snd(n))
-      snd = x
-      call mpi_allreduce(snd,x,n,MPI_REAL8,MPI_SUM,MPI_COMM_WORLD,ierr)
-      deallocate(snd)
+c-- (in place: no copy of x, which can be hundreds of MB)
+      call mpi_allreduce(MPI_IN_PLACE,x,n,MPI_REAL8,MPI_SUM,
+     &  MPI_COMM_WORLD,ierr)
       end subroutine allreduce_sum
 c
 c
@@ -952,19 +950,10 @@ c     --------------------------
 * Sum the NLTE line resonance estimators and the tallies of nxt_ldb over
 * all ranks.
 ************************************************************************
-      integer :: n
-      real*8,allocatable :: snd2(:,:)
       real*8 :: t0,t1
       t0 = t_time()
-      n = size(nxt_jbsum)
-      allocate(snd2(size(nxt_jbsum,1),size(nxt_jbsum,2)))
-      snd2 = nxt_jbsum
-      call mpi_allreduce(snd2,nxt_jbsum,n,MPI_REAL8,MPI_SUM,
-     &  MPI_COMM_WORLD,ierr)
-      snd2 = nxt_jbcnt
-      call mpi_allreduce(snd2,nxt_jbcnt,n,MPI_REAL8,MPI_SUM,
-     &  MPI_COMM_WORLD,ierr)
-      deallocate(snd2)
+      call allreduce_sum(size(nxt_jbsum),nxt_jbsum)
+      call allreduce_sum(size(nxt_jbcnt),nxt_jbcnt)
 c-- radiation from elsewhere and DDMC lumps (nxt_ldb)
       call allreduce_sum(size(nxt_jxsum),nxt_jxsum)
       call allreduce_sum(size(nxt_jlosum),nxt_jlosum)

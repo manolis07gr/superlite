@@ -247,6 +247,7 @@ program superlite
 !-- (the electrons' Doppler shifts: thermal Thomson scattering)
      nxt_estrap = in_nltex_vturb>=0d0 .and. in_thm_thermal
      nxt_esrates = nxt_estrap .and. in_nltex_esrates
+     call nxt_alloc_opt
      nxt_esdamp = in_nltex_esdamp
      nx_esdamp = in_nltex_esdamp
 !-- (the microturbulence also widens the line profiles of the formal integral)

@@ -325,7 +325,7 @@ module nltextrmod
   integer,parameter :: em_ovl = 6
   integer,allocatable :: nxt_och(:)          !(npair) channel of each pair (0: none)
 !
-  public :: nxt_init,nxt_gas_solve,nxt_store_jg,nxt_tally_reset,nxt_tally_finish
+  public :: nxt_init,nxt_alloc_opt,nxt_gas_solve,nxt_store_jg,nxt_tally_reset,nxt_tally_finish
   public :: nxt_tables,nxt_neighbors,nxt_activate,nxt_activate_line,nxt_kpacket
   public :: nxt_bfabs,nxt_bfpick,nxt_nonthermal,nxt_ntdep,nxt_ntrates,nxt_write,nxt_bffreq
   public :: nxt_shares,nxt_dealloc,nxt_emcode,nxt_emloc
@@ -335,6 +335,28 @@ module nltextrmod
   public :: nxt_useb,nxt_es_cell,nxt_jbw,nxt_bfac
 !
 contains
+!
+!
+subroutine nxt_alloc_opt
+!-----------------------------------------------------------------------
+! The (nlin,ncell) tallies of the options set after nxt_init: the window
+! estimator (nxt_jbwin) and the far-side core absorption (nxt_esrates).
+! Without them they stay 1x1: with the super-level atoms of a supernova
+! (4e5 lines) each such array takes 300 MB on every rank.
+!-----------------------------------------------------------------------
+  if(nxt_jbwin>0d0 .and. size(nxt_jwsum,1)/=nxa_nlin) then
+     deallocate(nxt_jwsum,nxt_jwsq)
+     allocate(nxt_jwsum(nxa_nlin,nxt_ncell),nxt_jwsq(nxa_nlin,nxt_ncell))
+     nxt_jwsum = 0d0
+     nxt_jwsq = 0d0
+  endif
+  if(nxt_esrates .and. size(nxt_efsum,1)/=nxa_nlin) then
+     deallocate(nxt_efsum,nxt_efcnt)
+     allocate(nxt_efsum(nxa_nlin,nxt_ncell),nxt_efcnt(nxa_nlin,nxt_ncell))
+     nxt_efsum = 0d0
+     nxt_efcnt = 0d0
+  endif
+end subroutine nxt_alloc_opt
 !
 !
 subroutine nxt_init(ncell,gncell,ng,wlg,nfile,files,hnlev)
@@ -380,9 +402,11 @@ subroutine nxt_init(ncell,gncell,ng,wlg,nfile,files,hnlev)
   nxt_btab = 1d0; nxt_qbq = 1d0; nxt_bbtab = 1d0
   allocate(nxt_jmsum(nx_nmub,ng,ncell),nxt_fiso(ng,ncell))
   nxt_jmsum = 0d0; nxt_fiso = 1d0
-  allocate(nxt_jwsum(nxa_nlin,ncell),nxt_jwsq(nxa_nlin,ncell),nxt_haem(ncell),nxt_haab(ncell))
+!-- (the tallies of the window estimator, nxt_jbwin, and of the far-side
+!-- core absorption, nxt_esrates: (nlin,ncell) only with them, nxt_alloc_opt)
+  allocate(nxt_jwsum(1,1),nxt_jwsq(1,1),nxt_haem(ncell),nxt_haab(ncell))
   nxt_haem = 0d0; nxt_haab = 0d0
-  allocate(nxt_efsum(nxa_nlin,ncell),nxt_efcnt(nxa_nlin,ncell))
+  allocate(nxt_efsum(1,1),nxt_efcnt(1,1))
   nxt_efsum = 0d0
   nxt_efcnt = 0d0
   allocate(nxt_jxsum(ng,ncell),nxt_jlsum(ncell),nxt_jlosum(ng,ncell))
@@ -2960,8 +2984,11 @@ subroutine nxt_write(ncell,rcell,vcell,tempinv,radtemp,vol)
      jd(1) = nxt_jbcnt(kha,ic)
      jd(2) = nxt_jbsum(kha,ic)/(4d0*pi*vol(ic)*bp)
      jd(3) = 0d0
-     if(nxt_jwsq(kha,ic)>0d0) jd(3) = nxt_jwsum(kha,ic)**2/nxt_jwsq(kha,ic)
-     jd(4) = nxt_jwsum(kha,ic)/(4d0*pi*vol(ic)*bp)
+     jd(4) = 0d0
+     if(size(nxt_jwsq,1)==nxa_nlin) then
+        if(nxt_jwsq(kha,ic)>0d0) jd(3) = nxt_jwsum(kha,ic)**2/nxt_jwsq(kha,ic)
+        jd(4) = nxt_jwsum(kha,ic)/(4d0*pi*vol(ic)*bp)
+     endif
      jd(5) = 0d0
      if(g>0) jd(5) = max(nxt_jg(g,ic) - nxt_jlosum(g,ic)/(4d0*pi*vol(ic)*nxt_dnug(g)),0d0)/bp
      jes = 0d0
