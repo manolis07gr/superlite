@@ -103,9 +103,8 @@ module nltextrmod
 !-- (nxt_javg: weight of the previous iterations in the group J, an
 !-- exponential average against the Monte Carlo noise; nxt_store_jg)
   real*8,public :: nxt_javg = 0d0
-!-- (nxt_jfill > 0: the groups of a cell within nxt_jfill groups of one
-!-- without Monte Carlo flights take the mean J over that many groups on
-!-- each side; nxt_jfill_cells)
+!-- (nxt_jfill > 0: the groups of a cell without Monte Carlo flights take
+!-- the mean J over nxt_jfill groups on each side; nxt_jfill_cells)
   integer,public :: nxt_jfill = 0
   real*8,allocatable :: nxt_jgh(:,:)  !(ng,ncell) the average so far
   real*8,allocatable,public :: nxt_jwsum(:,:),nxt_jwsq(:,:) !(nlin,ncell)
@@ -1106,17 +1105,19 @@ end subroutine nxt_store_jg
 !
 subroutine nxt_jfill_cells(ncell,ng)
 !-----------------------------------------------------------------------
-! (nxt_jfill > 0) Sparse groups of a cell (J = 0 in a group within
-! nxt_jfill groups, after nxt_store_jg and nxt_ldb: no flight crossed it,
-! no DDMC lump or detailed balance gave it a J) take the mean J over the
-! groups within nxt_jfill on each side, weighted by the group widths: the
+! (nxt_jfill > 0) The groups of a cell with J = 0 after nxt_store_jg and
+! nxt_ldb (no flight crossed them, no DDMC lump or detailed balance gave
+! them a J) take the mean J over the groups within nxt_jfill on each
+! side, zeros included, weighted by the group widths: the
 ! far UV of a thin wind, where a group of a few hundred km/s gets a few
 ! packets per iteration and a J of zero would stop the photoionization of
 ! the levels with edges there (the 912-1064 A band of the full-metal IIn
-! wind beyond 1.3e15 cm: O I 2p4 1D, C I).  The window mean keeps the
-! energy of the band; an interpolation between the nonzero groups, which
-! hold one or two packets each, overestimates it 3-10 times.  Groups
-! without a zero in their window keep their J.  nxt_jgc as nxt_jg.
+! wind beyond 1.3e15 cm: O I 2p4 1D, C I).  An interpolation between the
+! nonzero groups, which hold one or two packets each, overestimates the
+! band 3-10 times.  Groups with flights keep their J: the line incident
+! intensities subtract each line's own share from nxt_jgc group by group,
+! and a smoothed nxt_jgc broke that (the wind went neutral or over-ionized
+! within six iterations).  nxt_jgc as nxt_jg.
 !-----------------------------------------------------------------------
   integer,intent(in) :: ncell,ng
   integer :: i,g
@@ -1140,7 +1141,7 @@ contains
     do g=1,ng
        ga = max(1,g-nxt_jfill)
        gb = min(ng,g+nxt_jfill)
-       if(all(j0(ga:gb) > 0d0)) cycle
+       if(j0(g) > 0d0) cycle
        jj(g) = sum(j0(ga:gb)*dnu(ga:gb))/sum(dnu(ga:gb))
     enddo
   end subroutine jfill
