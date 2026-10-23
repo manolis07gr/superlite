@@ -998,7 +998,27 @@ iterations, and of the formal integral):
   recombinations, comparable with the net term of a few 10⁻³), which the
   ALI holds at the J of the last transport while it lets H's own part
   follow the populations. The coupling of O and H through those photons
-  and the charge exchange is then solved with one side frozen.
+  and the charge exchange is then solved with one side frozen. Solving it
+  with both sides free (`in_nltex_ldbse`: the groups with Λ* = 1 take
+  J = (κ₀J₀ + δη)/(κ₀ + δκ) from the bound-free emission and opacity of the
+  current populations of all elements in every iteration of the
+  statistical equilibrium) does not keep the state either: x(H I) 0.0036,
+  0.038, 0.070, 0.102, 0.139 at 1.7–4.4×10¹⁵ cm (`ies` 0.0052, 0.0225,
+  0.039, 0.048, 0.056), after 2000–3000 iterations. The innermost cell
+  moves to the ionized side, the others to the neutral: with J frozen the
+  rates reproduce `ies`'s state to 0.5–0.8 % at every radius, and with
+  the thick Lyman continuum's J following the populations that mismatch
+  is amplified about a hundred times, toward whichever side it has. The
+  outer wind of this model sits next to the fork between the two
+  branches (a loop gain close to 1): its H ionization is set by a few
+  10⁻³ of the gross rates and changes by factors of 2–5 for differences of
+  a few 10⁻³ in them, below the agreement of two codes' atomic data and
+  discretizations. It is not a quantity on which to benchmark the
+  physics; the agreement of the rates at fixed J (0.5 %) is. The H I
+  fraction of the inner layer and of the photosphere, and the spectrum
+  formed there, are not near the fork and do agree (§4.4 above).
+  `in_nltex_ldbse` stays off: it changes the answer only through the
+  conditioning and multiplies the iterations of the solve.
 * The Balmer jump of the full-metal wind. Against the optical continuum
   (4000–8300 Å), SuperLite's Balmer continuum (3000–3646 Å) is 11–16 %
   too bright with Sobolev lines (against CMFGEN's Sobolev model) and

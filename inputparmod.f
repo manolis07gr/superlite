@@ -187,6 +187,11 @@ c-- emission of the NLTE macro-atoms and k-packets biased into the band
 c-- [in_nltex_fwl1, in_nltex_fwl2] (A) by this factor, the packets
 c-- weighted (<= 1: off); for a far UV of a thin wind no packet reaches
       real*8 :: in_nltex_fbias = 0d0
+c-- the groups in local detailed balance with Lambda* = 1 (DDMC) take J
+c-- from the bound-free emission and opacity of the current populations of
+c-- all NLTE elements in every iteration of the statistical equilibrium
+c-- (instead of the per-level ALI around the J of the last transport)
+      logical :: in_nltex_ldbse = .false.
       real*8 :: in_nltex_fwl1 = 912d0
       real*8 :: in_nltex_fwl2 = 1064d0
 c-- incident intensity of the Sobolev NLTE lines in the statistical
@@ -400,7 +405,7 @@ c-- runtime parameter namelist
      & in_nltex_prev,in_nltex_dtprev,in_nltex_init,in_nltex_hold,
      & in_nltex_bbext,in_nltex_cdest,in_nltex_jbbeta,in_nltex_jbwin,
      & in_nltex_dmpsec,in_nltex_javg,in_nltex_taumin,in_nltex_jfill,
-     & in_nltex_fbias,in_nltex_fwl1,in_nltex_fwl2,
+     & in_nltex_fbias,in_nltex_fwl1,in_nltex_fwl2,in_nltex_ldbse,
      & in_nltex_dis,
      & in_nltex_ali,
      & in_nltex_ldb,in_nltex_vturb,in_nltex_vturbmax,in_nltex_esrates,
@@ -560,6 +565,7 @@ c
       call insertr(in_nltex_taumin,in_r,ir)
       call inserti(in_nltex_jfill,in_i,ii)
       call insertr(in_nltex_fbias,in_r,ir)
+      call insertl(in_nltex_ldbse,in_l,il)
       call insertr(in_nltex_fwl1,in_r,ir)
       call insertr(in_nltex_fwl2,in_r,ir)
       call insertr(in_nltex_jbwin,in_r,ir)

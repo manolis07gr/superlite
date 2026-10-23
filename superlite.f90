@@ -29,7 +29,7 @@ program superlite
   use nltextrmod
   use xraysrcmod
   use formalmod, only:fi_spectrum
-  use nltexmod, only:nx_esdamp,nx_ovl_dv,nxo_npair,nx_pc_on
+  use nltexmod, only:nx_esdamp,nx_ovl_dv,nxo_npair,nx_pc_on,nx_ldbse
   use nltedismod, only:nxd_on,nxd_setup
   use bbsobmod
   use tebalmod, only:te_damp,te_ntemin,te_zsolve,te_secant
@@ -235,6 +235,9 @@ program superlite
      nxt_taumin = in_nltex_taumin
      nxt_jfill = in_nltex_jfill
      nxt_fbias = in_nltex_fbias
+     nx_ldbse = in_nltex_ldbse
+     if(lmpi0 .and. nx_ldbse) write(6,'(1x,a)') &
+          'NLTE populations: J of the groups in local detailed balance from the current populations (in_nltex_ldbse)'
      nxt_fwl1 = in_nltex_fwl1*1d-8
      nxt_fwl2 = in_nltex_fwl2*1d-8
      if(lmpi0 .and. nxt_fbias>1d0) write(6,'(1x,a,f8.1,a,2f8.1,a)') 'NLTE emission: biased',nxt_fbias, &

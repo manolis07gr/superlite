@@ -67,6 +67,12 @@ module nltexmod
 !-- absorption opacity of the group with which the Monte Carlo J was made
   logical,public :: nx_ali_on = .false.
   real*8,allocatable,public :: nx_ali_lst(:),nx_ali_kap(:) !(ng)
+!-- (nx_ldbse) the groups with Lambda* = 1 (local detailed balance) take
+!-- J = (kappa_0 J_0 + delta eta)/(kappa_0 + delta kappa) from the bound-free
+!-- emission and opacity of the current populations of all elements in
+!-- every iteration of the statistical equilibrium (nx_solve_cell), not
+!-- the per-level ALI
+  logical,public :: nx_ldbse = .false.
   real*8,parameter :: nx_blt0 = -16.1180957d0          !ln 1e-7
   real*8,parameter :: nx_bdlt = (20.7232658d0 - nx_blt0)/(nx_nbt-1)   !to ln 1e9
 !-- bins of |mu| (the cosine of the direction to the radius) for the
@@ -1139,6 +1145,7 @@ subroutine nx_el_rates(iel,temp,trad,ng,nug,dnug,jg,r,xo,nelo,neo)
            arg = hkt*(nu-nxa_lvnu0(lv))
            if(arg > 40d0) exit
            if(nx_ali_kap(ig) <= 0d0 .or. nx_ali_lst(ig) <= 0d0) cycle
+           if(nx_ldbse .and. nx_ali_lst(ig) >= 0.99d0) cycle
            dal = dal + nx_ali_lst(ig)*min(1d0,nlo*nxa_sgm(nxa_sgo(lv)+ig)/nx_ali_kap(ig))* &
                 2d0*hh*nu**3/cc**2*nxa_sgh(nxa_sgo(lv)+ig)*phit*exp(-arg)
         enddo
@@ -1581,6 +1588,12 @@ subroutine nx_solve_cell(temp,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx
   real*8 :: cxr(mcx)
   logical :: lsol(nxa_nel)
   type(nxrt) :: r(nxa_nel)
+!-- (nx_ldbse) groups with Lambda* = 1, the levels absorbing there, and the
+!-- J, opacity, populations and rates with which the solve started
+  logical :: lse
+  integer :: nse,nsl
+  integer,allocatable :: seg(:),sll(:),slk(:),sle(:)
+  real*8,allocatable :: sej0(:),sek0(:),sej(:),ssg(:,:),ssh(:,:),sem(:,:),sga0(:),sgs0(:),sphi(:),xs0(:,:)
 !
   ierr = 0
   beta = 1d0
@@ -1643,8 +1656,13 @@ subroutine nx_solve_cell(temp,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx
   endif
   dold = 0d0
   lovl = nxo_npair > 0
+  lse = nx_ldbse .and. nx_ali_on
+  if(lse) lse = allocated(nx_ali_lst) .and. allocated(nx_ali_kap)
+  if(lse) lse = size(nx_ali_lst)==ng
+  if(lse) call se_init
   do it=1,mit
      dmax = 0d0
+     if(lse .and. it>1) call se_update
 !-- overlapping lines: the zones at the first iteration, and every tenth
 !-- while a population has moved by more than 10 % since they were made
 !-- (unless the caller keeps its own: nx_ovl_keep); the terms of each
@@ -1714,6 +1732,130 @@ subroutine nx_solve_cell(temp,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx
   nx_nits = min(it,mit)
   if(it>mit) ierr = 2
 contains
+  subroutine se_init
+!-- (nx_ldbse) the groups with Lambda* = 1 and an opacity, and the levels
+!-- whose bound-free opacity there is at least 1e-8 of it at the start
+    integer :: g,lv,je,kl,n,m
+    real*8 :: nl0,nu,arg,hkt,phit
+    nse = count(nx_ali_lst >= 0.99d0 .and. nx_ali_kap > 0d0)
+    if(nse == 0) then
+       lse = .false.
+       return
+    endif
+    allocate(seg(nse),sej0(nse),sek0(nse),sej(nse))
+    n = 0
+    do g=1,ng
+       if(nx_ali_lst(g) >= 0.99d0 .and. nx_ali_kap(g) > 0d0) then
+          n = n + 1
+          seg(n) = g
+       endif
+    enddo
+    sej0 = jg(seg)
+    sek0 = nx_ali_kap(seg)
+    hkt = hh/(kb*temp)
+!-- levels: count, then fill
+    nsl = 0
+    do m=1,2
+       n = 0
+       do je=1,nxa_nel
+          if(nel(je) <= 0d0) cycle
+          do kl=1,nxa_el(je)%nlv
+             lv = nxa_el(je)%lvoff + kl
+             if(nxa_g1(lv) < minval(seg)) cycle
+             nl0 = nel(je)*x(nxa_el(je)%xoff+nxa_lvs(lv))*r(je)%w(kl)
+             if(nl0 <= 0d0) cycle
+             if(.not.any([(seg(g) <= nxa_g1(lv) .and. nl0*nxa_sgm(nxa_sgo(lv)+min(seg(g),nxa_g1(lv))) >= &
+                  1d-8*sek0(g),g=1,nse)])) cycle
+             n = n + 1
+             if(m==2) then
+                sll(n) = lv
+                slk(n) = kl
+                sle(n) = je
+                phit = nxa_lvphi(lv)*nxa_sahac*temp**(-1.5d0)
+                sphi(n) = phit
+                sga0(n) = r(je)%gaml(kl)
+                sgs0(n) = r(je)%gstl(kl)
+                do g=1,nse
+                   if(seg(g) > nxa_g1(lv)) cycle
+                   ssg(g,n) = nxa_sgm(nxa_sgo(lv)+seg(g))
+                   ssh(g,n) = nxa_sgh(nxa_sgo(lv)+seg(g))
+                   nu = max(nug(seg(g)),nxa_lvnu0(lv))
+                   arg = min(hkt*(nu-nxa_lvnu0(lv)),700d0)
+!-- emission per n_c n_e [erg/s/cm^3/Hz/sr] / (n_c n_e): phi sigma 2 h nu^3/c^2 e^{-h(nu-nu0)/kT}
+                   sem(g,n) = phit*ssg(g,n)*2d0*hh*nu**3/cc**2*exp(-arg)
+                enddo
+             endif
+          enddo
+       enddo
+       if(m==1) then
+          nsl = n
+          allocate(sll(nsl),slk(nsl),sle(nsl),sphi(nsl),sga0(nsl),sgs0(nsl))
+          allocate(ssg(nse,nsl),ssh(nse,nsl),sem(nse,nsl))
+          ssg = 0d0; ssh = 0d0; sem = 0d0
+       endif
+    enddo
+!-- the opacity and emission of these levels at the start (subtracted below)
+    allocate(xs0(nsl,2))
+    do n=1,nsl
+       call se_pops(n,x,ne,xs0(n,1),xs0(n,2))
+    enddo
+  end subroutine se_init
+  subroutine se_pops(n,xx,nee,nlv,ncne)
+!-- the level population and its continuum's n_c n_e
+    integer,intent(in) :: n
+    real*8,intent(in) :: xx(nxa_nst),nee
+    real*8,intent(out) :: nlv,ncne
+    integer :: je,kl,lv,o
+    je = sle(n)
+    kl = slk(n)
+    lv = sll(n)
+    o = nxa_el(je)%xoff
+    nlv = nel(je)*xx(o+nxa_lvs(lv))*r(je)%w(kl)
+    ncne = nel(je)*xx(o+nxa_lvc(lv))*r(je)%wc(kl)*nee
+  end subroutine se_pops
+  subroutine se_update
+!-- J of the groups from the current populations; the photoionization and
+!-- stimulated recombination of the levels by its change since the start
+    integer :: g,n,je,kl,lv,s
+    real*8 :: dk(nse),de(nse),dj(nse),nlv,ncne,sm,sst,hkt,nu
+    dk = 0d0
+    de = 0d0
+    do n=1,nsl
+       call se_pops(n,x,ne,nlv,ncne)
+       dk = dk + (nlv - xs0(n,1))*ssg(:,n)
+       de = de + (ncne - xs0(n,2))*sem(:,n)
+    enddo
+    sej = max((sek0*sej0 + de)/max(sek0 + dk,0.1d0*sek0),0d0)
+    dj = sej - sej0
+    hkt = hh/(kb*temp)
+    do n=1,nsl
+       je = sle(n)
+       kl = slk(n)
+       lv = sll(n)
+       sm = 0d0
+       sst = 0d0
+       do g=1,nse
+          if(ssh(g,n) == 0d0) cycle
+          nu = max(nug(seg(g)),nxa_lvnu0(lv))
+          sm = sm + dj(g)*ssh(g,n)
+          sst = sst + dj(g)*ssh(g,n)*exp(-min(hkt*(nu-nxa_lvnu0(lv)),700d0))
+       enddo
+       r(je)%gaml(kl) = max(sga0(n) + 4d0*pi*sm,0d0)
+       r(je)%gstl(kl) = max(sgs0(n) + 4d0*pi*sphi(n)*sst,0d0)
+    enddo
+!-- the sums per state of the elements concerned
+    do je=1,nxa_nel
+       if(.not.any(sle==je)) cycle
+       r(je)%gam = 0d0
+       r(je)%gst = 0d0
+       do kl=1,nxa_el(je)%nlv
+          lv = nxa_el(je)%lvoff + kl
+          s = nxa_lvs(lv)
+          r(je)%gam(s) = r(je)%gam(s) + r(je)%w(kl)*r(je)%gaml(kl)
+          r(je)%gst(s) = r(je)%gst(s) + r(je)%wc(kl)*r(je)%gstl(kl)
+       enddo
+    enddo
+  end subroutine se_update
   real*8 function chg(xx)
 !-- free electrons from the NLTE elements [cm^-3]
     real*8,intent(in) :: xx(nxa_nst)

@@ -56,6 +56,10 @@ program cell_jtest
   mxit = 300
   call get_environment_variable('SL_MAXIT',arg,status=ios)
   if(ios==0 .and. len_trim(arg)>0) read(arg,*) mxit
+!-- (SL_LDBSE=t: nx_ldbse, the J of the groups in local detailed balance
+!-- from the current populations)
+  call get_environment_variable('SL_LDBSE',arg,status=ios)
+  if(ios==0 .and. len_trim(arg)>0) read(arg,*) nx_ldbse
   call get_command_argument(1,run)
   call get_command_argument(2,arg)
   nc = count([(arg(i:i)==',',i=1,len_trim(arg))]) + 1
