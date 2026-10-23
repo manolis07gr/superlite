@@ -864,6 +864,27 @@ iterations, and of the formal integral):
   state without the static metal profiles raises the 1030–1190 Å J from
   0.63–0.67 to 0.98–1.17 times CMFGEN's; level dissolution adds little at
   912–930 Å.
+* Against `ies` (thermal-electron scattering, as SuperLite's) rather than
+  `blk`, the H ground state of the full-metal wind agrees within 20 %
+  at 1.58–2.42×10¹⁵ cm (`rayFs2`, adaptive damping, continuum
+  destruction); the discrepancy is the layer just above the photosphere,
+  1.1–1.4×10¹⁵ cm (b₁ 1.35 and 1.04 at 1.17 and 1.30×10¹⁵ cm against
+  0.41 and 0.30), and 2.4 times at 3.6×10¹⁵ cm. Three continuations of
+  `rayFs2` (six iterations each) leave the layer where it was: without the
+  O I 1025.76–Lyβ overlap (`in_nltex_overlap = 0`: 1.25, 0.93; the outer
+  wind falls to 35 and 471 at 2.42 and 3.6×10¹⁵ cm against `ies`' 65 and
+  373), local detailed balance only for groups with τ ≥ 1000
+  (`in_nltex_ldb = 1000`: 1.20, 0.90) and the Rayleigh photons of the
+  Lyman lines redistributed by the thermal electrons as in `ies`
+  (`in_rayleigh = 'lymes'`: 1.32, 1.06). T_e and n_e there are CMFGEN's
+  (the structure is fixed). In cell 41 (1.17×10¹⁵ cm) the Lyman-continuum
+  J is 0.13 times `blk`'s, which the thick continuum ties to b₁ (J = S ∝
+  1/b₁); the net photoionization of the ground state is 1700 cm⁻³ s⁻¹
+  against CMFGEN's 2300 (`HIPRRR`, 1.19×10¹⁵ cm), 0.5 % of the gross rate
+  in both. C, O and Fe ionization in the layer agree with CMFGEN's: the
+  second number of each depth record of CMFGEN's `XzVOUT` files is the
+  population of the ground *level* of the next ion (C II ²P°₁/₂ is 1/3 of
+  C II, Fe III ⁵D₄ 1/2.6), not of the whole ion.
 * The Balmer jump of the full-metal wind. Against the optical continuum
   (4000–8300 Å), SuperLite's Balmer continuum (3000–3646 Å) is 11–16 %
   too bright with Sobolev lines (against CMFGEN's Sobolev model) and
