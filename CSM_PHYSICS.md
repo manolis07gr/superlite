@@ -911,6 +911,24 @@ iterations, and of the formal integral):
   smaller: what keeps its H ionized is on the drain side. SuperLite's J
   there is 0.25 of `blk`'s in the Lyman continuum, 0 at 912–1000 Å (no
   packets), 0.3–0.5 at 1000–1240 Å and 0.8–1.1 longward of 1440 Å.
+  Which part of J matters (`cell_jtest`, cell 50 of `rel_cmf2`, H solved
+  with SuperLite's rates and other elements, J replaced by `blk`'s in one
+  band): x(H I) 0.051 with SuperLite's J, 0.032 with all of `blk`'s, 0.044
+  with its Lyman continuum only, 0.030 with its continuum below 1250 Å
+  and 0.041 with its lines below 1250 Å. The groups at 912–1250 Å,
+  which ionize O I 2p⁴ ¹D and C I and so feed the charge exchange that
+  drains H's ground state, carry most of it. Their J is zero there
+  because no packet crosses them: beyond 1.3×10¹⁵ cm 30–47 of the 47
+  groups at 912–1064 Å are empty in an iteration. `in_nltex_jfill`
+  (§5) gives such groups J from their neighbours. Interpolated in log J
+  between the nearest nonzero groups (`rel_jfill`, six iterations from
+  `rel_cmf2`) it overestimates the band 3–11 times at 1.6–2.6×10¹⁵ cm,
+  since the nonzero groups hold one or two packets each, yet cell 50 then
+  gives the same x(H I) with SuperLite's J as with `blk`'s (0.031 and
+  0.030) and b₁ falls to 21 and 92 at 2.0 and 2.42×10¹⁵ cm (from 25 and
+  159). Beyond 3×10¹⁵ cm the whole band is empty and b₁ stays at 1830
+  (`ies` 373) at 3.6×10¹⁵ cm. The fill is now the mean over the window,
+  which keeps the band's energy.
 * The Balmer jump of the full-metal wind. Against the optical continuum
   (4000–8300 Å), SuperLite's Balmer continuum (3000–3646 Å) is 11–16 %
   too bright with Sobolev lines (against CMFGEN's Sobolev model) and
@@ -1399,6 +1417,11 @@ outer trace stages (Ca III at 14 000–22 000 km/s) still move by ±30 %: the re
 the noise is in the line estimators and the coupling to T_e. More packets (2¹⁹
 instead of 2¹⁸) are the remedy for final models; the transport is now 2.8 times
 faster than at -O0 with τ_min = 10⁻⁴.
+Starved groups: `in_nltex_jfill = n` gives every group within n groups of one
+that no packet crossed in a cell (J = 0 after the LDB) the mean J over the n
+groups on each side, weighted by the group widths (off by default). It is meant
+for the far UV of thin winds, where a zero J switches off the photoionization of
+levels with edges there (§4.4: O I ¹D and C I at 912–1064 Å in the IIn wind).
 
 ```
 cmake -DUSE_MPI=ON <src> && make

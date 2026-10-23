@@ -179,9 +179,9 @@ c-- none)
 c-- the transport steps at the Sobolev resonances of the lines whose depth
 c-- exceeds this in some cell (active lines); the others are left out
       real*8 :: in_nltex_taumin = 1d-4
-c-- groups without Monte Carlo flights in a cell take J interpolated
-c-- (log J against log nu) between the nearest groups with flights, at
-c-- most this many groups away on each side (0: none, J = 0)
+c-- groups within this many groups of one without Monte Carlo flights
+c-- in a cell take the mean J over this many groups on each side
+c-- (0: none, J = 0 where no packet flew)
       integer :: in_nltex_jfill = 0
 c-- incident intensity of the Sobolev NLTE lines in the statistical
 c-- equilibrium: path-length estimator of J_nu in a window this wide

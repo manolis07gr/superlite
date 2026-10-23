@@ -103,9 +103,9 @@ module nltextrmod
 !-- (nxt_javg: weight of the previous iterations in the group J, an
 !-- exponential average against the Monte Carlo noise; nxt_store_jg)
   real*8,public :: nxt_javg = 0d0
-!-- (nxt_jfill > 0: a group without Monte Carlo flights in a cell takes J
-!-- interpolated in log J between the nearest groups with flights, at most
-!-- nxt_jfill groups away on each side; nxt_store_jg)
+!-- (nxt_jfill > 0: the groups of a cell within nxt_jfill groups of one
+!-- without Monte Carlo flights take the mean J over that many groups on
+!-- each side; nxt_jfill_cells)
   integer,public :: nxt_jfill = 0
   real*8,allocatable :: nxt_jgh(:,:)  !(ng,ncell) the average so far
   real*8,allocatable,public :: nxt_jwsum(:,:),nxt_jwsq(:,:) !(nlin,ncell)
@@ -1106,18 +1106,25 @@ end subroutine nxt_store_jg
 !
 subroutine nxt_jfill_cells(ncell,ng)
 !-----------------------------------------------------------------------
-! (nxt_jfill > 0) The groups of a cell with J = 0 after nxt_store_jg and
-! nxt_ldb (no flight crossed them, no DDMC lump or detailed balance gave
-! them a J) take J interpolated in log J against log nu between the
-! nearest groups with J > 0, at most nxt_jfill groups away on each side:
-! the far UV of a thin wind, where a group of a few hundred km/s gets a
-! few packets per iteration and a J of zero would stop the photoionization
-! of the levels with edges there (the 912-1064 A band of the full-metal
-! IIn wind beyond 1.3e15 cm: O I 2p4 1D, C I).  nxt_jgc as nxt_jg.
+! (nxt_jfill > 0) Sparse groups of a cell (J = 0 in a group within
+! nxt_jfill groups, after nxt_store_jg and nxt_ldb: no flight crossed it,
+! no DDMC lump or detailed balance gave it a J) take the mean J over the
+! groups within nxt_jfill on each side, weighted by the group widths: the
+! far UV of a thin wind, where a group of a few hundred km/s gets a few
+! packets per iteration and a J of zero would stop the photoionization of
+! the levels with edges there (the 912-1064 A band of the full-metal IIn
+! wind beyond 1.3e15 cm: O I 2p4 1D, C I).  The window mean keeps the
+! energy of the band; an interpolation between the nonzero groups, which
+! hold one or two packets each, overestimates it 3-10 times.  Groups
+! without a zero in their window keep their J.  nxt_jgc as nxt_jg.
 !-----------------------------------------------------------------------
   integer,intent(in) :: ncell,ng
-  integer :: i
+  integer :: i,g
+  real*8 :: dnu(ng)
   if(nxt_jfill <= 0) return
+  do g=1,ng
+     dnu(g) = abs(nxt_nug(min(ng,g+1)) - nxt_nug(max(1,g-1)))/(min(ng,g+1) - max(1,g-1))
+  enddo
   do i=1,ncell
      call jfill(nxt_jg(:,i))
      if(allocated(nxt_jgc)) then
@@ -1127,24 +1134,14 @@ subroutine nxt_jfill_cells(ncell,ng)
 contains
   subroutine jfill(jj)
     real*8,intent(inout) :: jj(ng)
-    real*8 :: j0(ng),w
-    integer :: g,ga,gb
+    real*8 :: j0(ng)
+    integer :: ga,gb
     j0 = jj
     do g=1,ng
-       if(j0(g) > 0d0) cycle
-       ga = g - 1
-       do while(ga >= max(1,g-nxt_jfill))
-          if(j0(ga) > 0d0) exit
-          ga = ga - 1
-       enddo
-       gb = g + 1
-       do while(gb <= min(ng,g+nxt_jfill))
-          if(j0(gb) > 0d0) exit
-          gb = gb + 1
-       enddo
-       if(ga < max(1,g-nxt_jfill) .or. gb > min(ng,g+nxt_jfill)) cycle
-       w = log(nxt_nug(g)/nxt_nug(ga))/log(nxt_nug(gb)/nxt_nug(ga))
-       jj(g) = exp((1d0-w)*log(j0(ga)) + w*log(j0(gb)))
+       ga = max(1,g-nxt_jfill)
+       gb = min(ng,g+nxt_jfill)
+       if(all(j0(ga:gb) > 0d0)) cycle
+       jj(g) = sum(j0(ga:gb)*dnu(ga:gb))/sum(dnu(ga:gb))
     enddo
   end subroutine jfill
 end subroutine nxt_jfill_cells
