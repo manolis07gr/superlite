@@ -183,6 +183,12 @@ c-- groups without Monte Carlo flights in a cell take the mean J over
 c-- this many groups on each side
 c-- (0: none, J = 0 where no packet flew)
       integer :: in_nltex_jfill = 0
+c-- emission of the NLTE macro-atoms and k-packets biased into the band
+c-- [in_nltex_fwl1, in_nltex_fwl2] (A) by this factor, the packets
+c-- weighted (<= 1: off); for a far UV of a thin wind no packet reaches
+      real*8 :: in_nltex_fbias = 0d0
+      real*8 :: in_nltex_fwl1 = 912d0
+      real*8 :: in_nltex_fwl2 = 1064d0
 c-- incident intensity of the Sobolev NLTE lines in the statistical
 c-- equilibrium: path-length estimator of J_nu in a window this wide
 c-- [km/s] next to each line, on the side the comoving frequency of a
@@ -394,6 +400,7 @@ c-- runtime parameter namelist
      & in_nltex_prev,in_nltex_dtprev,in_nltex_init,in_nltex_hold,
      & in_nltex_bbext,in_nltex_cdest,in_nltex_jbbeta,in_nltex_jbwin,
      & in_nltex_dmpsec,in_nltex_javg,in_nltex_taumin,in_nltex_jfill,
+     & in_nltex_fbias,in_nltex_fwl1,in_nltex_fwl2,
      & in_nltex_dis,
      & in_nltex_ali,
      & in_nltex_ldb,in_nltex_vturb,in_nltex_vturbmax,in_nltex_esrates,
@@ -552,6 +559,9 @@ c
       call insertr(in_nltex_javg,in_r,ir)
       call insertr(in_nltex_taumin,in_r,ir)
       call inserti(in_nltex_jfill,in_i,ii)
+      call insertr(in_nltex_fbias,in_r,ir)
+      call insertr(in_nltex_fwl1,in_r,ir)
+      call insertr(in_nltex_fwl2,in_r,ir)
       call insertr(in_nltex_jbwin,in_r,ir)
       call insertl(in_nltex_dis,in_l,il)
       call insertl(in_nltex_esdamp,in_l,il)
@@ -792,6 +802,8 @@ c
       if(in_nt_lumg<0d0.or.in_nt_lumg>1d0) stop 'in_nt_lumg: [0,1]'
       if(in_nltex_javg<0d0.or.in_nltex_javg>=1d0)
      &  stop 'in_nltex_javg: [0,1)'
+      if(in_nltex_fbias>1d0.and.in_nltex_fwl1>=in_nltex_fwl2)
+     &  stop 'in_nltex_fwl1 < in_nltex_fwl2'
       if(in_lumg_rad<0d0.or.in_nt_lumg+in_lumg_rad>1d0)
      &  stop 'in_lumg_rad: [0,1-in_nt_lumg]'
       if(in_lumg_rad>0d0.and.in_srctype/='lumg')

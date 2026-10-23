@@ -185,8 +185,11 @@ contains
     type(packet2),intent(inout) :: ptcl2
     type(rnd_t),intent(inout) :: rndstate
     integer :: kind,idx
-    real*8 :: wlcmf,mucmf,r,help
-    call nxt_activate_line(ic,kres,rndstate,kind,idx,wlcmf)
+    real*8 :: wlcmf,mucmf,r,help,wtb
+    wtb = 1d0
+    call nxt_activate_line(ic,kres,rndstate,kind,idx,wlcmf,wtb)
+    e = e*wtb
+    e0 = e0*wtb
     mucmf = (mu-vx*cinv)/(1d0-mu*vx*cinv)
     if(kind==em_line) call nx_linees(kind,idx,ic,rndstate,mucmf,wlcmf)
     if(kind==em_line) then

@@ -234,6 +234,11 @@ program superlite
      nxt_javg = in_nltex_javg
      nxt_taumin = in_nltex_taumin
      nxt_jfill = in_nltex_jfill
+     nxt_fbias = in_nltex_fbias
+     nxt_fwl1 = in_nltex_fwl1*1d-8
+     nxt_fwl2 = in_nltex_fwl2*1d-8
+     if(lmpi0 .and. nxt_fbias>1d0) write(6,'(1x,a,f8.1,a,2f8.1,a)') 'NLTE emission: biased',nxt_fbias, &
+          ' times into',in_nltex_fwl1,in_nltex_fwl2,' A, weighted (in_nltex_fbias)'
      if(lmpi0 .and. nxt_javg>0d0) write(6,'(1x,a,f5.2,a)') &
           'NLTE group J: weight',nxt_javg,' of the previous iterations (in_nltex_javg)'
      if(lmpi0 .and. nxt_dmpsec) write(6,'(1x,a)') 'NLTE populations: adaptive damping between iterations (in_nltex_dmpsec)'

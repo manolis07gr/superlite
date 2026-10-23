@@ -179,6 +179,18 @@ module nltextrmod
   integer,allocatable,public :: nxt_bch(:)    !(nlv) recombination channel of the level
   integer,allocatable,public :: nxt_2pch(:)   !(n2p) channel of the two-photon transition
   integer,public :: nxt_nin = 0               !lines within super-levels
+!-- (nxt_fbias > 1) emission biased into the far-UV band [nxt_fwl1, nxt_fwl2]
+!-- (cm): the emission channels of a state (and the k-packet outcomes) in the
+!-- band are chosen with probability q = max(P, min(nxt_fbias P, nxt_fqmax))
+!-- instead of their share P, the packet weighted by P/q, the other channels
+!-- by (1-P)/(1-q) (nxt_bpick); the band of a thin wind no packet would
+!-- reach otherwise
+  real*8,public :: nxt_fbias = 0d0, nxt_fwl1 = 0d0, nxt_fwl2 = 0d0
+  real*8,parameter :: nxt_fqmax = 0.5d0
+  logical,allocatable :: nxt_chin(:)          !(nch) the channel emits in the band
+  logical,allocatable :: nxt_kin(:)           !(nko)
+  real*8,allocatable :: nxt_chp(:,:)          !(nst,ncell) share P of the state's channels in the band
+  real*8,allocatable :: nxt_kp(:)             !(ncell) of the k-packet outcomes
   integer,allocatable,public :: nxt_inl(:)    !(nin) their global index
   real*8,allocatable,public :: nxt_w(:,:)     !(nlv,ncell) share of each level in its state (nxa_weights)
   integer,public :: nxt_n2p = 0               !two-photon transitions
@@ -333,7 +345,7 @@ module nltextrmod
   integer,parameter :: em_ovl = 6
   integer,allocatable :: nxt_och(:)          !(npair) channel of each pair (0: none)
 !
-  public :: nxt_init,nxt_alloc_opt,nxt_jfill_cells,nxt_gas_solve,nxt_store_jg,nxt_tally_reset,nxt_tally_finish
+  public :: nxt_init,nxt_alloc_opt,nxt_jfill_cells,nxt_bpick,nxt_gas_solve,nxt_store_jg,nxt_tally_reset,nxt_tally_finish
   public :: nxt_tables,nxt_neighbors,nxt_activate,nxt_activate_line,nxt_kpacket
   public :: nxt_bfabs,nxt_bfpick,nxt_nonthermal,nxt_ntdep,nxt_ntrates,nxt_write,nxt_bffreq
   public :: nxt_shares,nxt_dealloc,nxt_emcode,nxt_emloc
@@ -1689,6 +1701,8 @@ subroutine nxt_tables(ncell,tempinv,radtemp,capemitgrey,xarr,vxarr)
      nxt_kcum(nxt_nko,ic) = 1d0
   enddo
   if(nfail>0) write(0,*) 'nxt_tables: singular macro-atom chain in cells:',nfail
+!-- (nxt_fbias) shares of the emission in the far-UV band
+  if(nxt_fbias > 1d0) call nxt_fband(ncell)
 !
   nx_dis = 0d0
 !-- bound-free absorption: per block of groups the levels of largest bound
@@ -2438,6 +2452,118 @@ pure subroutine nxt_neighbors(wlc,iline,ilside,jlo,jhi)
 end subroutine nxt_neighbors
 !
 !
+subroutine nxt_fband(ncell)
+!-- (nxt_fbias) the channels and k-packet outcomes emitting in the band (a
+!-- line in it; a recombination with its edge in [nxt_fwl1, 1.1 nxt_fwl2],
+!-- whose photons are bluer than the edge) and their share per cell
+  integer,intent(in) :: ncell
+  integer :: ic,j,k,nst
+  real*8 :: c0
+  nst = size(nxt_chst) - 1
+  if(.not.allocated(nxt_chin)) then
+     allocate(nxt_chin(nxt_nch),nxt_kin(nxt_nko),nxt_chp(nst,ncell),nxt_kp(ncell))
+     do k=1,nxt_nch
+        select case(nxt_chk(k))
+        case(em_line)
+           nxt_chin(k) = inband(nxa_lwl(nxt_chi(k)),1d0)
+        case(em_bf)
+           nxt_chin(k) = inband(cc/nxa_lvnu0(nxt_chi(k)),1.1d0)
+        case default
+           nxt_chin(k) = .false.
+        end select
+     enddo
+     nxt_kin = .false.
+     do k=1,nxa_nlv
+        nxt_kin(1+k) = inband(cc/nxa_lvnu0(k),1.1d0)
+     enddo
+     do k=1,nxt_nin
+        nxt_kin(1+nxa_nlv+nst+k) = inband(nxa_lwl(nxt_inl(k)),1d0)
+     enddo
+  endif
+  do ic=1,ncell
+     do j=1,nst
+        nxt_chp(j,ic) = 0d0
+        c0 = 0d0
+        do k=nxt_chst(j),nxt_chst(j+1)-1
+           if(nxt_chin(k)) nxt_chp(j,ic) = nxt_chp(j,ic) + (nxt_chcum(k,ic) - c0)
+           c0 = nxt_chcum(k,ic)
+        enddo
+     enddo
+     nxt_kp(ic) = 0d0
+     c0 = 0d0
+     do k=1,nxt_nko
+        if(nxt_kin(k)) nxt_kp(ic) = nxt_kp(ic) + (nxt_kcum(k,ic) - c0)
+        c0 = nxt_kcum(k,ic)
+     enddo
+  enddo
+contains
+  pure logical function inband(wl,f)
+    real*8,intent(in) :: wl,f
+    inband = wl >= nxt_fwl1 .and. wl <= f*nxt_fwl2
+  end function inband
+end subroutine nxt_fband
+!
+!
+pure subroutine nxt_bpick(cum,lin,pin,state,i,wt)
+!-----------------------------------------------------------------------
+! (nxt_fbias) index i from the cumulative cum with the entries lin (share
+! pin) chosen with probability q = max(pin, min(nxt_fbias pin, nxt_fqmax)):
+! within them in proportion to their shares, otherwise among the others
+! (by rejection); the weight wt of the packet times pin/q or (1-pin)/(1-q)
+!-----------------------------------------------------------------------
+  real*8,intent(in) :: cum(:),pin
+  logical,intent(in) :: lin(:)
+  type(rnd_t),intent(inout) :: state
+  integer,intent(out) :: i
+  real*8,intent(inout) :: wt
+  real*8 :: q,r,c0,acc
+  integer :: it
+  q = max(pin,min(nxt_fbias*pin,nxt_fqmax))
+  call rnd_r(r,state)
+  if(q <= pin .or. pin <= 0d0) then
+     call pick(cum,max(r,1d-300),i)
+     return
+  endif
+  if(r < q) then
+     call rnd_r(r,state)
+     r = r*pin
+     acc = 0d0
+     c0 = 0d0
+     do i=1,size(cum)
+        if(lin(i)) then
+           acc = acc + (cum(i) - c0)
+           if(acc >= r .and. cum(i) > c0) exit
+        endif
+        c0 = cum(i)
+     enddo
+     if(i > size(cum)) then
+!-- (round-off: the last entry in the band)
+        do i=size(cum),1,-1
+           if(lin(i)) exit
+        enddo
+     endif
+     wt = wt*pin/q
+  else
+     do it=1,10000
+        call rnd_r(r,state)
+        call pick(cum,max(r,1d-300),i)
+        if(.not.lin(i)) exit
+     enddo
+     wt = wt*(1d0-pin)/(1d0-q)
+  endif
+end subroutine nxt_bpick
+!
+!
+pure logical function lbias(wt)
+!-- (nxt_fbias) the emission is biased into the far-UV band: a weight to
+!-- carry and the shares of the band (nxt_fband)
+  real*8,intent(in),optional :: wt
+  lbias = .false.
+  if(.not.present(wt)) return
+  lbias = nxt_fbias > 1d0 .and. allocated(nxt_chp)
+end function lbias
+!
+!
 pure subroutine pick(cum,r,i)
 !-- first index with cum(i) >= r
   real*8,intent(in) :: cum(:),r
@@ -2526,7 +2652,7 @@ pure subroutine nxt_bffreq(lv,t,state,nu,ic)
 end subroutine nxt_bffreq
 !
 !
-pure recursive subroutine emit_state(ic,gs,state,kind,idx,wlc)
+pure recursive subroutine emit_state(ic,gs,state,kind,idx,wlc,wt)
 !-- emission channel of the de-activating global state gs (an overlapping
 !-- line's channel: the partner's macro-atom, activated by the photon)
   use gridmod, only:grd_tempinv
@@ -2534,6 +2660,7 @@ pure recursive subroutine emit_state(ic,gs,state,kind,idx,wlc)
   type(rnd_t),intent(inout) :: state
   integer,intent(out) :: kind,idx
   real*8,intent(out) :: wlc
+  real*8,intent(inout),optional :: wt
   real*8 :: r,nu
   integer :: c
   if(nxt_chst(gs+1)<=nxt_chst(gs)) then
@@ -2543,15 +2670,25 @@ pure recursive subroutine emit_state(ic,gs,state,kind,idx,wlc)
      wlc = 0d0
      return
   endif
-  call rnd_r(r,state)
-  call pick(nxt_chcum(nxt_chst(gs):nxt_chst(gs+1)-1,ic),max(r,1d-300),c)
+  if(lbias(wt)) then
+     if(nxt_chp(gs,ic) > 0d0) then
+        call nxt_bpick(nxt_chcum(nxt_chst(gs):nxt_chst(gs+1)-1,ic),nxt_chin(nxt_chst(gs):nxt_chst(gs+1)-1), &
+             nxt_chp(gs,ic),state,c,wt)
+     else
+        call rnd_r(r,state)
+        call pick(nxt_chcum(nxt_chst(gs):nxt_chst(gs+1)-1,ic),max(r,1d-300),c)
+     endif
+  else
+     call rnd_r(r,state)
+     call pick(nxt_chcum(nxt_chst(gs):nxt_chst(gs+1)-1,ic),max(r,1d-300),c)
+  endif
   c = nxt_chst(gs) + c - 1
   kind = nxt_chk(c)
   idx = nxt_chi(c)
   select case(kind)
   case(em_ovl)
      c = nxo_par(idx)
-     call nxt_activate_line(ic,c,state,kind,idx,wlc)
+     call nxt_activate_line(ic,c,state,kind,idx,wlc,wt)
   case(em_line)
      wlc = nxa_lwl(idx)
   case(em_bf)
@@ -2591,17 +2728,22 @@ pure function nxt_emcode(kind,idx) result(code)
 end function nxt_emcode
 !
 !
-pure recursive subroutine nxt_kpacket(ic,state,kind,idx,wlc)
+pure recursive subroutine nxt_kpacket(ic,state,kind,idx,wlc,wt)
 !-- a k-packet (thermal energy) in cell ic
   use gridmod, only:grd_tempinv
   integer,intent(in) :: ic
   type(rnd_t),intent(inout) :: state
   integer,intent(out) :: kind,idx
   real*8,intent(out) :: wlc
+  real*8,intent(inout),optional :: wt
   real*8 :: r,nu
   integer :: e
-  call rnd_r(r,state)
-  call pick(nxt_kcum(:,ic),max(r,1d-300),e)
+  if(lbias(wt)) then
+     call nxt_bpick(nxt_kcum(:,ic),nxt_kin,nxt_kp(ic),state,e,wt)
+  else
+     call rnd_r(r,state)
+     call pick(nxt_kcum(:,ic),max(r,1d-300),e)
+  endif
   idx = 0
   wlc = 0d0
   if(e==1) then
@@ -2612,7 +2754,7 @@ pure recursive subroutine nxt_kpacket(ic,state,kind,idx,wlc)
      call nxt_bffreq(idx,1d0/grd_tempinv(ic),state,nu)
      wlc = cc/nu
   elseif(e<=1+nxa_nlv+nxa_nst) then
-     call emit_state(ic,e-1-nxa_nlv,state,kind,idx,wlc)
+     call emit_state(ic,e-1-nxa_nlv,state,kind,idx,wlc,wt)
   else
 !-- a line within a super-level
      kind = em_line
@@ -2622,12 +2764,13 @@ pure recursive subroutine nxt_kpacket(ic,state,kind,idx,wlc)
 end subroutine nxt_kpacket
 !
 !
-pure recursive subroutine nxt_activate(ic,iel,s,state,kind,idx,wlc)
+pure recursive subroutine nxt_activate(ic,iel,s,state,kind,idx,wlc,wt)
 !-- macro-atom of element iel activated in its state s
   integer,intent(in) :: ic,iel,s
   type(rnd_t),intent(inout) :: state
   integer,intent(out) :: kind,idx
   real*8,intent(out) :: wlc
+  real*8,intent(inout),optional :: wt
   real*8 :: r
   integer :: e,j,ns
   ns = nxa_el(iel)%ns
@@ -2635,29 +2778,30 @@ pure recursive subroutine nxt_activate(ic,iel,s,state,kind,idx,wlc)
   call rnd_r(r,state)
   call pick(nxt_ecum(j+1:j+ns+1,ic),max(r,1d-300),e)
   if(e>ns) then
-     call nxt_kpacket(ic,state,kind,idx,wlc)
+     call nxt_kpacket(ic,state,kind,idx,wlc,wt)
   else
-     call emit_state(ic,nxa_el(iel)%xoff+e,state,kind,idx,wlc)
+     call emit_state(ic,nxa_el(iel)%xoff+e,state,kind,idx,wlc,wt)
   endif
 end subroutine nxt_activate
 !
 !
-pure recursive subroutine nxt_activate_line(ic,k,state,kind,idx,wlc)
+pure recursive subroutine nxt_activate_line(ic,k,state,kind,idx,wlc,wt)
 !-- packet absorbed in global line k: macro-atom in the upper level (its
 !-- state); a line within a super-level is thermal (k-packet)
   integer,intent(in) :: ic,k
   type(rnd_t),intent(inout) :: state
   integer,intent(out) :: kind,idx
   real*8,intent(out) :: wlc
+  real*8,intent(inout),optional :: wt
   if(nxt_lch(k)==0) then
-     call nxt_kpacket(ic,state,kind,idx,wlc)
+     call nxt_kpacket(ic,state,kind,idx,wlc,wt)
   else
-     call nxt_activate(ic,nxa_lel(k),nxa_lsu(k),state,kind,idx,wlc)
+     call nxt_activate(ic,nxa_lel(k),nxa_lsu(k),state,kind,idx,wlc,wt)
   endif
 end subroutine nxt_activate_line
 !
 !
-pure subroutine nxt_nonthermal(ic,state,kind,idx,wlc)
+pure subroutine nxt_nonthermal(ic,state,kind,idx,wlc,wt)
 !-- energy of a fast electron in cell ic: heat (k-packet), ionization
 !-- (macro-atom in the continuum) or excitation, with the shares of the
 !-- Spencer-Fano solution of the cell (nltentmod), or for H I and He I
@@ -2666,6 +2810,7 @@ pure subroutine nxt_nonthermal(ic,state,kind,idx,wlc)
   type(rnd_t),intent(inout) :: state
   integer,intent(out) :: kind,idx
   real*8,intent(out) :: wlc
+  real*8,intent(inout),optional :: wt
   real*8 :: fh,fih,feh,fihe,fehe,r,xion
   integer :: iel,s
 !-- (Spencer-Fano with all NLTE species: the channel shares of the cell)
@@ -2673,31 +2818,31 @@ pure subroutine nxt_nonthermal(ic,state,kind,idx,wlc)
      call rnd_r(r,state)
      call nxn_pick(ic,r,iel,s)
      if(iel==0) then
-        call nxt_kpacket(ic,state,kind,idx,wlc)
+        call nxt_kpacket(ic,state,kind,idx,wlc,wt)
      else
-        call nxt_activate(ic,iel,s,state,kind,idx,wlc)
+        call nxt_activate(ic,iel,s,state,kind,idx,wlc,wt)
      endif
      return
   endif
   if(nxt_elh==0) then
-     call nxt_kpacket(ic,state,kind,idx,wlc)
+     call nxt_kpacket(ic,state,kind,idx,wlc,wt)
      return
   endif
   xion = nxt_x(nxa_el(nxt_elh)%xoff+nxa_el(nxt_elh)%ns,ic)
   call nxt_shares(xion,nxt_yhe(nxt_nel(:,ic)),fh,fih,feh,fihe,fehe)
   call rnd_r(r,state)
   if(r < fh) then
-     call nxt_kpacket(ic,state,kind,idx,wlc)
+     call nxt_kpacket(ic,state,kind,idx,wlc,wt)
   elseif(r < fh + fih) then
-     call nxt_activate(ic,nxt_elh,nxt_shc-nxa_el(nxt_elh)%xoff,state,kind,idx,wlc)
+     call nxt_activate(ic,nxt_elh,nxt_shc-nxa_el(nxt_elh)%xoff,state,kind,idx,wlc,wt)
   elseif(r < fh + fih + feh .and. nxt_sh2>0) then
-     call nxt_activate(ic,nxt_elh,nxt_sh2-nxa_el(nxt_elh)%xoff,state,kind,idx,wlc)
+     call nxt_activate(ic,nxt_elh,nxt_sh2-nxa_el(nxt_elh)%xoff,state,kind,idx,wlc,wt)
   elseif(r < fh + fih + feh + fihe .and. nxt_elhe>0) then
-     call nxt_activate(ic,nxt_elhe,nxt_shec-nxa_el(nxt_elhe)%xoff,state,kind,idx,wlc)
+     call nxt_activate(ic,nxt_elhe,nxt_shec-nxa_el(nxt_elhe)%xoff,state,kind,idx,wlc,wt)
   elseif(nxt_elhe>0 .and. nxt_she2>0) then
-     call nxt_activate(ic,nxt_elhe,nxt_she2-nxa_el(nxt_elhe)%xoff,state,kind,idx,wlc)
+     call nxt_activate(ic,nxt_elhe,nxt_she2-nxa_el(nxt_elhe)%xoff,state,kind,idx,wlc,wt)
   else
-     call nxt_kpacket(ic,state,kind,idx,wlc)
+     call nxt_kpacket(ic,state,kind,idx,wlc,wt)
   endif
 end subroutine nxt_nonthermal
 !
@@ -2734,7 +2879,7 @@ pure function bfsig(lv,ig,ic) result(s)
 end function bfsig
 !
 !
-pure subroutine nxt_bfabs(ic,ig,nu,state,kind,idx,wlc)
+pure subroutine nxt_bfabs(ic,ig,nu,state,kind,idx,wlc,wt)
 !-----------------------------------------------------------------------
 ! NLTE bound-free absorption of a packet of comoving frequency nu (group
 ! ig) in cell ic: choose the level by n_l <sigma_l>_g (nxt_bfpick), then
@@ -2746,18 +2891,19 @@ pure subroutine nxt_bfabs(ic,ig,nu,state,kind,idx,wlc)
   type(rnd_t),intent(inout) :: state
   integer,intent(out) :: kind,idx
   real*8,intent(out) :: wlc
+  real*8,intent(inout),optional :: wt
   real*8 :: r
   integer :: lsel
   call nxt_bfpick(ic,ig,state,lsel)
   if(lsel==0) then
-     call nxt_kpacket(ic,state,kind,idx,wlc)
+     call nxt_kpacket(ic,state,kind,idx,wlc,wt)
      return
   endif
   call rnd_r(r,state)
   if(r < nxa_lvnu0(lsel)/nu) then
-     call nxt_activate(ic,nxa_lvel(lsel),nxa_lvc(lsel),state,kind,idx,wlc)
+     call nxt_activate(ic,nxa_lvel(lsel),nxa_lvc(lsel),state,kind,idx,wlc,wt)
   else
-     call nxt_kpacket(ic,state,kind,idx,wlc)
+     call nxt_kpacket(ic,state,kind,idx,wlc,wt)
   endif
 end subroutine nxt_bfabs
 !
@@ -3558,17 +3704,18 @@ subroutine nxt_release(ncell,vol)
 end subroutine nxt_release
 !
 !
-pure subroutine nxt_activate_rel(ic,state,kind,idx,wlc)
+pure subroutine nxt_activate_rel(ic,state,kind,idx,wlc,wt)
 !-- packet of the energy released by the recombining gas (nxt_release):
 !-- macro-atom activated in a state that empties, with its share
   integer,intent(in) :: ic
   type(rnd_t),intent(inout) :: state
   integer,intent(out) :: kind,idx
   real*8,intent(out) :: wlc
+  real*8,intent(inout),optional :: wt
   real*8 :: r
   integer :: g,iel
   if(nxt_rcum(nxa_nst,ic) <= 0d0) then
-     call nxt_kpacket(ic,state,kind,idx,wlc)
+     call nxt_kpacket(ic,state,kind,idx,wlc,wt)
      return
   endif
   call rnd_r(r,state)
@@ -3576,7 +3723,7 @@ pure subroutine nxt_activate_rel(ic,state,kind,idx,wlc)
   do iel=nxa_nel,1,-1
      if(g > nxa_el(iel)%xoff) exit
   enddo
-  call nxt_activate(ic,iel,g-nxa_el(iel)%xoff,state,kind,idx,wlc)
+  call nxt_activate(ic,iel,g-nxa_el(iel)%xoff,state,kind,idx,wlc,wt)
 end subroutine nxt_activate_rel
 !
 end module nltextrmod

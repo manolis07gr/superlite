@@ -120,6 +120,7 @@ program test_nltex
   call ldb_tests
   call dis_tests
   call nt_tests
+  call fbias_tests
   deallocate(x, xl, beta, jb, ljb, nti, ntx, nel)
 !
 !-- 2. He model atoms
@@ -138,6 +139,53 @@ program test_nltex
   write(*,'(a)') 'test_nltex: PASS'
 contains
 !
+!
+  subroutine fbias_tests
+!-- emission biased into a band (nxt_bpick): the weighted frequency of
+!-- each outcome is its probability, the band is chosen with probability
+!-- q = min(nxt_fbias P, 1/2)
+    integer,parameter :: m = 6, ns = 2000000
+    real*8 :: p(m), cum(m), tal(m), wt, dmx, qb, fb, sg
+    logical :: lin(m)
+    type(rnd_t) :: st
+    integer :: j, i0, nb
+    real*8 :: fsave
+    p = [0.3d0, 1d-3, 0.4d0, 5d-4, 0.2985d0, 0d0]
+    lin = [.false., .true., .false., .true., .false., .true.]
+    cum(1) = p(1)
+    do j = 2, m
+       cum(j) = cum(j-1) + p(j)
+    enddo
+    fsave = nxt_fbias
+    nxt_fbias = 100d0
+    call rnd_init(1, 11)
+    st = rnd_states(1)
+    tal = 0d0
+    nb = 0
+    do j = 1, ns
+       wt = 1d0
+       call nxt_bpick(cum, lin, 1.5d-3, st, i0, wt)
+       tal(i0) = tal(i0) + wt
+       if(lin(i0)) nb = nb + 1
+    enddo
+    tal = tal/ns
+    dmx = 0d0
+    do j = 1, m
+       if(p(j) <= 0d0) then
+          if(tal(j) > 0d0) dmx = 1d0
+          cycle
+       endif
+!-- (relative to the binomial error of the biased draws)
+       qb = merge(0.15d0*p(j)/1.5d-3, (1d0 - 0.15d0)*p(j)/(1d0 - 1.5d-3), lin(j))
+       sg = sqrt(qb*(1d0 - qb)/ns)/qb
+       dmx = max(dmx, abs(tal(j)/p(j) - 1d0)/sg)
+    enddo
+    fb = dble(nb)/ns
+    write(*,'(a,f6.2,a,f7.4,a)') '  biased emission: largest deviation of the weighted frequencies', dmx, &
+         ' sigma; band chosen', fb, ' (0.15)'
+    if(dmx > 4.5d0 .or. abs(fb - 0.15d0) > 3d-3) nfail = nfail + 1
+    nxt_fbias = fsave
+  end subroutine fbias_tests
 !
   subroutine nt_tests
 !-- fast electrons with all NLTE species (nltentmod) in an H gas with

@@ -53,7 +53,7 @@ pure subroutine diffusion11(ptcl,ptcl2,vx,vy,vz,cache,rndstate,&
   real*8,pointer :: capgreyinv
   real*8,pointer :: capemitgreyinv
   real*8,pointer :: speclump
-  real*8 :: dist, help
+  real*8 :: dist, help, wtb
   real*8 :: vhelp1,vhelp2,help1,help2
   real*8 :: dummy
 !-- NLTE macro-atoms: absorption and re-emission
@@ -540,13 +540,17 @@ pure subroutine diffusion11(ptcl,ptcl2,vx,vy,vz,cache,rndstate,&
         call rnd_r(r1,rndstate)
         nu = pc_c*((1d0-r1)*grp_wlinv(iiig+1) + r1*grp_wlinv(iiig))
         call rnd_r(r1,rndstate)
+        wtb = 1d0
         if(nxt_ntemin>0d0 .and. pc_h*nu>nxt_ntemin) then
-           call nxt_nonthermal(ic,rndstate,kind,idx,wlcmf)
+           call nxt_nonthermal(ic,rndstate,kind,idx,wlcmf,wtb)
         elseif(r1*grd_cap(iiig,ic) < grd_capnbf(iiig,ic)) then
-           call nxt_bfabs(ic,iiig,nu,rndstate,kind,idx,wlcmf)
+           call nxt_bfabs(ic,iiig,nu,rndstate,kind,idx,wlcmf,wtb)
         else
-           call nxt_kpacket(ic,rndstate,kind,idx,wlcmf)
+           call nxt_kpacket(ic,rndstate,kind,idx,wlcmf,wtb)
         endif
+!-- (nxt_fbias: the weight of a biased emission)
+        e = e*wtb
+        e0 = e0*wtb
         ptcl%em = nxt_emcode(kind,idx)
         ptcl%icem = 0
         if(nxt_emloc(ptcl%em)) ptcl%icem = ic

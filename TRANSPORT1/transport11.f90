@@ -51,7 +51,7 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
   real*8 :: elabfact,elabfactold
   real*8 :: xold, muold, pimp, fz0, fz1, fzl, fzh
   integer :: kb
-  real*8 :: help
+  real*8 :: help,wtb
 !-- distance out of physical reach
   real*8 :: far
   real*8 :: emitlump
@@ -570,13 +570,17 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
 !-- NLTE bound-free absorption activates the macro-atom, the rest the thermal
 !-- pool; X-rays make fast photoelectrons (heat, H/He ionization and excitation)
         call rnd_r(r1,rndstate)
+        wtb = 1d0
         if(nxt_ntemin>0d0 .and. pc_h*pc_c*elabfact/wl>nxt_ntemin) then
-           call nxt_nonthermal(ic,rndstate,kind,idx,wlcmf)
+           call nxt_nonthermal(ic,rndstate,kind,idx,wlcmf,wtb)
         elseif(r1*grd_cap(ig,ic) < grd_capnbf(ig,ic)) then
-           call nxt_bfabs(ic,ig,pc_c*elabfact/wl,rndstate,kind,idx,wlcmf)
+           call nxt_bfabs(ic,ig,pc_c*elabfact/wl,rndstate,kind,idx,wlcmf,wtb)
         else
-           call nxt_kpacket(ic,rndstate,kind,idx,wlcmf)
+           call nxt_kpacket(ic,rndstate,kind,idx,wlcmf,wtb)
         endif
+!-- (nxt_fbias: the weight of a biased emission)
+        e = e*wtb
+        e0 = e0*wtb
         lremit = .true.
 !-- a line photon leaves its Sobolev resonance along directions of large
 !-- |Q(mu)|, or scattered by an electron in the resonance zone
@@ -739,11 +743,14 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
      call rnd_r(r1,rndstate)
      call nxt_static_line(ic,wlc0,ptcl%ilem,r1,kapl,kres)
      mucmf = (mu-vx*cinv)/(1d0-mu*vx*cinv)
+     wtb = 1d0
      if(kres>0) then
-        call nxt_activate_line(ic,kres,rndstate,kind,idx,wlcmf)
+        call nxt_activate_line(ic,kres,rndstate,kind,idx,wlcmf,wtb)
      else
-        call nxt_kpacket(ic,rndstate,kind,idx,wlcmf)
+        call nxt_kpacket(ic,rndstate,kind,idx,wlcmf,wtb)
      endif
+     e = e*wtb
+     e0 = e0*wtb
      if(kind==em_line) call nx_linees(kind,idx,ic,rndstate,mucmf,wlcmf)
      if(kind==em_line) then
         call line_mu(nxt_kq(idx,ic),dvdr(ix),vx/x,rndstate,mucmf)
@@ -800,7 +807,10 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
            idx = kres
            wlcmf = nxa_lwl(kres)
         else
-           call nxt_activate_line(ic,kres,rndstate,kind,idx,wlcmf)
+           wtb = 1d0
+           call nxt_activate_line(ic,kres,rndstate,kind,idx,wlcmf,wtb)
+           e = e*wtb
+           e0 = e0*wtb
         endif
 !-- line photons escape along directions of large |Q(mu)| (or are
 !-- scattered by an electron in the resonance zone), continuum isotropically

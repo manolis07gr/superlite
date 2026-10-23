@@ -28,7 +28,7 @@ subroutine interior_source!(it)
   integer*8,allocatable :: nvacantall(:)
   real*8 :: pwr
   real*8 :: r1, r2, r3, uul, uur, uumax
-  real*8 :: om0, mu0, x0, ep0, wl0, mues
+  real*8 :: om0, mu0, x0, ep0, wl0, mues, wtb
   real*8 :: denom2,x1,x2
 !-- neighbor emit values (for source tilting)
   integer :: icnb(6)
@@ -121,6 +121,7 @@ subroutine interior_source!(it)
            call rnd_r(r1,rnd_state)
            lrad = r1<in_lumg_rad
         endif
+        wtb = 1d0
         if(lxr) then
            call rnd_r(r1,rnd_state)
            call rnd_r(r2,rnd_state)
@@ -164,11 +165,11 @@ subroutine interior_source!(it)
               lnt = r1<in_nt_lumg/(1d0 - in_lumg_rad)
            endif
            if(lrel) then
-              call nxt_activate_rel(l,rnd_state,kind,idx,wlc)
+              call nxt_activate_rel(l,rnd_state,kind,idx,wlc,wtb)
            elseif(lnt) then
-              call nxt_nonthermal(l,rnd_state,kind,idx,wlc)
+              call nxt_nonthermal(l,rnd_state,kind,idx,wlc,wtb)
            else
-              call nxt_kpacket(l,rnd_state,kind,idx,wlc)
+              call nxt_kpacket(l,rnd_state,kind,idx,wlc,wtb)
            endif
 !-- (a line photon scattered by an electron in its resonance zone; the
 !-- direction is isotropic anyway)
@@ -198,7 +199,7 @@ subroutine interior_source!(it)
         if(nxt_on .and. ptcl%em/=6 .and. nxt_esrates) then
            if(kind==em_lines) ptcl%est = 1
         endif
-        ep0 = grd_emit(l)/dble(nemit)
+        ep0 = grd_emit(l)/dble(nemit)*wtb
         ptcl%e = ep0
         ptcl%e0 = ep0
         call rnd_r(r1,rnd_state)
