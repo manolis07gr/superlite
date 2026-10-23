@@ -885,6 +885,18 @@ iterations, and of the formal integral):
   second number of each depth record of CMFGEN's `XzVOUT` files is the
   population of the ground *level* of the next ion (C II ²P°₁/₂ is 1/3 of
   C II, Fe III ⁵D₄ 1/2.6), not of the whole ion.
+  The layer has two solutions of SuperLite's equations. Started from
+  CMFGEN's `ies` populations and Monte Carlo J (`cmf_m002re_hold`), with
+  the physics of `rayFs2` and the populations free (`rel_cmf`, `rel_cmf2`:
+  eleven iterations), it stays at CMFGEN's ionization: b₁ 0.134, 0.076,
+  0.49, 0.43 at 1.07, 1.10, 1.17, 1.30×10¹⁵ cm against `ies`' 0.126,
+  0.072, 0.41, 0.30 (x(H I) 6.3–6.8×10⁻⁴ at 1.17×10¹⁵ cm in every
+  iteration, `rayFs2` 1.8×10⁻³). The iteration from SuperLite's own start
+  ends on the neutral branch. Further out the wind drifts away from
+  CMFGEN's state in both runs (b₁ 25, 159, 2040 at 2.0, 2.42, 3.6×10¹⁵ cm
+  after eleven iterations, still rising; `ies` 16, 65, 373): without the
+  O I–Lyβ overlap `rayFs2` gives 9.7, 35, 471 there, so the outer wind is
+  the Bowen loss of Lyβ to O I as the overlap treatment computes it.
 * The Balmer jump of the full-metal wind. Against the optical continuum
   (4000–8300 Å), SuperLite's Balmer continuum (3000–3646 Å) is 11–16 %
   too bright with Sobolev lines (against CMFGEN's Sobolev model) and
