@@ -1258,8 +1258,8 @@ below about 5000 km/s in toy01; outside that the ejecta are Si, S and Ca
   | v2 atoms, τ_DDMC = 5 [K] | 25 452 | 20 934 | 16 213 | 10 221 | 6884 |
   | t01 atoms, τ_DDMC = 30, `in_lumg_rad` [K] | 20 835 | 18 471 | 14 513 | 9716 | 6296 |
 
-  For supernova ejecta use super-level atoms, `in_trn_tauddmc = 30`
-  and `in_lumg_rad` = 1 − deposition/L_bol. 1600–1800 K too hot at
+  For supernova ejecta use super-level atoms, `in_trn_tauddmc = 30`,
+  `in_lumg_rad` = 1 − deposition/L_bol and `in_nltex_taumin = 1d-2` (§5). 1600–1800 K too hot at
   3000–4000 km/s is still open.
 * An earlier version of this section compared Fe II beyond 5000 km/s;
   SuperLite has no Fe there, so its fractions in those cells are only the
@@ -1334,6 +1334,15 @@ lines, 100 cells) each takes 300 MB. The tallies of `in_nltex_jbwin` and
 `in_nltex_esrates` are allocated only with those options and the MPI sums are
 in place: 3.4–3.6 GB per rank instead of 4.5 GB. Two such runs of two ranks each
 exceeded the 16 GB container (one was killed for memory): plan about 4 GB per rank.
+Active lines: the transport steps at the Sobolev resonance of every line whose
+depth exceeds `in_nltex_taumin` (default 10⁻⁴) in some cell, in every cell; the
+log prints how many. With the toy01 atoms that is 92 028 of 379 700 lines and
+most of the transport's steps (gprof: 5×10⁸ steps for 2×2¹⁵ packets). With
+`in_nltex_taumin = 1d-2` 47 379 lines remain and the transport takes 260 s per
+iteration instead of 500 s (2¹⁸ packets, four iterations from `toy01_comb`,
+`tau2` against `tau4`); T_e within 0.7 %, ion fractions within 1–4 % (the noise),
+the emergent luminosity within 0.1 % and every band from 1500 Å to 2 μm within
+2 %. Use 10⁻² for supernova ejecta; the IIn benchmarks were made with 10⁻⁴.
 
 ```
 cmake -DUSE_MPI=ON <src> && make
