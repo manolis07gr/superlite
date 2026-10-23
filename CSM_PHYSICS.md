@@ -979,6 +979,26 @@ iterations, and of the formal integral):
   detailed balance (`in_nltex_ldb = 30`, DDMC), J = S with no radiation
   from elsewhere (J_ext = 0 in `output.nltex_ldb`), while on CMFGEN's
   populations the Monte Carlo J there is 1.07–1.42 S at 1.6–4.4×10¹⁵ cm.
+  Restricting local detailed balance to τ ≥ 10⁶ (`rel_ldb6`, six
+  iterations from `rel_cmf2`) does not keep it: the Monte Carlo J there
+  falls to 0.14–0.23 of `ies`'s and b₁ is 150 and 2570 at 2.42 and
+  3.6×10¹⁵ cm (the 1.3×10¹⁵ cm layer comes closest yet, 0.344 against
+  0.303). On `ies`'s populations held with every option of the free runs
+  (`hold_full`: overlap, Lyman Rayleigh scattering, continuum
+  destruction) SuperLite's J is within 2–10 % of `ies`'s at 1200–1500 Å
+  and 504–912 Å, and `cell_jtest` keeps `ies`'s state with it (x(H I)
+  0.0226, 0.0392, 0.0487, 0.0567 against 0.0225, 0.0390, 0.0483, 0.0561
+  at 2.4–4.4×10¹⁵ cm): CMFGEN's outer wind is a fixed point of
+  SuperLite's own physics. Switching on only the Λ* of the groups in
+  local detailed balance, with the same J (mode `fuv 912`), moves the
+  cells to 0.030, 0.060, 0.085, 0.110. In a Lyman continuum thick
+  across the cell the ground state's own cycle drops out and what is left
+  is the absorption of the other species' recombination photons there
+  (O⁺ → O I ground at 910 Å, inside H's continuum, a 10⁻³ share of the
+  recombinations, comparable with the net term of a few 10⁻³), which the
+  ALI holds at the J of the last transport while it lets H's own part
+  follow the populations. The coupling of O and H through those photons
+  and the charge exchange is then solved with one side frozen.
 * The Balmer jump of the full-metal wind. Against the optical continuum
   (4000–8300 Å), SuperLite's Balmer continuum (3000–3646 Å) is 11–16 %
   too bright with Sobolev lines (against CMFGEN's Sobolev model) and
