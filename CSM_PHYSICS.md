@@ -938,7 +938,25 @@ iterations, and of the formal integral):
   the 30-group window carries the J of 1064–1200 Å, a thousand times the
   band's, into it: J at 1000–1064 Å is 15–38 times `ies`'s beyond
   3×10¹⁵ cm. The agreement depends on the window, so the fill is a
-  diagnostic, not the remedy; `in_nltex_fbias` (§5) samples the band.
+  diagnostic, not the remedy. `in_nltex_fbias` (§5) samples the band
+  instead. Biased in every cell (`rel_fb100`) it lost the luminosity
+  (2×10⁴¹ of 2.4×10⁴² erg s⁻¹ emerged after one iteration): a packet of
+  the dense wind meets thousands of macro-atom events, and the product of
+  its weights is carried by exponentially rare packets. Biased only in
+  the cells where a quarter of the band had no flight (`rel_fb100b`, 100,
+  q ≤ 0.1) the energy is kept to 10⁻³, the empty groups at 1.4–2.6×10¹⁵ cm
+  fall from 18–45 to 2–28 of 47, but beyond 3×10¹⁵ cm the band stays
+  empty and b₁ is that of `rel_cmf2` (29, 180, 2120 at 2.0, 2.42,
+  3.6×10¹⁵ cm). The outer band is empty for a physical reason: its red
+  edge, 1064 Å, is the edge of O I 2p⁴ ¹D (11.65 eV), so O I absorbs
+  the whole band, and its J at 1000–1064 Å falls from 1.07 of `ies`'s at
+  1.6×10¹⁵ cm to 0.08 at 3.4×10¹⁵ cm. O I follows H I through the
+  charge exchange (SuperLite's O I fraction 0.06, 0.14, 0.20 at 2.4, 2.9,
+  3.4×10¹⁵ cm against CMFGEN's 0.024, 0.038, 0.049), so a neutral wind
+  shields the band that would ionize it: the same loop as the inner
+  layer's two branches. The outer wind is the neutral branch of that
+  loop, reached from CMFGEN's state through the Bowen drain; what keeps
+  CMFGEN on the ionized one is still open.
 * The Balmer jump of the full-metal wind. Against the optical continuum
   (4000–8300 Å), SuperLite's Balmer continuum (3000–3646 Å) is 11–16 %
   too bright with Sobolev lines (against CMFGEN's Sobolev model) and
@@ -1432,6 +1450,14 @@ that no packet crossed in a cell (J = 0 after the LDB) the mean J over the n
 groups on each side, weighted by the group widths (off by default). It is meant
 for the far UV of thin winds, where a zero J switches off the photoionization of
 levels with edges there (§4.4: O I ¹D and C I at 912–1064 Å in the IIn wind).
+Band biasing: `in_nltex_fbias = B` (band `in_nltex_fwl1`–`in_nltex_fwl2` Å,
+default 912–1064) chooses the emission channels of a macro-atom state and the
+k-packet outcomes that emit in the band with probability q = max(P, min(B P, 0.1))
+instead of their share P, the packet weighted by P/q, the others by (1 − P)/(1 − q),
+in the cells where a quarter of the band's groups had no flight in the last
+iteration. Unbiased (`test_nltex`: weighted frequencies within 0.5σ); off by
+default, and with it off every pick draws the random numbers it drew before.
+Biasing every cell loses the energy in the weights (§4.4).
 
 ```
 cmake -DUSE_MPI=ON <src> && make
