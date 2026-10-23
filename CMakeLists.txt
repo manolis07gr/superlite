@@ -7,6 +7,10 @@ option (USE_OPENMP "USE_OPENMP" OFF)
 
 #-- name the project and set the language
 project (SuperLite)
+#-- optimized unless a build type is given (cmake without one compiles at -O0)
+if (NOT CMAKE_BUILD_TYPE)
+  set (CMAKE_BUILD_TYPE Release CACHE STRING "build type" FORCE)
+endif ()
 set (SuperLite_VERSION_MAJOR 1)
 set (SuperLite_VERSION_MINOR "x")
 enable_language (Fortran)
