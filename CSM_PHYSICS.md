@@ -1243,7 +1243,24 @@ below about 5000 km/s in toy01; outside that the ejecta are Si, S and Ca
   K. The CMFGEN-like super-level atoms (`t01`: Fe IV 1000 levels in 100
   super-levels against 50 levels) take 900–1600 K off (`toy01_t01`),
   DDMC only above τ = 30 (`in_trn_tauddmc`) another 1000–2300 K
-  (`tdd30`); still open.
+  (`tdd30`). The source was CMFGEN's deposition scaled to its L_bol
+  (×1.33), so the radiation stored at earlier times was injected as heat
+  where the γ-rays deposit; with the deposition alone the core is up to
+  2300 K cooler (`toy01_dep`, but L_bol too low), and with that share
+  emitted as radiation (`in_lumg_rad` = 0.2457, a Planck spectrum at the
+  cell's T_R, not in the heating) 750 K cooler (`toy01_rad`: the core is
+  thick, so most of it is absorbed there anyway). All three together
+  (`toy01_comb`, seven iterations from `toy01_t01`):
+
+  | v [km/s] | 2000 | 3000 | 4000 | 5000 | 8000 |
+  |---|---|---|---|---|---|
+  | other codes [K] | 18 700–20 800 | 15 100–16 900 | 10 700–12 700 | 8600–9800 | 6100–7200 |
+  | v2 atoms, τ_DDMC = 5 [K] | 25 452 | 20 934 | 16 213 | 10 221 | 6884 |
+  | t01 atoms, τ_DDMC = 30, `in_lumg_rad` [K] | 20 835 | 18 471 | 14 513 | 9716 | 6296 |
+
+  For supernova ejecta use super-level atoms, `in_trn_tauddmc = 30`
+  and `in_lumg_rad` = 1 − deposition/L_bol. 1600–1800 K too hot at
+  3000–4000 km/s is still open.
 * An earlier version of this section compared Fe II beyond 5000 km/s;
   SuperLite has no Fe there, so its fractions in those cells are only the
   initial values.
