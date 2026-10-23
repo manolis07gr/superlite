@@ -1343,6 +1343,15 @@ iteration instead of 500 s (2¹⁸ packets, four iterations from `toy01_comb`,
 `tau2` against `tau4`); T_e within 0.7 %, ion fractions within 1–4 % (the noise),
 the emergent luminosity within 0.1 % and every band from 1500 Å to 2 μm within
 2 %. Use 10⁻² for supernova ejecta; the IIn benchmarks were made with 10⁻⁴.
+Noise: `in_nltex_javg` averages the Monte Carlo group J over iterations (weight of
+the previous ones; off by default). In toy01 (six iterations from `tau2`, weight
+0.5 against none) the median of the largest population change per cell fell from
+0.19, 0.16, 0.12, 0.12 to 0.13, 0.12, 0.09, 0.11 in iterations 3–6, while the T_e
+scatter between iterations stayed at 0.3–0.4 % (0.8–1.1 % in the outer half) and
+outer trace stages (Ca III at 14 000–22 000 km/s) still move by ±30 %: the rest of
+the noise is in the line estimators and the coupling to T_e. More packets (2¹⁹
+instead of 2¹⁸) are the remedy for final models; the transport is now 2.8 times
+faster than at -O0 with τ_min = 10⁻⁴.
 
 ```
 cmake -DUSE_MPI=ON <src> && make
