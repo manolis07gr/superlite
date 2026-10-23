@@ -320,6 +320,11 @@ c-- share of the 'lumg' energy injected in a cell that is deposited by
 c-- fast electrons (gamma-rays and positrons of radioactive decay; needs
 c-- in_nt_sf), the rest is thermal
       real*8 :: in_nt_lumg = 0d0
+c-- share of the 'lumg' energy of a cell that is stored radiation released
+c-- by diffusion (a supernova's L_bol above its deposition), not deposited
+c-- in the gas: emitted with a Planck spectrum at the cell's radiation
+c-- temperature and left out of the heating of the thermal balance
+      real*8 :: in_lumg_rad = 0d0
 c-- free-free opacity with each element as a fully ionized atom of
 c-- charge Z (released code) instead of its ions from the EOS
       logical :: in_fflegacy = .false.
@@ -391,6 +396,7 @@ c-- runtime parameter namelist
      & in_te_zsolve,in_te_secant,
      & in_tion,
      & in_nt_emin,in_nt_sf,in_nt_sfemax,in_nt_sfde,in_nt_lumg,
+     & in_lumg_rad,
      & in_fflegacy,
 !phys opac
      & in_opacmixrossel,
@@ -561,6 +567,7 @@ c
       call insertr(in_nt_sfemax,in_r,ir)
       call insertr(in_nt_sfde,in_r,ir)
       call insertr(in_nt_lumg,in_r,ir)
+      call insertr(in_lumg_rad,in_r,ir)
       call insertl(in_fflegacy,in_l,il)
       call insertl(in_nobbopac,in_l,il)
       call insertl(in_nobfopac,in_l,il)
@@ -769,6 +776,10 @@ c
       if(in_nt_lumg>0d0.and.in_srctype/='lumg')
      &  stop 'in_nt_lumg: in_srctype=lumg'
       if(in_nt_lumg<0d0.or.in_nt_lumg>1d0) stop 'in_nt_lumg: [0,1]'
+      if(in_lumg_rad<0d0.or.in_nt_lumg+in_lumg_rad>1d0)
+     &  stop 'in_lumg_rad: [0,1-in_nt_lumg]'
+      if(in_lumg_rad>0d0.and.in_srctype/='lumg')
+     &  stop 'in_lumg_rad: in_srctype=lumg'
       if(in_nltex_hold.and.trim(in_nltex_init)=='none')
      &  stop 'in_nltex_hold: needs in_nltex_init'
       if(in_nltex_jbwin<0d0) stop 'in_nltex_jbwin < 0'

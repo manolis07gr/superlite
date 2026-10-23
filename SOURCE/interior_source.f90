@@ -38,6 +38,7 @@ subroutine interior_source!(it)
 !
   real*8 :: emitprob(grp_ng)
   real*8 :: tradinv
+  logical :: lrad
 !-- lumg source: emission with the local emissivity (macro-atom with NLTE H)
   integer :: kind,idx
   real*8 :: wlc,thelp
@@ -112,11 +113,22 @@ subroutine interior_source!(it)
               lxr = r1<xs_px(l)
            endif
         endif
+!-- (the share in_lumg_rad of stored radiation released by diffusion, not
+!-- deposited in the gas: a Planck spectrum at the cell's radiation
+!-- temperature; te_update leaves it out of the heating)
+        lrad = .false.
+        if(.not.lxr .and. src_tsh(l)<=0d0 .and. in_lumg_rad>0d0) then
+           call rnd_r(r1,rnd_state)
+           lrad = r1<in_lumg_rad
+        endif
         if(lxr) then
            call rnd_r(r1,rnd_state)
            call rnd_r(r2,rnd_state)
            call rnd_r(r3,rnd_state)
            call xs_sample(l,r1,r2,r3,wlc)
+           kind = em_line  !wavelength set
+        elseif(lrad) then
+           wlc = pc_h*pc_c/(planck_x(rnd_state)*pc_kb*grd_radtemp(l))
            kind = em_line  !wavelength set
         elseif(src_tsh(l)>0d0) then
 !-- shock cell: radiatively cooling post-shock gas, T uniform between the gas
@@ -149,7 +161,7 @@ subroutine interior_source!(it)
            lnt = .false.
            if(.not.lrel .and. in_nt_lumg>0d0) then
               call rnd_r(r1,rnd_state)
-              lnt = r1<in_nt_lumg
+              lnt = r1<in_nt_lumg/(1d0 - in_lumg_rad)
            endif
            if(lrel) then
               call nxt_activate_rel(l,rnd_state,kind,idx,wlc)
@@ -172,7 +184,7 @@ subroutine interior_source!(it)
         endif
         wlc = min(max(wlc,grp_wl(1)),grp_wl(grp_ng+1)*(1d0-1d-12))
         ptcl%wl = wlc
-        if(src_tsh(l)>0d0 .or. lxr) then
+        if(src_tsh(l)>0d0 .or. lxr .or. lrad) then
            ptcl%em = 6
         elseif(nxt_on) then
            ptcl%em = nxt_emcode(kind,idx)
@@ -275,6 +287,32 @@ subroutine interior_source!(it)
   if(ipart/=src_nnew) stop 'interior_source: n/=nnew'
 
   call counterreg(ct_npcreate, src_nnew)
-
+!
+contains
+!
+  function planck_x(st) result(x)
+!-- h nu/kT of a photon of a Planck spectrum: x^3/(e^x - 1) = sum over l
+!-- of x^3 e^(-l x), the term l with weight l^-4 (90/pi^4 normalized), then
+!-- x a gamma(4) deviate over l (Carter & Cashwell 1975)
+    type(rnd_t),intent(inout) :: st
+    real*8 :: x,ra,rb,sm
+    integer :: ll
+    call rnd_r(ra,st)
+    ra = ra*pc_pi**4/90d0
+    sm = 0d0
+    do ll=1,1000
+       sm = sm + 1d0/dble(ll)**4
+       if(sm >= ra) exit
+    enddo
+    call rnd_r(rb,st)
+    x = rb
+    call rnd_r(rb,st)
+    x = x*rb
+    call rnd_r(rb,st)
+    x = x*rb
+    call rnd_r(rb,st)
+    x = x*rb
+    x = -log(max(x,1d-300))/dble(min(ll,1000))
+  end function planck_x
 end subroutine interior_source
 ! vim: fdm=marker

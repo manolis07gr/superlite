@@ -77,7 +77,7 @@ subroutine te_update(it)
      qv = (grd_vxarr(l+1)+grd_vxarr(l))/(grd_xarr(l+1)+grd_xarr(l))/gas_fcl(i)
 !-- (per unit clump volume: microclumping)
      gext = 0d0
-     if(in_srctype=='lumg' .and. src_tsh(l)<=0d0) gext = grd_emit(l)/gas_volcl(i)
+     if(in_srctype=='lumg' .and. src_tsh(l)<=0d0) gext = (1d0 - in_lumg_rad)*grd_emit(l)/gas_volcl(i)
 !-- (time-dependent NLTE: the share released by the recombining gas is
 !-- emitted by the macro-atom, not by the thermal pool)
      if(nxt_dtinv>0d0) then
