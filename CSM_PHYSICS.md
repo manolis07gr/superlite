@@ -1014,9 +1014,10 @@ iterations, and of the formal integral):
   10⁻³ of the gross rates and changes by factors of 2–5 for differences of
   a few 10⁻³ in them, below the agreement of two codes' atomic data and
   discretizations. It is not a quantity on which to benchmark the
-  physics; the agreement of the rates at fixed J (0.5 %) is. The H I
-  fraction of the inner layer and of the photosphere, and the spectrum
-  formed there, are not near the fork and do agree (§4.4 above).
+  physics; the agreement of the rates at fixed J (0.5 %) is. The layer at
+  1.1–1.4×10¹⁵ cm is the same kind of fork (its two branches above); the
+  wind inside 1.1×10¹⁵ cm, where the continuum and most of the lines
+  form, is not near one and agrees with `ies` to 1–10 % in b₁.
   `in_nltex_ldbse` stays off: it changes the answer only through the
   conditioning and multiplies the iterations of the solve.
 * The Balmer jump of the full-metal wind. Against the optical continuum
