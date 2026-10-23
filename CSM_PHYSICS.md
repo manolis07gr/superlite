@@ -956,7 +956,13 @@ iterations, and of the formal integral):
   shields the band that would ionize it: the same loop as the inner
   layer's two branches. The outer wind is the neutral branch of that
   loop, reached from CMFGEN's state through the Bowen drain; what keeps
-  CMFGEN on the ionized one is still open.
+  CMFGEN on the ionized one is still open. The transport is not it: on
+  CMFGEN's populations held (`cmf_m002re_hold`) SuperLite's J at
+  1000–1064 Å is 1.2–1.9 times `ies`'s out to 3.4×10¹⁵ cm (empty only
+  beyond 4×10¹⁵ cm, where `ies`'s is 10⁻³ of the neighbouring bands'), so
+  the band goes dark in the free runs because SuperLite's own O I is
+  3–4 times CMFGEN's. The remaining difference is in the rates of the
+  loop (cell 50 with `blk`'s J: x(H I) 0.030 against `ies`'s 0.023).
 * The Balmer jump of the full-metal wind. Against the optical continuum
   (4000–8300 Å), SuperLite's Balmer continuum (3000–3646 Å) is 11–16 %
   too bright with Sobolev lines (against CMFGEN's Sobolev model) and
