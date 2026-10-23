@@ -895,8 +895,22 @@ iterations, and of the formal integral):
   ends on the neutral branch. Further out the wind drifts away from
   CMFGEN's state in both runs (b₁ 25, 159, 2040 at 2.0, 2.42, 3.6×10¹⁵ cm
   after eleven iterations, still rising; `ies` 16, 65, 373): without the
-  O I–Lyβ overlap `rayFs2` gives 9.7, 35, 471 there, so the outer wind is
-  the Bowen loss of Lyβ to O I as the overlap treatment computes it.
+  O I–Lyβ overlap `rayFs2` gives 9.7, 35, 471 there. From CMFGEN's state
+  without the overlap (`rel_cmf_ovl0`, five iterations) every radius is
+  within 7–30 % of `ies`: b₁ 0.135, 0.073, 0.50, 0.39, 1.56, 14, 65, 460
+  at 1.07–3.6×10¹⁵ cm (`ies` 0.126, 0.072, 0.41, 0.30, 1.73, 16, 65, 373).
+  The overlap's bookkeeping is consistent: at 2.42×10¹⁵ cm (cell 50 of
+  `rel_cmf2`, `cell_jtest` with the flows into O I 3d ³D°) the net
+  pumping of 3d ³D° from the ground (6.2×10⁻⁴ s⁻¹ per O particle) leaves
+  by 11287 Å to 3p ³P (6.3×10⁻⁴), which is the net Lyβ decay of H
+  (5.2×10⁻⁷ per H particle, O/H = 8.5×10⁻⁴). There H's ground state gains
+  5.2×10⁻⁷ by Lyβ and loses 3.4×10⁻⁷ by charge exchange with O⁺, 0.9×10⁻⁷
+  by Lyman-continuum photoionization and 0.9×10⁻⁷ through n = 2. CMFGEN
+  pumps O I as hard (3d ³D°/ground 2–3 times SuperLite's, ¹D/³P within
+  20 % of SuperLite's at 1.2–3.6×10¹⁵ cm), so its Bowen loss is not
+  smaller: what keeps its H ionized is on the drain side. SuperLite's J
+  there is 0.25 of `blk`'s in the Lyman continuum, 0 at 912–1000 Å (no
+  packets), 0.3–0.5 at 1000–1240 Å and 0.8–1.1 longward of 1440 Å.
 * The Balmer jump of the full-metal wind. Against the optical continuum
   (4000–8300 Å), SuperLite's Balmer continuum (3000–3646 Å) is 11–16 %
   too bright with Sobolev lines (against CMFGEN's Sobolev model) and
