@@ -927,8 +927,18 @@ iterations, and of the formal integral):
   gives the same x(H I) with SuperLite's J as with `blk`'s (0.031 and
   0.030) and b₁ falls to 21 and 92 at 2.0 and 2.42×10¹⁵ cm (from 25 and
   159). Beyond 3×10¹⁵ cm the whole band is empty and b₁ stays at 1830
-  (`ies` 373) at 3.6×10¹⁵ cm. The fill is now the mean over the window,
-  which keeps the band's energy.
+  (`ies` 373) at 3.6×10¹⁵ cm. Smoothing every group of a sparse window
+  (`rel_jbox10`, `rel_jbox30`) broke the line incident intensities,
+  which subtract each line's own share from the group J: the wind went
+  neutral (b₁ 3.4 at 1.07×10¹⁵ cm) or over-ionized within six iterations.
+  The fill now gives only the empty groups the window mean (zeros
+  included). With 10 groups (`rel_jz10`) b₁ is 22, 104, 1340 at 2.0,
+  2.42, 3.6×10¹⁵ cm; with 30 (`rel_jz30`) 18, 67, 360 and 760 at
+  6×10¹⁵ cm (`ies` 16, 65, 373, 1020) with the inner wind unchanged. But
+  the 30-group window carries the J of 1064–1200 Å, a thousand times the
+  band's, into it: J at 1000–1064 Å is 15–38 times `ies`'s beyond
+  3×10¹⁵ cm. The agreement depends on the window, so the fill is a
+  diagnostic, not the remedy; `in_nltex_fbias` (§5) samples the band.
 * The Balmer jump of the full-metal wind. Against the optical continuum
   (4000–8300 Å), SuperLite's Balmer continuum (3000–3646 Å) is 11–16 %
   too bright with Sobolev lines (against CMFGEN's Sobolev model) and
