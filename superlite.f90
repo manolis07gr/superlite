@@ -29,7 +29,7 @@ program superlite
   use nltextrmod
   use xraysrcmod
   use formalmod, only:fi_spectrum
-  use nltexmod, only:nx_esdamp,nx_ovl_dv,nxo_npair,nx_pc_on,nx_ldbse
+  use nltexmod, only:nx_esdamp,nx_ovl_dv,nxo_npair,nx_pc_on,nx_ldbse,nx_auger
   use nltedismod, only:nxd_on,nxd_setup
   use bbsobmod
   use tebalmod, only:te_damp,te_ntemin,te_zsolve,te_secant
@@ -236,6 +236,9 @@ program superlite
      nxt_jfill = in_nltex_jfill
      nxt_fbias = in_nltex_fbias
      nx_ldbse = in_nltex_ldbse
+     nx_auger = in_nltex_auger
+     if(lmpi0 .and. nx_auger) write(6,'(1x,a)') &
+          'NLTE populations: X-ray inner-shell photoionization with the Auger electron (in_nltex_auger)'
      if(lmpi0 .and. nx_ldbse) write(6,'(1x,a)') &
           'NLTE populations: J of the groups in local detailed balance from the current populations (in_nltex_ldbse)'
      nxt_fwl1 = in_nltex_fwl1*1d-8

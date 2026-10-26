@@ -192,6 +192,10 @@ c-- from the bound-free emission and opacity of the current populations of
 c-- all NLTE elements in every iteration of the statistical equilibrium
 c-- (instead of the per-level ALI around the J of the last transport)
       logical :: in_nltex_ldbse = .false.
+c-- X-ray inner-shell photoionization of the NLTE ions followed by an Auger
+c-- electron in the rates: an ion with at least 4 electrons up two stages,
+c-- a Li-like one up one (the core shells of the X-ray opacity)
+      logical :: in_nltex_auger = .false.
       real*8 :: in_nltex_fwl1 = 912d0
       real*8 :: in_nltex_fwl2 = 1064d0
 c-- incident intensity of the Sobolev NLTE lines in the statistical
@@ -406,6 +410,7 @@ c-- runtime parameter namelist
      & in_nltex_bbext,in_nltex_cdest,in_nltex_jbbeta,in_nltex_jbwin,
      & in_nltex_dmpsec,in_nltex_javg,in_nltex_taumin,in_nltex_jfill,
      & in_nltex_fbias,in_nltex_fwl1,in_nltex_fwl2,in_nltex_ldbse,
+     & in_nltex_auger,
      & in_nltex_dis,
      & in_nltex_ali,
      & in_nltex_ldb,in_nltex_vturb,in_nltex_vturbmax,in_nltex_esrates,
@@ -566,6 +571,7 @@ c
       call inserti(in_nltex_jfill,in_i,ii)
       call insertr(in_nltex_fbias,in_r,ir)
       call insertl(in_nltex_ldbse,in_l,il)
+      call insertl(in_nltex_auger,in_l,il)
       call insertr(in_nltex_fwl1,in_r,ir)
       call insertr(in_nltex_fwl2,in_r,ir)
       call insertr(in_nltex_jbwin,in_r,ir)
@@ -808,6 +814,8 @@ c
       if(in_nt_lumg<0d0.or.in_nt_lumg>1d0) stop 'in_nt_lumg: [0,1]'
       if(in_nltex_javg<0d0.or.in_nltex_javg>=1d0)
      &  stop 'in_nltex_javg: [0,1)'
+      if(in_nltex_auger.and.in_nobfopac)
+     &  stop 'in_nltex_auger: in_nobfopac=f (core-shell data)'
       if(in_nltex_fbias>1d0.and.in_nltex_fwl1>=in_nltex_fwl2)
      &  stop 'in_nltex_fwl1 < in_nltex_fwl2'
       if(in_lumg_rad<0d0.or.in_nt_lumg+in_lumg_rad>1d0)

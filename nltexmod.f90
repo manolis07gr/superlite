@@ -73,6 +73,15 @@ module nltexmod
 !-- every iteration of the statistical equilibrium (nx_solve_cell), not
 !-- the per-level ALI
   logical,public :: nx_ldbse = .false.
+!-- (nx_auger) inner-shell photoionization by X-rays followed by an Auger
+!-- electron: an ion with at least 4 electrons goes up two stages, a Li-like
+!-- one up one (Verner & Yakovlev 1995 core shells, as the X-ray opacity of
+!-- GAS/physical_opacity_nlte.f; the photon's energy is the fast electrons');
+!-- nx_augr(s) the rate per particle of state s and nx_augt(s) the state of
+!-- the element it goes to (0: none), per cell in nx_solve_cell
+  logical,public :: nx_auger = .false.
+  real*8,allocatable :: nx_augr(:),nx_augsg(:,:)  !(nst), (ng,nion) 4 pi sigma dnu/(h nu)
+  integer,allocatable :: nx_augt(:)               !(nst)
   real*8,parameter :: nx_blt0 = -16.1180957d0          !ln 1e-7
   real*8,parameter :: nx_bdlt = (20.7232658d0 - nx_blt0)/(nx_nbt-1)   !to ln 1e9
 !-- bins of |mu| (the cosine of the direction to the radius) for the
@@ -1264,6 +1273,13 @@ subroutine nx_el_matrix(iel,ne,r,jl,beta,nti,ntx,m)
         endif
      enddo
   enddo
+!-- (nx_auger) inner-shell photoionization with the Auger electron
+  if(nx_auger .and. allocated(nx_augr)) then
+     o = nxa_el(iel)%xoff
+     do s=1,ns
+        if(nx_augt(o+s) > 0 .and. nx_augr(o+s) > 0d0) m(nx_augt(o+s),s) = m(nx_augt(o+s),s) + nx_augr(o+s)
+     enddo
+  endif
 !-- non-thermal excitation of the Spencer-Fano solution
   o = nxa_el(iel)%xoff
   do k=1,nxn_xn
@@ -1656,6 +1672,7 @@ subroutine nx_solve_cell(temp,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx
   endif
   dold = 0d0
   lovl = nxo_npair > 0
+  if(nx_auger) call aug_rates
   lse = nx_ldbse .and. nx_ali_on
   if(lse) lse = allocated(nx_ali_lst) .and. allocated(nx_ali_kap)
   if(lse) lse = size(nx_ali_lst)==ng
@@ -1732,6 +1749,50 @@ subroutine nx_solve_cell(temp,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx
   nx_nits = min(it,mit)
   if(it>mit) ierr = 2
 contains
+  subroutine aug_rates
+!-- (nx_auger) the inner-shell photoionization rate of each ion by the J of
+!-- the groups, and the state it goes to (two stages up, one for Li-like)
+    use bfxsmod, only:bfxs_inner
+    integer :: je,j,i,ne_,g,s,jt,st
+    real*8 :: gam,en
+    if(.not.allocated(nx_augr)) then
+       allocate(nx_augr(nxa_nst),nx_augt(nxa_nst),nx_augsg(ng,nxa_nion))
+       nx_augt = 0
+       do je=1,nxa_nel
+          do j=1,nxa_el(je)%nion
+             i = nxa_el(je)%ion(j)
+             ne_ = nxa_ion(i)%z - nxa_ion(i)%stage + 1
+             do g=1,ng
+                en = hh*nug(g)/1.602176634d-12
+                nx_augsg(g,i) = 4d0*pi*1d-18*bfxs_inner(nxa_ion(i)%z,ne_,en)*dnug(g)/(hh*nug(g))
+             enddo
+             if(ne_ < 3) cycle
+             st = 2
+             if(ne_ == 3) st = 1
+             jt = j + st
+             if(jt <= nxa_el(je)%nion) then
+                s = nxa_el(je)%xoff + nxa_ion(nxa_el(je)%ion(jt))%soff + 1
+             elseif(jt == nxa_el(je)%nion + 1) then
+                s = nxa_el(je)%xoff + nxa_el(je)%ns
+             else
+                cycle
+             endif
+             nx_augt(nxa_el(je)%xoff+nxa_ion(i)%soff+1:nxa_el(je)%xoff+nxa_ion(i)%soff+nxa_ion(i)%nsl) = &
+                  s - nxa_el(je)%xoff
+          enddo
+       enddo
+    endif
+    if(size(nx_augsg,1) /= ng) return
+    nx_augr = 0d0
+    do je=1,nxa_nel
+       do j=1,nxa_el(je)%nion
+          i = nxa_el(je)%ion(j)
+          gam = sum(jg*nx_augsg(:,i))
+          s = nxa_el(je)%xoff + nxa_ion(i)%soff
+          nx_augr(s+1:s+nxa_ion(i)%nsl) = gam
+       enddo
+    enddo
+  end subroutine aug_rates
   subroutine se_init
 !-- (nx_ldbse) the groups with Lambda* = 1 and an opacity, and the levels
 !-- whose bound-free opacity there is at least 1e-8 of it at the start
