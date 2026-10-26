@@ -1474,9 +1474,35 @@ these stages come from the fast electrons. SuperLite's are below CMFGEN's by
 CMFGEN's; the fast electrons put 9 % of their energy into ionization there
 and 85 % into heat. Inside, the core is too ionized out to 9000 km/s (Si IV
 0.92 against 0.17, Fe IV 0.96 against 0.30), as toy01's core is too hot.
-Not yet traced: the ionization share of the degradation (CMFGEN's own share
-is not published) and the charge exchange and photoionization of the trace
-Ca and C in O-rich gas.
+The deficit is the Monte Carlo far UV, not the fast electrons. SuperLite's
+deposition per volume is CMFGEN's to 2–7 % from 3000 to 26 000 km/s, and with
+the recombination coefficients of the atoms (O III → O II 2.8×10⁻¹² cm³ s⁻¹ at
+7700 K, C III → C II 7.4×10⁻¹²) the fast electrons alone give C III/C II ≈ 0.1–0.2
+at 22 000 km/s, against CMFGEN's 5. In the O-rich cells beyond 15 000 km/s every
+group from 150 to 912 Å had J = 0 (no packet crossed it) while the continua of
+O II (353 Å), Ne II, C II (508 Å) and Ca III (243 Å) are thick across a cell
+(τ ~ 10⁴): the recombinations into their ground states went unreabsorbed (case A
+in place of case B) and the far-UV emission of the gas was lost. Local detailed
+balance (`in_nltex_ldb = 30`, with DDMC from τ = 5; six iterations from
+`ddc10_t1`, `ddc10_ldb`) gives those groups J = S:
+
+| v [km/s] | 3000 | 9000 | 15 000 | 18 000 | 22 000 | 26 000 |
+|---|---|---|---|---|---|---|
+| T_e SuperLite [K] | 18 711 | 14 184 | 9118 | 7661 | 7709 | 7612 |
+| O III SuperLite (CMFGEN) | 0.996 (0.99) | 0.98 (0.16) | 0.092 (0.065) | 0.098 (0.11) | 0.21 (0.27) | 0.24 (0.20) |
+| C III | 0.74 (0.50) | 0.97 (0.99) | 0.066 (0.15) | 0.19 (0.57) | 0.31 (0.84) | 0.24 (0.58) |
+| Ca IV | 0.035 (0.39) | 0.23 (0.039) | 0.023 (0.018) | 0.017 (0.021) | 0.043 (0.047) | 0.058 (0.061) |
+| Ne III | 0.93 (0.98) | 0.85 (0.18) | 0.16 (0.093) | 0.12 (0.12) | 0.28 (0.23) | 0.35 (0.22) |
+| Si IV | 0.47 (0.41) | 0.95 (0.17) | 0.015 (0.010) | 0.008 (0.008) | 0.018 (0.027) | 0.018 (0.028) |
+| Fe IV | 0.99 (0.97) | 0.98 (0.30) | 0.016 (0.017) | 0.039 (0.087) | 0.075 (0.22) | 0.052 (0.089) |
+
+From 15 000 km/s out O III, Ne III, Ca IV and Si IV are now within 1.6 of
+CMFGEN's (2–140 below before), Fe IV within 3 and C III within 1.4–3. Use
+`in_nltex_ldb` (30, with DDMC) for supernova ejecta as for the IIn wind. The
+intermediate layer at 9000 km/s, already too ionized and too hot, is more so
+with it (O III 0.98 against 0.16, Ca IV 0.23 against 0.039): J = S there is
+the source function of gas 1500 K hotter than CMFGEN's, the same excess as
+toy01's core (§4.5, #98).
 
 ## 5. Running
 
