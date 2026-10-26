@@ -131,6 +131,10 @@ module nltexmod
 !-- that the partner absorbs the photon (nxo_p), and the bluest line of the
 !-- zone (nxo_jcl), whose incident intensity is the zone's.
   real*8,public :: nx_ovl_dv = 0d0, nx_ovl_vtb = 0d0
+!-- (nx_ovl_lmax > 0) only the lines whose lower level is among the first
+!-- nx_ovl_lmax levels of their ion have partners (the trapped resonance
+!-- lines; the line list of an O-star wind has 3.5e7 pairs within 150 km/s)
+  integer,public :: nx_ovl_lmax = 0
 !-- (partners thinner than nx_ovl_tmin for the mean projected gradient are
 !-- left out of a zone, nx_ovl_cell)
   real*8,public :: nx_ovl_tmin = 1d-3
@@ -637,6 +641,7 @@ subroutine nx_ovl_init(dv)
      do j=i+1,nxa_nlin
         l = nxa_lsrt(j)
         if(abs(1d0 - nxa_lnu(l)/nxa_lnu(k))*cc > nx_ovl_dv) exit
+        if(.not.(lowl(k) .and. lowl(l))) cycle
         cnt(k) = cnt(k) + 1
         cnt(l) = cnt(l) + 1
      enddo
@@ -653,6 +658,7 @@ subroutine nx_ovl_init(dv)
      do j=i+1,nxa_nlin
         l = nxa_lsrt(j)
         if(abs(1d0 - nxa_lnu(l)/nxa_lnu(k))*cc > nx_ovl_dv) exit
+        if(.not.(lowl(k) .and. lowl(l))) cycle
         m = nxo_ptr(k) + cnt(k)
         nxo_par(m) = l
         nxo_du(m) = (nxa_lnu(l)/nxa_lnu(k) - 1d0)*cc
@@ -702,6 +708,16 @@ subroutine nx_ovl_init(dv)
   nxo_ins = 0d0
   nxo_inw = 0d0
   nxo_jz = 0d0
+contains
+  pure logical function lowl(kk)
+!-- the lower level of line kk among the first nx_ovl_lmax of its ion
+    integer,intent(in) :: kk
+    integer :: lv
+    lowl = .true.
+    if(nx_ovl_lmax <= 0) return
+    lv = nxa_llv(kk)
+    lowl = lv - nxa_ion(nxa_lvion(lv))%lvoff <= nx_ovl_lmax
+  end function lowl
 end subroutine nx_ovl_init
 !
 !

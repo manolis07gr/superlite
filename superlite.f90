@@ -29,7 +29,7 @@ program superlite
   use nltextrmod
   use xraysrcmod
   use formalmod, only:fi_spectrum
-  use nltexmod, only:nx_esdamp,nx_ovl_dv,nxo_npair,nx_pc_on,nx_ldbse,nx_auger
+  use nltexmod, only:nx_esdamp,nx_ovl_dv,nxo_npair,nx_pc_on,nx_ldbse,nx_auger,nx_ovl_lmax
   use nltedismod, only:nxd_on,nxd_setup
   use bbsobmod
   use tebalmod, only:te_damp,te_ntemin,te_zsolve,te_secant
@@ -182,6 +182,7 @@ program superlite
      endif
 !-- (overlapping lines: the partners within in_nltex_overlap, nxt_init)
      nx_ovl_dv = in_nltex_overlap*1d5
+     nx_ovl_lmax = in_nltex_ovllmax
      call nxt_init(grd_ncell,gas_ncell,grp_ng,grp_wl,nfatom,fatom(:nfatom),merge(in_nlteh_nlev,0,in_nlteh))
      if(lmpi0 .and. nxo_npair>0) write(6,'(1x,a,f7.1,a,i8,a)') 'NLTE lines: overlapping resonance zones '// &
           'within',in_nltex_overlap,' km/s (',nxo_npair/2,' pairs)'

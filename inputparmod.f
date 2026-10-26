@@ -258,6 +258,9 @@ c-- (escape, absorption by the partners, the partners' photons) and in
 c-- the macro-atom (net photons to the partners activate their macro-
 c-- atoms): O I 1025.76 in Lyman beta (Bowen fluorescence; nltexmod)
       real*8 :: in_nltex_overlap = 0d0
+c-- (in_nltex_overlap) partners only for the lines whose lower level is
+c-- among the first this many levels of their ion (0: all lines)
+      integer :: in_nltex_ovllmax = 0
 c-- formal integral of the emergent spectrum after the last iteration
 c-- (formalmod): range [cm], spacing [km/s], rays through the inner
 c-- boundary
@@ -410,7 +413,7 @@ c-- runtime parameter namelist
      & in_nltex_bbext,in_nltex_cdest,in_nltex_jbbeta,in_nltex_jbwin,
      & in_nltex_dmpsec,in_nltex_javg,in_nltex_taumin,in_nltex_jfill,
      & in_nltex_fbias,in_nltex_fwl1,in_nltex_fwl2,in_nltex_ldbse,
-     & in_nltex_auger,
+     & in_nltex_auger,in_nltex_ovllmax,
      & in_nltex_dis,
      & in_nltex_ali,
      & in_nltex_ldb,in_nltex_vturb,in_nltex_vturbmax,in_nltex_esrates,
@@ -572,6 +575,7 @@ c
       call insertr(in_nltex_fbias,in_r,ir)
       call insertl(in_nltex_ldbse,in_l,il)
       call insertl(in_nltex_auger,in_l,il)
+      call inserti(in_nltex_ovllmax,in_i,ii)
       call insertr(in_nltex_fwl1,in_r,ir)
       call insertr(in_nltex_fwl2,in_r,ir)
       call insertr(in_nltex_jbwin,in_r,ir)
