@@ -1414,9 +1414,26 @@ below about 5000 km/s in toy01; outside that the ejecta are Si, S and Ca
   | v2 atoms, τ_DDMC = 5 [K] | 25 452 | 20 934 | 16 213 | 10 221 | 6884 |
   | t01 atoms, τ_DDMC = 30, `in_lumg_rad` [K] | 20 835 | 18 471 | 14 513 | 9716 | 6296 |
 
-  For supernova ejecta use super-level atoms, `in_trn_tauddmc = 30`,
-  `in_lumg_rad` = 1 − deposition/L_bol and `in_nltex_taumin = 1d-2` (§5). 1600–1800 K too hot at
-  3000–4000 km/s is still open.
+  The rest of the excess was the far UV of the thick core, as in DDC10
+  (§4.6): its groups had no local detailed balance, so the Monte Carlo
+  J of the continua thick across a cell was the few packets emitted in
+  them. With `in_nltex_ldb = 30` (eight iterations from `toy01_comb`,
+  `toy01_ldb`, and four more, `toy01_ldb2`):
+
+  | v [km/s] | 2000 | 3000 | 4000 | 5000 | 6000 | 8000 | 12 000 |
+  |---|---|---|---|---|---|---|---|
+  | CMFGEN [K] | 18 683 | 15 081 | 10 734 | 8600 | 7466 | 6223 | 4832 |
+  | Sedona, SuperNu, URILIGHT [K] | 18 700–20 800 | 15 400–16 900 | 11 000–12 700 | 8600–9800 | 7600–8500 | 6100–7200 | 4800–5700 |
+  | `toy01_comb` [K] | 20 835 | 18 470 | 14 513 | 9716 | 7804 | 6296 | 4712 |
+  | `toy01_ldb2` [K] | 17 341 | 15 558 | 12 714 | 9022 | 7631 | 6305 | 4714 |
+
+  From 3000 km/s out T_e is within the codes' spread (12 714 K at
+  4000 km/s against Sedona's 12 674); at 2000 km/s it is 1300 K below
+  CMFGEN's. The optical rises by 15–28 %: L at 3500–4500, 4500–5500 and
+  5500–6500 Å is 3.47, 2.97, 2.01×10⁴¹ erg s⁻¹ (before 2.71, 2.41, 1.58;
+  CMFGEN 4.74, 3.94, 2.51; Sedona 4.67, 4.15, 3.72). For supernova ejecta
+  use super-level atoms, `in_trn_tauddmc = 30`, `in_nltex_ldb = 30`,
+  `in_lumg_rad` = 1 − deposition/L_bol and `in_nltex_taumin = 1d-2` (§5).
 * An earlier version of this section compared Fe II beyond 5000 km/s;
   SuperLite has no Fe there, so its fractions in those cells are only the
   initial values.
