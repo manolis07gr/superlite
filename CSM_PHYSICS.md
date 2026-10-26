@@ -1521,6 +1521,39 @@ with it (O III 0.98 against 0.16, Ca IV 0.23 against 0.039): J = S there is
 the source function of gas 1500 K hotter than CMFGEN's, the same excess as
 toy01's core (§4.5, #98).
 
+### 4.7 CMFGEN ζ Pup-like O-star wind (T fixed)
+
+CMFGEN's sample ζ Pup-like model (`sample_grid/zpup_like_model`: clumped
+wind, f = 0.05, its X-ray source at 3 and 5 MK, f_X = 0.078), converted with
+its atom set, with T fixed to CMFGEN's. `zpup_sl` (DDMC from τ = 5) ran 10
+iterations; with DDMC from τ = 50 the first transport did not end (the thick
+He II and Lyman continua stay IMC and packets random-walk). Ion fractions
+against CMFGEN's at 1.5×10¹² cm (inner wind) and 1.2×10¹³–10¹⁴ cm (outer):
+
+| | inner, CMFGEN | inner, SuperLite | outer, CMFGEN | outer, `zpup_sl` | outer, `zpup_aug` |
+|---|---|---|---|---|---|
+| He II | 0.0026 | 0.0006 | 0.50–0.99 | 0.26–0.92 | 0.34–1.00 |
+| N V | 0.29 | 0.69 | 3.4–4.4×10⁻⁴ | 1.4×10⁻⁵–2.5×10⁻⁴ | 2.0–3.3×10⁻⁴ |
+| N VI | 9.7×10⁻⁴ | 3.2×10⁻³ | 7–9×10⁻⁴ | 10⁻¹⁰–10⁻⁸ | 1.1–1.3×10⁻⁴ |
+| O V | 0.083 | 0.38 | 2.5–3.6×10⁻⁴ | 1.9×10⁻⁵–3.9×10⁻⁴ | 2.2–4.1×10⁻⁴ |
+| O VI | 3.4×10⁻⁴ | 4.7×10⁻⁴ | 0.7–3.4×10⁻⁴ | 10⁻⁹–10⁻⁸ | 3–8×10⁻⁵ |
+| Ca top (Ca VIII) | 4.4×10⁻⁵ | 4.8×10⁻⁵ | 0.6–1.4×10⁻⁷ | ~10⁻¹² | 0.5–1.4×10⁻⁷ |
+
+* Local detailed balance (`in_nltex_ldb = 30`, `zpup_ldb5`, five iterations
+  from `zpup_sl`) brings the outer He to CMFGEN's (He II 0.88, 0.99 at 3×10¹³
+  and 10¹⁴ cm against 0.93, 0.99; He III 0.0061 against 0.0067) and changes
+  the inner wind little.
+* The outer wind's highest stages are X-ray ionization with the Auger
+  electron. SuperLite absorbed the X-rays in the core shells but gave the
+  energy only to the fast electrons; with `in_nltex_auger` (a core-shell
+  ionization moves an ion with ≥ 4 electrons up two stages, a Li-like one
+  up one; four iterations from `zpup_ldb5`, `zpup_aug`) N V, O V and the top
+  stages of Ca and Fe come within 1.5–8 of CMFGEN's, from 10³–10⁶ below, and
+  N VI and O VI within 7 and 2–5.
+* Still open: the inner wind (1.5–6×10¹² cm) is too ionized (He II 4–5, C IV
+  3–5 too low; N V, O V 2–5 too high), and from 1.2×10¹³ cm out O IV stays
+  0.9 where CMFGEN has 0.16–0.74 (its O III 0.25–0.84).
+
 ## 5. Running
 
 Build type: CMake now builds Release (-O3) unless `CMAKE_BUILD_TYPE` is given;
