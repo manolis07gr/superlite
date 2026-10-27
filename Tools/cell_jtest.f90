@@ -12,8 +12,9 @@ program cell_jtest
 ! run's own J there (local detailed balance held it at S of the saved
 ! state) with Lambda* = 1, so the external J does not set the ground
 ! states of H, He directly.  Starts from the run's saved state
-! (output.nltex_state, output.nltex_jmc; the run's model atoms, n_e as
-! saved, no non-thermal or charge-exchange-free changes).
+! (output.nltex_state, output.nltex_jmc; the run's model atoms, clump
+! densities with the fcl column of input.str, n_e as saved, no
+! non-thermal or charge-exchange-free changes).
 !
 ! usage: cell_jtest <run dir> <cell,cell,...> <J dir> [mode [wl_max [dis]]]
 !   mode: all (default); fuv: the external J below wl_max [A] only (groups
@@ -30,6 +31,7 @@ program cell_jtest
   use nltexmod
   use nltextrmod
   use nltedismod, only:nxd_on,nxd_setup,nxd_cellx
+  use bfxsmod, only:bfxs_read_data
   implicit none
   integer,parameter :: mf = 64
   character(256) :: run,line,arg,jdir,mode,adir,cxfile,fname
@@ -48,7 +50,7 @@ program cell_jtest
   real*8,allocatable :: wlg(:),hdr(:,:),str(:,:),xs(:,:),x(:),beta(:),nti(:),ntx(:),nuc(:),jc(:),jg(:),jb(:),nel(:)
   real*4,allocatable :: kap(:)
   logical,allocatable :: ljb(:)
-  real*8 :: qb,qv,ne,nu1,nu2,s,w,nu0,dr,xo(2),wlmax,ovl,vturb
+  real*8 :: qb,qv,ne,nu1,nu2,s,w,nu0,dr,xo(2),wlmax,ovl,vturb,fcl
   logical :: lg,ll,ldmp,cdest
   integer :: mxit,ierr1,nit1
 !
@@ -60,6 +62,12 @@ program cell_jtest
 !-- from the current populations)
   call get_environment_variable('SL_LDBSE',arg,status=ios)
   if(ios==0 .and. len_trim(arg)>0) read(arg,*) nx_ldbse
+!-- (SL_AUGER=t: nx_auger, X-ray inner-shell ionization with the Auger
+!-- electron, as in_nltex_auger; the core-shell cross-sections from
+!-- data.bf_verner in the working directory)
+  call get_environment_variable('SL_AUGER',arg,status=ios)
+  if(ios==0 .and. len_trim(arg)>0) read(arg,*) nx_auger
+  if(nx_auger) call bfxs_read_data
   call get_command_argument(1,run)
   call get_command_argument(2,arg)
   nc = count([(arg(i:i)==',',i=1,len_trim(arg))]) + 1
@@ -186,11 +194,15 @@ program cell_jtest
   write(*,'(a)') ' cell        r       x(H 1) own J   x(H 1) ext. J    x(H 2) own J  x(H 2) ext. J'
   do i=1,nc
      ic = cells(i)
+!-- microclumping (fcl column): the clump densities, and the Sobolev
+!-- depths with the volume-mean opacity (as GAS/nltex_gas_update.f90)
+     fcl = 1d0
+     if(trim(sym(9)) == 'fcl') fcl = str(9,ic)
      do iel=1,nxa_nel
-        nel(iel) = hdr(3,ic)*str(col(iel),ic)/(am(nxa_el(iel)%z)*mu)
+        nel(iel) = hdr(3,ic)*str(col(iel),ic)/(am(nxa_el(iel)%z)*mu)/fcl
      enddo
-     qb = (str(4,ic)-str(3,ic))/(str(2,ic)-str(1,ic))
-     qv = (str(4,ic)+str(3,ic))/(str(2,ic)+str(1,ic))
+     qb = (str(4,ic)-str(3,ic))/(str(2,ic)-str(1,ic))/fcl
+     qv = (str(4,ic)+str(3,ic))/(str(2,ic)+str(1,ic))/fcl
      dr = str(2,ic) - str(1,ic)
 !-- bound-free opacity of the ground states of all ions (the ALI's shares)
      kap = 0.

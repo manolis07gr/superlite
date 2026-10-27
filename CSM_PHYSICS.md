@@ -1560,9 +1560,12 @@ against CMFGEN's at 1.5×10¹² cm (inner wind) and 1.2×10¹³–10¹⁴ cm (ou
   1.2×10¹⁰ cm⁻³ s⁻¹ at 1.5×10¹² cm), its ground state is on the spot
   (2.53 against 2.41). SuperLite's transport on CMFGEN's populations held
   (`zpup_hold`, `Tools/cmfgen2superlite_state.py`) and `cell_jtest` with
-  that J (`SL_IONS`) give the inner cells He II 0.04–0.15, C IV 0.01–0.27,
-  O III 0.01–0.02 of CMFGEN's and N V, O V 3–40 times: unlike the IIn wind
-  (§4.4) the J itself is off. Its He II ground photoionization per ion is
+  that J (`SL_IONS`, `SL_AUGER`) give at 1.5×10¹²–3.3×10¹³ cm He II
+  0.44–1.25, C IV 0.24–1.0, N V 0.12–3.2, O V 0.09–2.6 and O III 0.28–0.6 of
+  CMFGEN's (with `cell_jtest` before it used the clump densities: He II
+  0.04–0.15, O III 0.01–0.02, which these notes first read as a J that is
+  far off). The J of CMFGEN's populations is therefore close; what remains
+  is O III, 1.7–3.6 times low throughout. Its He II ground photoionization per ion is
   1.2–2.9 times CMFGEN's (PRRR over POPHE) at 1.5–12×10¹² cm. In this
   clumped wind no cell is thick in the He II continuum (no group below
   504 Å reaches local detailed balance even from τ = 5, `zpup_ldbs`, which
