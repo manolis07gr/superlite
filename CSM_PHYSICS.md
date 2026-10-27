@@ -1552,7 +1552,22 @@ against CMFGEN's at 1.5×10¹² cm (inner wind) and 1.2×10¹³–10¹⁴ cm (ou
   N VI and O VI within 7 and 2–5.
 * Still open: the inner wind (1.5–6×10¹² cm) is too ionized (He II 4–5, C IV
   3–5 too low; N V, O V 2–5 too high), and from 1.2×10¹³ cm out O IV stays
-  0.9 where CMFGEN has 0.16–0.74 (its O III 0.25–0.84).
+  0.9 where CMFGEN has 0.16–0.74 (its O III 0.25–0.84). What it is not:
+  the clumping (SuperLite's filling factor, T and n_e follow CMFGEN's to
+  20 %), and the He II Lyα–O III 303.80 Å overlap (`in_nltex_overlap` 150
+  with `in_nltex_ovllmax` 5, 86 603 pairs; `zpup_ovl`: no change). CMFGEN's
+  He II ionizes through n = 2 (photoionization 3.0 against recombination
+  1.2×10¹⁰ cm⁻³ s⁻¹ at 1.5×10¹² cm), its ground state is on the spot
+  (2.53 against 2.41). SuperLite's transport on CMFGEN's populations held
+  (`zpup_hold`, `Tools/cmfgen2superlite_state.py`) and `cell_jtest` with
+  that J (`SL_IONS`) give the inner cells He II 0.04–0.15, C IV 0.01–0.27,
+  O III 0.01–0.02 of CMFGEN's and N V, O V 3–40 times: unlike the IIn wind
+  (§4.4) the J itself is off. Its He II ground photoionization per ion is
+  1.2–2.9 times CMFGEN's (PRRR over POPHE) at 1.5–12×10¹² cm. In this
+  clumped wind no cell is thick in the He II continuum (no group below
+  504 Å reaches local detailed balance even from τ = 5, `zpup_ldbs`, which
+  only over-ionized the outer He), so that J is the Monte Carlo's: 7–34 of
+  the 39 groups at 200–228 Å empty and the others up to 14 times the mean.
 
 ## 5. Running
 

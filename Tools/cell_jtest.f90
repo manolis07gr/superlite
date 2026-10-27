@@ -267,6 +267,10 @@ program cell_jtest
            xo = [x(1),x(2)]
            ierr1 = ierr
            nit1 = nx_nits
+!-- (SL_IONS=t: the ion fractions of every element of this solution to
+!-- cell_jtest_ions_<cell>: Z, stage (1 = neutral), fraction; the saved state's too)
+           call get_environment_variable('SL_IONS',arg,status=ios)
+           if(ios==0 .and. trim(arg)=='t') call ions_out(ic,xs(:,ic),x)
         else
            call nxt_ali_cell(ng,kap,1d0,dr,lali=.false.)
            call nx_solve_cell(hdr(4,ic),hdr(4,ic),nel,0d0,qb,qv,ng,nxt_nug,nxt_dnug,jg,jb,ljb,nti,ntx,x,ne,beta,ierr, &
@@ -279,6 +283,27 @@ program cell_jtest
           '  its',nit1,nx_nits
   enddo
 contains
+  subroutine ions_out(icl,x0,x1)
+    integer,intent(in) :: icl
+    real*8,intent(in) :: x0(:),x1(:)
+    integer :: je,jj,io,so,u
+    character(64) :: fn
+    write(fn,'(a,i0)') 'cell_jtest_ions_',icl
+    open(newunit=u,file=trim(fn),status='replace')
+    write(u,'(a)') '# Z stage fraction(saved state) fraction(solution with the own J)'
+    do je=1,nxa_nel
+       so = nxa_el(je)%xoff
+       do jj=1,nxa_el(je)%nion
+          io = nxa_el(je)%ion(jj)
+          write(u,'(2i4,2es13.4)') nxa_ion(io)%z,nxa_ion(io)%stage, &
+               sum(x0(so+nxa_ion(io)%soff+1:so+nxa_ion(io)%soff+nxa_ion(io)%nsl)), &
+               sum(x1(so+nxa_ion(io)%soff+1:so+nxa_ion(io)%soff+nxa_ion(io)%nsl))
+       enddo
+       io = nxa_el(je)%ion(nxa_el(je)%nion)
+       write(u,'(2i4,2es13.4)') nxa_ion(io)%z,nxa_ion(io)%stage+1,x0(so+nxa_el(je)%ns),x1(so+nxa_el(je)%ns)
+    enddo
+    close(u)
+  end subroutine ions_out
   subroutine dump(jv)
 !-- the flows of the last solution (nx_dump, as SL_RATEDUMP)
     integer,intent(in) :: jv
