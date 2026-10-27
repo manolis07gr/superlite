@@ -1568,6 +1568,24 @@ against CMFGEN's at 1.5×10¹² cm (inner wind) and 1.2×10¹³–10¹⁴ cm (ou
   504 Å reaches local detailed balance even from τ = 5, `zpup_ldbs`, which
   only over-ionized the outer He), so that J is the Monte Carlo's: 7–34 of
   the 39 groups at 200–228 Å empty and the others up to 14 times the mean.
+  Biasing the emission into 150–228 Å (`in_nltex_fbias` 30, `zpup_fb`)
+  fills those groups (1–24 empty) and leaves the inner wind as it was: the
+  noise is not the cause. On CMFGEN's populations SuperLite's He II
+  photoionization per ion is CMFGEN's to 1 % in the photosphere (1.23–
+  1.25×10¹² cm, 52 000–39 000 K; 3.3 times at the inner boundary, whose
+  123 000 K Planck spectrum the photosphere thermalizes) and 1.7–2.9 times
+  from 1.27×10¹² cm out, where the flow passes ~100 km/s: there the
+  Sobolev point resonances let through the far UV that the Doppler
+  profiles of the line forest (Fe V–VI, O IV–V, …) block in CMFGEN's
+  comoving-frame transfer. With static Doppler profiles of all lines in
+  the slow cells (`in_nltex_dopmc` 2, `in_nltex_dopz` 1; 44 of 83 cells;
+  three solves from `zpup_aug`, `zpup_dop`) He II is 0.030, 0.19, 0.94 at
+  3, 6×10¹² and 3×10¹³ cm (CMFGEN 0.025, 0.14, 0.93; before 0.007, 0.083,
+  0.69), C IV 0.32 and 0.73 at 3 and 6×10¹² cm (0.50, 0.89; before 0.11,
+  0.47), N V 0.41 and O V 0.22 at 1.5×10¹² cm (0.29, 0.083; before 0.69,
+  0.38); O III of the outer wind doubles (0.12 against 0.69 at 3×10¹³ cm).
+  For O-star winds use static profiles of all lines in the slow cells, as
+  for the slow CSM of the IIn models.
 
 ## 5. Running
 
