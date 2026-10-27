@@ -370,6 +370,7 @@ program superlite
      call xs_setup(grd_ncell,0.5d0*(grd_vxarr(:grd_ncell)+grd_vxarr(2:)),grd_vol,grd_fcl,mcell,xh,xhe, &
           [in_xray_ff1,in_xray_ff2],1d5*[in_xray_v1,in_xray_v2],in_xray_smooth)
      deallocate(mcell,xh,xhe)
+     xs_q = in_xray_q
      if(lmpi0) write(6,'(1x,a,es10.3,a,2(f6.3,es9.2,a))') 'X-ray emission of wind shocks:',sum(xs_pow), &
           ' erg/s (f, T:',in_xray_ff1,in_xray_t1,' K;',in_xray_ff2,in_xray_t2,' K)'
   endif

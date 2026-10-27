@@ -24,6 +24,7 @@ module xraysrcmod
   real*8,allocatable,public :: xs_pow(:)    !(ncell) X-ray power of each cell [erg/s]
   real*8,allocatable :: xs_w1(:)            !(ncell) share of component 1
   real*8,allocatable,public :: xs_px(:)     !(ncell) share of the X-rays in the cell's emission
+  real*8,public :: xs_q = 0d0               !least share of the packets drawn as X-rays (weighted)
   public :: xs_read,xs_setup,xs_sample,xs_group_emis
 !
 contains

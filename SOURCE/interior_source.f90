@@ -15,7 +15,7 @@ subroutine interior_source!(it)
   use nltextrmod
   use nxemitmod, only:nx_linees,nx_ilem
   use shockciemod, only:shc_on,shc_sample,shc_tmin,shc_tmax
-  use xraysrcmod, only:xs_on,xs_px,xs_sample
+  use xraysrcmod, only:xs_on,xs_px,xs_sample,xs_q
 
   implicit none
   ! integer, intent(in) :: it !experimental iterative approach
@@ -27,7 +27,7 @@ subroutine interior_source!(it)
   integer :: nhere,iimpi,nemit
   integer*8,allocatable :: nvacantall(:)
   real*8 :: pwr
-  real*8 :: r1, r2, r3, uul, uur, uumax
+  real*8 :: r1, r2, r3, uul, uur, uumax, wxr, qxr
   real*8 :: om0, mu0, x0, ep0, wl0, mues, wtb
   real*8 :: denom2,x1,x2
 !-- neighbor emit values (for source tilting)
@@ -106,11 +106,20 @@ subroutine interior_source!(it)
 !-- uniform position in the cell with the local emissivity
      if(in_srctype=='lumg') then
 !-- X-rays of wind shocks (xraysrcmod), their share of the cell's emission
+!-- (drawn with probability q >= in_xray_q, weighted p/q, the others
+!-- (1-p)/(1-q))
         lxr = .false.
+        wxr = 1d0
         if(xs_on) then
            if(xs_px(l)>0d0) then
+              qxr = max(xs_px(l),min(xs_q,0.5d0))
               call rnd_r(r1,rnd_state)
-              lxr = r1<xs_px(l)
+              lxr = r1<qxr
+              if(lxr) then
+                 wxr = xs_px(l)/qxr
+              else
+                 wxr = (1d0-xs_px(l))/(1d0-qxr)
+              endif
            endif
         endif
 !-- (the share in_lumg_rad of stored radiation released by diffusion, not
@@ -121,7 +130,7 @@ subroutine interior_source!(it)
            call rnd_r(r1,rnd_state)
            lrad = r1<in_lumg_rad
         endif
-        wtb = 1d0
+        wtb = wxr
         if(lxr) then
            call rnd_r(r1,rnd_state)
            call rnd_r(r2,rnd_state)

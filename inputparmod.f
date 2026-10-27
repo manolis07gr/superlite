@@ -302,6 +302,11 @@ c-- [km/s]; smooth-wind densities (CMFGEN's X_SM_WIND)
       real*8 :: in_xray_t1 = 0d0, in_xray_t2 = 0d0
       real*8 :: in_xray_v1 = 0d0, in_xray_v2 = 0d0
       logical :: in_xray_smooth = .true.
+c-- (share of the packets of a cell with X-ray emission that start as
+c-- X-rays, at least: weighted, the X-rays p/q and the others
+c-- (1-p)/(1-q) with p their share of the energy, so that the X-ray J of a
+c-- wind whose X-rays are 1e-6 of its luminosity is sampled; 0: q = p)
+      real*8 :: in_xray_q = 0.05d0
 c-- bound-bound opacity of the LTE elements: in_bbsobolev = t uses the
 c-- Sobolev expansion opacity with the local velocity gradient (saturating
 c-- thick lines) instead of line strengths smeared over the group;
@@ -425,7 +430,7 @@ c-- runtime parameter namelist
      & in_fi,in_fi_wl1,in_fi_wl2,in_fi_dv,in_fi_npc,in_fi_navg,
      & in_fi_doppler,in_fi_only,in_fi_nes,in_fi_nesdv,
      & in_xray_table,in_xray_ff1,in_xray_ff2,in_xray_t1,in_xray_t2,
-     & in_xray_v1,in_xray_v2,in_xray_smooth,
+     & in_xray_v1,in_xray_v2,in_xray_smooth,in_xray_q,
      & in_bbsobolev,in_bbeps,in_rayleigh,in_tesolve,in_te_damp,
      & in_te_zsolve,in_te_secant,
      & in_tion,
@@ -562,6 +567,7 @@ c
       call insertr(in_xray_v1,in_r,ir)
       call insertr(in_xray_v2,in_r,ir)
       call insertl(in_xray_smooth,in_l,il)
+      call insertr(in_xray_q,in_r,ir)
       call insertl(in_nltex_ali,in_l,il)
       call insertr(in_nltex_ldb,in_r,ir)
       call insertr(in_nltex_vturb,in_r,ir)
@@ -822,6 +828,7 @@ c
       if(in_nltex_javg<0d0.or.in_nltex_javg>=1d0)
      &  stop 'in_nltex_javg: [0,1)'
       if(in_nobfopac) in_nltex_auger = .false.
+      if(in_xray_q<0d0.or.in_xray_q>=1d0) stop 'in_xray_q: [0,1)'
       if(in_nltex_ldb<0d0) then
        in_nltex_ldb = 0d0
        if(.not.in_puretran.and.in_trn_tauddmc<=30d0) in_nltex_ldb = 30d0
