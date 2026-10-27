@@ -21,8 +21,18 @@ import sys
 import numpy as np
 
 POPFILE = {1: 'POPHYD', 2: 'POPHE', 6: 'POPCARB', 7: 'POPNIT', 8: 'POPOXY', 10: 'POPNEON',
-           11: 'POPSOD', 12: 'POPMG', 14: 'POPSIL', 16: 'POPSUL', 18: 'POPARG', 20: 'POPCAL',
-           26: 'POPIRON', 27: 'POPCOB', 28: 'POPNICK'}
+           11: 'POPSOD', 12: 'POPMG', 13: 'POPALUM', 14: 'POPSIL', 15: 'POPPHOS', 16: 'POPSUL',
+           17: 'POPCHL', 18: 'POPARG', 20: 'POPCAL', 24: 'POPCHRO', 25: 'POPMAN', 26: 'POPIRON',
+           27: 'POPCOB', 28: 'POPNICK'}
+# (other names CMFGEN uses for the same files)
+POPALT = {12: 'POPMAG'}
+
+
+def popfile(mod, z):
+    for name in (POPFILE[z], POPALT.get(z)):
+        if name and os.path.exists(os.path.join(mod, name)):
+            return os.path.join(mod, name)
+    return os.path.join(mod, POPFILE[z])
 
 
 def numbers(s):
@@ -150,7 +160,7 @@ def main():
 # states per element: densities per CMFGEN depth
     xs, nss = [], []
     for z in zs:
-        total, ions, top = read_pops(os.path.join(mod, POPFILE[z]), nd)
+        total, ions, top = read_pops(popfile(mod, z), nd)
         sl_ions = els[z]
         ion0 = sl_ions[0][0]
         nst = sum(int(sl.max()) for _, sl in sl_ions) + 1
