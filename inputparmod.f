@@ -194,8 +194,9 @@ c-- (instead of the per-level ALI around the J of the last transport)
       logical :: in_nltex_ldbse = .false.
 c-- X-ray inner-shell photoionization of the NLTE ions followed by an Auger
 c-- electron in the rates: an ion with at least 4 electrons up two stages,
-c-- a Li-like one up one (the core shells of the X-ray opacity)
-      logical :: in_nltex_auger = .false.
+c-- a Li-like one up one (the core shells of the X-ray opacity; off with
+c-- in_nobfopac)
+      logical :: in_nltex_auger = .true.
       real*8 :: in_nltex_fwl1 = 912d0
       real*8 :: in_nltex_fwl2 = 1064d0
 c-- incident intensity of the Sobolev NLTE lines in the statistical
@@ -217,8 +218,9 @@ c-- operator of each cell and group; nltexmod)
 c-- local detailed balance of the NLTE elements in the groups whose
 c-- absorption depth across a cell is at least this (0: off): J = Lambda* S
 c-- + the radiation from elsewhere instead of the Monte Carlo estimate
-c-- (nltextrmod, nxt_ldb)
-      real*8 :: in_nltex_ldb = 0d0
+c-- (nltextrmod, nxt_ldb).  Default (< 0): 30 when these groups are DDMC
+c-- groups (Lambda* = 1: not in_puretran, in_trn_tauddmc <= 30), else off
+      real*8 :: in_nltex_ldb = -1d0
 c-- electron scattering of NLTE line photons trapped in their Sobolev
 c-- resonance zones (nltexmod, nx_bes): microturbulent velocity [km/s] of
 c-- the line profiles at v = 0 and at the outer edge (linear in v; < 0:
@@ -238,8 +240,9 @@ c-- iterations)
 c-- Doppler-profile NLTE lines in the Monte Carlo transport of the cells
 c-- whose velocity changes by less than in_nltex_dopmc Doppler widths
 c-- (static profiles within 4 widths of a packet's comoving frequency:
-c-- the line overlap of a slow inner wind); 0: Sobolev resonances
-      real*8 :: in_nltex_dopmc = 0d0
+c-- the line overlap of a slow inner wind); 0: Sobolev resonances.  In
+c-- homologous ejecta no cell is that slow
+      real*8 :: in_nltex_dopmc = 2d0
 c-- (only the lines of the elements from Z = in_nltex_dopz: the H and He
 c-- lines keep their Sobolev resonances, whose point absorption and
 c-- macro-atom escape are consistent with each other in a dense wind)
@@ -818,8 +821,11 @@ c
       if(in_nt_lumg<0d0.or.in_nt_lumg>1d0) stop 'in_nt_lumg: [0,1]'
       if(in_nltex_javg<0d0.or.in_nltex_javg>=1d0)
      &  stop 'in_nltex_javg: [0,1)'
-      if(in_nltex_auger.and.in_nobfopac)
-     &  stop 'in_nltex_auger: in_nobfopac=f (core-shell data)'
+      if(in_nobfopac) in_nltex_auger = .false.
+      if(in_nltex_ldb<0d0) then
+       in_nltex_ldb = 0d0
+       if(.not.in_puretran.and.in_trn_tauddmc<=30d0) in_nltex_ldb = 30d0
+      endif
       if(in_nltex_fbias>1d0.and.in_nltex_fwl1>=in_nltex_fwl2)
      &  stop 'in_nltex_fwl1 < in_nltex_fwl2'
       if(in_lumg_rad<0d0.or.in_nt_lumg+in_lumg_rad>1d0)
