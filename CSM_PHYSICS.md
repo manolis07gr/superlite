@@ -1598,9 +1598,19 @@ against CMFGEN's at 1.5×10¹² cm (inner wind) and 1.2×10¹³–10¹⁴ cm (ou
   O V, O VI 2–3 low). The outer O III was the slow convergence of the
   damped iteration (`cell_jtest` on the `zpup_dop` state with its own J
   gives 0.57 at 3.3×10¹³ cm in one solve), not missing physics (CMFGEN has
-  no dielectronic recombination for O III, O IV in this model). An outer
-  wind needs a convergence test and more iterations than the 3–5 used so
-  far.
+  no dielectronic recombination for O III, O IV in this model). Four more
+  (`zpup_dop3`; median change 18, 23, 17, 7.6 %): the dominant stages
+  inward of 10¹³ cm stay within 1.5 of CMFGEN's (O III 0.011, 0.049, 0.19
+  at 3, 6×10¹², 1.2×10¹³ cm; C IV, Ca IV, O IV to 20 %), the outer wind
+  drifts on below CMFGEN's ionization (O III 0.75, 0.95 at 3×10¹³, 10¹⁴ cm
+  against 0.69, 0.84; He II 0.77 against 0.50 at 1.2×10¹³ cm) and the
+  trace stages jump by up to 10⁵ between runs (He III 1.6×10⁻⁴ → 4.2×10⁻⁵
+  at 10¹⁴ cm against 6.7×10⁻³; N VI, O VII, Ca and Fe top). Those are set
+  by the He II continuum and X-ray J of the outer cells, where most groups
+  below 260 Å get no packets: a noise floor, not an oscillation. An outer
+  wind needs a convergence test and the emission biasing (`in_nltex_fbias`)
+  into the He II continuum of the outer cells, or more packets, before its
+  trace ions mean anything.
 
 ## 5. Running
 
