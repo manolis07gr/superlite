@@ -1589,6 +1589,18 @@ against CMFGEN's at 1.5×10¹² cm (inner wind) and 1.2×10¹³–10¹⁴ cm (ou
   0.38); O III of the outer wind doubles (0.12 against 0.69 at 3×10¹³ cm).
   For O-star winds use static profiles of all lines in the slow cells, as
   for the slow CSM of the IIn models.
+* Convergence: after those three solves the NLTE changes were still 48 %
+  (median, per iteration). Four more (`zpup_dop2`, from `zpup_dop`; still
+  16 % median) bring O III to 0.0089, 0.041, 0.16, 0.52, 0.75 at 3, 6×10¹²,
+  1.2, 3×10¹³ and 10¹⁴ cm (CMFGEN 0.0086, 0.048, 0.25, 0.69, 0.84), O IV
+  and Ca IV with it, C IV 0.60–0.99 (0.50–0.98); the outer high stages
+  swing below CMFGEN's (He III 3.8×10⁻⁴ against 0.072 at 3×10¹³ cm; N V,
+  O V, O VI 2–3 low). The outer O III was the slow convergence of the
+  damped iteration (`cell_jtest` on the `zpup_dop` state with its own J
+  gives 0.57 at 3.3×10¹³ cm in one solve), not missing physics (CMFGEN has
+  no dielectronic recombination for O III, O IV in this model). An outer
+  wind needs a convergence test and more iterations than the 3–5 used so
+  far.
 
 ## 5. Running
 
