@@ -293,14 +293,16 @@ c-- emissivity is smooth over the electron kernel; the wings of strong
 c-- lines then within ~5 %, for exploration; 0: the spacing of the
 c-- spectrum)
       real*8 :: in_fi_nesdv = 0d0
-c-- (experimental) the J of the groups between in_nltex_fijwl1 and
+c-- the J of the groups between in_nltex_fijwl1 and
 c-- in_nltex_fijwl2 [A] in the rates from the formal solution, every
 c-- iteration after the transport: in_nltex_fijnes electron-scattering
 c-- passes on a comoving grid of in_nltex_fijdv [km/s], with the source
 c-- functions of the iteration (CMFGEN's J where the Monte Carlo is
 c-- starved: the X-rays and the He II continuum of a thin wind).  The
 c-- groups in local detailed balance keep Lambda* S + J_ext.
-      logical :: in_nltex_fij = .false.
+c-- 1: on, 0: off; default (< 0): on with an X-ray source
+c-- (in_xray_table), where the Monte Carlo has almost no X-ray packets
+      integer :: in_nltex_fij = -1
       real*8 :: in_nltex_fijwl1 = 5d0, in_nltex_fijwl2 = 912d0
       real*8 :: in_nltex_fijdv = 300d0
       integer :: in_nltex_fijnes = 3
@@ -617,7 +619,7 @@ c
       call insertl(in_fi_only,in_l,il)
       call inserti(in_fi_nes,in_i,ii)
       call insertr(in_fi_nesdv,in_r,ir)
-      call insertl(in_nltex_fij,in_l,il)
+      call inserti(in_nltex_fij,in_i,ii)
       call insertr(in_nltex_fijwl1,in_r,ir)
       call insertr(in_nltex_fijwl2,in_r,ir)
       call insertr(in_nltex_fijdv,in_r,ir)
@@ -847,7 +849,11 @@ c
      &  stop 'in_nltex_javg: [0,1)'
       if(in_nobfopac) in_nltex_auger = .false.
       if(in_xray_q<0d0.or.in_xray_q>=1d0) stop 'in_xray_q: [0,1)'
-      if(in_nltex_fij.and.(in_nltex_fijnes<1.or.
+      if(in_nltex_fij<0) then
+       in_nltex_fij = 0
+       if(trim(in_xray_table)/='none') in_nltex_fij = 1
+      endif
+      if(in_nltex_fij>0.and.(in_nltex_fijnes<1.or.
      &  in_nltex_fijwl1>=in_nltex_fijwl2.or.in_nltex_fijdv<=0d0))
      &  stop 'in_nltex_fij: fijnes>=1, fijwl1<fijwl2, fijdv>0'
       if(in_nltex_ldb<0d0) then

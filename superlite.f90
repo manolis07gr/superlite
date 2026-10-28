@@ -491,7 +491,7 @@ program superlite
         call nxt_jfill_cells(grd_ncell,grp_ng)
         call nxt_tally_finish(grd_ncell,grd_vol)
 !-- (experimental) the J of a starved band from the formal solution
-        if(in_nltex_fij) call fij_update
+        if(in_nltex_fij>0) call fij_update
 !-- formal integral of the emergent spectrum with the radiation field of the
 !-- last in_fi_navg iterations
         if(in_fi .and. it>in_niter-max(in_fi_navg,1)) then
