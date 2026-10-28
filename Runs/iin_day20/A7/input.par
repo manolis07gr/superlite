@@ -1,0 +1,72 @@
+&inputpars
+
+in_name = 'A7_day20'
+in_comment = 'A7 day 20, IIn CSM physics of CSM_PHYSICS.md (Runs/iin_day20): warm start from the state in init/, 6 iterations'
+
+!-- misc
+ in_nomp = 1
+ in_niter = 6
+ in_io_grabstdout = f
+ in_io_opacdump = 'off'
+ in_io_profdump = t
+
+!-- grid settings
+ in_ndim = 68, 1, 1
+
+!-- flux and group settings (input.wlgrid/input.fluxwl from Tools/make_wlgrid.py:
+!-- 100 km/s at 3500-10000 A, 1000 km/s at 1-3500 A and 1-3 um, 30000 km/s to
+!-- 300 um, bound-free edges as group boundaries)
+ in_flx_ndim = -1, 1, 1
+ in_grp_ng = 0
+
+!-- particle numbers and source
+ in_src_n2s = 18
+ in_niter_early = 0
+ in_src_n2s_early = 16
+ in_L_bol = 9.8880d+42
+ in_srctype = 'lumg'
+ in_surfsrcmu = 'isot'
+
+!-- transport
+ in_trn_tauddmc = 30d0
+ in_puretran = f
+ in_taulump = 5d0
+ in_trn_errorfatal = f
+ in_thm_thermal = t
+
+!-- opacities and NLTE hydrogen
+ in_nobbopac = f
+ in_nobfopac = f
+ in_noffopac = f
+ in_nothmson = f
+ in_nlte = t
+ in_nlte_nelem = 1
+ in_nlteh = f
+ in_nlteh_nlev = 30
+ in_nlteh_damp = 0.5d0
+ in_nltex_dir = '@ATOMS@'
+ in_nltex_atoms = 'h1.atom he1.atom he2.atom c1.atom c2.atom c3.atom c4.atom n1.atom n2.atom n3.atom n4.atom n5.atom o1.atom o2.atom o3.atom o4.atom o5.atom o6.atom ne1.atom ne2.atom ne3.atom na1.atom na2.atom mg1.atom mg2.atom mg3.atom si1.atom si2.atom si3.atom si4.atom s1.atom s2.atom s3.atom s4.atom ca1.atom ca2.atom ca3.atom ca4.atom fe1.atom fe2.atom fe3.atom fe4.atom fe5.atom fe6.atom'
+
+ in_bbsobolev = t
+ in_bbeps = -1d0
+ in_tesolve = t
+ in_nt_emin = 100d0
+ in_tion = 'nebu'
+ in_nltex_ali = f
+ in_nltex_ldb = 30d0
+ in_nltex_vturb = 10d0
+ in_nltex_vturbmax = 20d0
+ in_nltex_dopmc = 2d0
+ in_nltex_dopz = 1
+ in_nltex_dis = t
+ in_fi = t
+ in_fi_wl1 = 3500d-8
+ in_fi_wl2 = 10000d-8
+ in_fi_dv = 10d0
+ in_fi_navg = 1
+ in_shock_cie = '@CIE@'
+ in_rayleigh = 'lyman'
+ in_nltex_dmpsec = t
+ in_nltex_overlap = 150d0
+ in_nltex_init = '@INIT@'
+/

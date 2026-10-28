@@ -1,0 +1,107 @@
+#!/bin/bash
+# A4 and A7 at day 20 with the IIn CSM physics of CSM_PHYSICS.md (#83):
+# NLTE model atoms, CIE shock spectra, a warm start from the saved state in
+# <model>/init, six iterations, then the emergent spectrum as a formal
+# integral with 12 electron-scattering passes (as CMFGEN's cmf_flux).
+#
+# usage: Runs/iin_day20/run.sh <CMFGEN atomic dir> <work dir> [ranks] [models]
+#   CMFGEN atomic dir: atomic/ of atomic_data_21jun23 (CMFGEN web page)
+#   ranks: MPI ranks per model (default 4; ~3 GB of memory each)
+#   models: default "A4 A7" (run one after the other)
+# environment (all optional):
+#   SL_BUILD  a CMake build of this branch (with MPI); default: build one in
+#             <work dir>/build
+#   ATOMS     a directory with the model atoms; default: make them in
+#             <work dir>/atoms (Tools/make_nlte_atoms.sh with table_sn3.txt
+#             and CMFGEN's line cut GF_CUT = 1e-3; identical to the atoms of
+#             the saved states)
+#   CIE       the CIE table of the shocks; default: make <work dir>/shock_cie.dat
+#             with Tools/chianti_cie_spectra.py (ChiantiPy, XUVTOP set to the
+#             CHIANTI database; about an hour)
+#   JMC       a directory with A4/output.nltex_jmc and A7/output.nltex_jmc, the
+#             Monte Carlo estimators of the saved states: without them the
+#             first iteration builds its macro-atom tables with J = B(T_R)
+#   NITER     iterations (default 6)
+#   MPIRUN    the MPI launcher (default mpirun; e.g. "srun" on a cluster)
+# Each model runs in <work dir>/<model> (run.log, output.*), its spectrum in
+# <work dir>/<model>_fi (output.fi_spectrum).  A model whose run.log ends
+# with "exit 0" is skipped, so the script can be rerun after a stop; an
+# interrupted model starts again from init/ (set its in_nltex_init to its
+# own output.nltex_state by hand to continue from the last iteration).
+set -e
+[ $# -ge 2 ] || { sed -n '2,30p' "$0"; exit 1; }
+src=$(cd "$(dirname "$0")/../.." && pwd)
+kit=$src/Runs/iin_day20
+atomic=$(cd "$1" && pwd)
+mkdir -p "$2"; work=$(cd "$2" && pwd)
+np=${3:-4}
+models=${4:-"A4 A7"}
+niter=${NITER:-6}
+mpirun=${MPIRUN:-mpirun}
+
+# 1. SuperLite
+if [ -z "$SL_BUILD" ]; then
+  SL_BUILD=$work/build
+  mkdir -p "$SL_BUILD"
+  (cd "$SL_BUILD" && cmake -DUSE_MPI=ON "$src" > cmake.log && make -j "$np" superlite > make.log)
+fi
+exe=$SL_BUILD/superlite
+[ -x "$exe" ] || { echo "no $exe"; exit 1; }
+
+# 2. model atoms
+if [ -z "$ATOMS" ]; then
+  ATOMS=$work/atoms
+  if [ ! -f "$ATOMS/fe6.atom" ]; then
+    echo "$(date +%H:%M) model atoms -> $ATOMS"
+    SL_TABLE=$kit/table_sn3.txt GFCUT=1e-3 bash "$src/Tools/make_nlte_atoms.sh" "$atomic" "$ATOMS" > "$work/atoms.log" 2>&1
+  fi
+fi
+
+# 3. CIE spectra of the radiative shocks
+if [ -z "$CIE" ]; then
+  CIE=$work/shock_cie.dat
+  if [ ! -f "$CIE" ]; then
+    echo "$(date +%H:%M) CIE table -> $CIE"
+    python3 -I "$src/Tools/chianti_cie_spectra.py" -o "$CIE" --logt 4.5,8.0,0.1 \
+      --cache "$work/cie_cache" > "$work/cie.log" 2>&1
+  fi
+fi
+
+setup() {   # setup <run dir> <model> <init state>
+  local d=$1 m=$2 init=$3 f
+  mkdir -p "$d"
+  cp "$kit/$m/input.str" "$kit/$m/input.wlgrid" "$kit/$m/input.fluxwl" "$d/"
+  for f in Atoms Tinit.dat data.bf_verner data.ff_sutherland data.ion data.zeta; do
+    ln -sfn "$src/Data/$f" "$d/$f"
+  done
+  sed -e "s|@ATOMS@|$ATOMS|" -e "s|@CIE@|$CIE|" -e "s|@INIT@|$init|" \
+      -e "s|^\( *in_niter *= *\).*|\1$niter|" "$kit/$m/input.par" > "$d/input.par"
+}
+run() {   # run <run dir>
+  (cd "$1" && OPENBLAS_NUM_THREADS=1 $mpirun -np "$np" "$exe" > run.log 2>&1; echo "exit $?" >> run.log)
+  grep -q '^exit 0' "$1/run.log" || { echo "$(date +%H:%M) $1 failed, see run.log"; exit 1; }
+}
+
+for m in $models; do
+  d=$work/$m
+  if [ -f "$d/run.log" ] && grep -q '^exit 0' "$d/run.log"; then
+    echo "$(date +%H:%M) $m done already"
+  else
+    mkdir -p "$d/init"
+    cp "$kit/$m/init/output.nltex_state" "$d/init/"
+    [ -n "$JMC" ] && [ -f "$JMC/$m/output.nltex_jmc" ] && cp "$JMC/$m/output.nltex_jmc" "$d/init/"
+    setup "$d" $m "$d/init/output.nltex_state"
+    echo "$(date +%H:%M) $m: $niter iterations on $np ranks"
+    run "$d"
+  fi
+# the emergent spectrum: formal integral of the last state
+  f=${d}_fi
+  if [ -f "$f/run.log" ] && grep -q '^exit 0' "$f/run.log"; then continue; fi
+  setup "$f" $m "$d/output.nltex_state"
+  sed -i -e "s|^\( *in_niter *= *\).*|\11|" "$f/input.par"
+  printf ' in_fi_only = t\n in_fi_nes = 12\n in_fi_nesdv = 60d0\n/\n' > "$f/tail"
+  sed -i '$d' "$f/input.par"; cat "$f/tail" >> "$f/input.par"; rm "$f/tail"
+  echo "$(date +%H:%M) $m: formal integral"
+  run "$f"
+done
+echo "$(date +%H:%M) all done: <work>/<model>_fi/output.fi_spectrum"

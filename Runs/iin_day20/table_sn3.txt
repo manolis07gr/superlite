@@ -1,0 +1,44 @@
+h1  1 1 HYD/I/5dec96      30 hi_osc.dat hiphot.dat hicol.tlusty
+he1 2 1 HE/I/15jul15      51 hei_osc phot_hei heicol.dat
+he2 2 2 HE/II/5dec96      30 he2_osc.dat he2phot.dat he2col.dat
+c1  6 1 CARB/I/19apr23    59:f_to_s_122
+c2  6 2 CARB/II/19apr23   39:f_to_s_100
+c3  6 3 CARB/III/19apr23  38:f_to_s_split_big
+c4  6 4 CARB/IV/19apr23   15:f_to_s_split
+n1  7 1 NIT/I/19apr23     58:f_to_s_term
+n2  7 2 NIT/II/19apr23    41:f_to_s_157
+n3  7 3 NIT/III/19apr23   42:f_to_s_ls
+n4  7 4 NIT/IV/19apr23    23:f_to_s_139
+o1  8 1 OXY/I/19apr23     58:f_to_s_58
+o2  8 2 OXY/II/19apr23    57:f_to_s_ls
+o3  8 3 OXY/III/19apr23   37:f_to_s_165
+o4  8 4 OXY/IV/19apr23    20:f_to_s_220
+ne1 10 1 NEON/I/19apr23   40
+ne2 10 2 NEON/II/19apr23  40
+ne3 10 3 NEON/III/19apr23 30
+na1 11 1 NA/I/19apr23     71:f_to_s_sm
+na2 11 2 NA/II/19apr23    20
+mg1 12 1 MG/I/19apr23     122:f_to_s_sm
+mg2 12 2 MG/II/19apr23    80:f_to_s_42
+mg3 12 3 MG/III/19apr23   20
+si1 14 1 SIL/I/19apr23    40
+si2 14 2 SIL/II/19apr23   62:f_to_s_79
+si3 14 3 SIL/III/19apr23  61:f_to_s_ls
+si4 14 4 SIL/IV/19apr23   48:f_to_s_split
+s1  16 1 SUL/I/19apr23    40
+s2  16 2 SUL/II/19apr23   324:f_to_s_56
+s3  16 3 SUL/III/19apr23  98:f_to_s_127
+s4  16 4 SUL/IV/19apr23   67:f_to_s_69
+ca1 20 1 CA/I/19apr23     40
+ca2 20 2 CA/II/19apr23    77:f_to_s_44
+ca3 20 3 CA/III/19apr23   40:f_to_s
+ca4 20 4 CA/IV/19apr23    69:f_to_s
+fe1 26 1 FE/I/19apr23     136:f_to_s
+fe2 26 2 FE/II/19apr23    827:f_to_s_SN_A
+fe3 26 3 FE/III/19apr23   698:f_to_s_105
+fe4 26 4 FE/IV/19apr23    300:f_to_s_100
+fe5 26 5 FE/V/19apr23     191:f_to_s_139
+fe6 26 6 FE/VI/19apr23    300:f_to_s_67
+n5  7 5 NIT/V/19apr23    67:f_to_s_split_sm
+o5  8 5 OXY/V/19apr23    234:f_to_s_55
+o6  8 6 OXY/VI/19apr23   65:f_to_s_split
