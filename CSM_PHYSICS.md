@@ -1612,6 +1612,25 @@ against CMFGEN's at 1.5×10¹² cm (inner wind) and 1.2×10¹³–10¹⁴ cm (ou
   wind needs a convergence test and the emission biasing (`in_nltex_fbias`)
   into the He II continuum of the outer cells, or more packets, before its
   trace ions mean anything.
+* X-ray sampling (`in_xray_q`, default 0.05: at least that share of an
+  X-ray cell's packets start as X-rays, weighted). The wind's X-rays are
+  ~10⁻⁶ of its luminosity, so before it hardly any packet was an X-ray;
+  with it the X-ray J reaches the inner wind (cell 40: 10⁻⁵² → 3×10⁻¹²).
+  Three iterations (`zpup_xq`) and two more with `in_srcepwr` 0.5 (more
+  packets to the faint wind cells, `zpup_xp`) leave the dominant stages
+  where they were (O III, C IV, Ca IV within 20–30 % of CMFGEN's inward of
+  3×10¹³ cm) and move the outer N V, O V, O VI to 0.4–1.0 of CMFGEN's
+  (0.1–0.6 before), but the trace stages still jump by 10²–10⁴ between
+  iterations (O VII, Ca and Fe top stages at 1.5–3×10¹² cm 10⁻¹³–10⁻⁹
+  against 10⁻⁶–10⁻⁵; O VI at 1.2×10¹³ cm 2.6×10⁻⁴, then 10⁻⁷, then
+  3.5×10⁻⁶ against 3.4×10⁻⁴), and outer He III stays ~10⁻⁴ (CMFGEN
+  0.072 at 3×10¹³ cm). In the thick inner wind the X-ray groups are DDMC
+  groups (their J the cell's diffused energy shared by its emission
+  spectrum, X-rays included) and from τ = 30 in local detailed balance,
+  so the empty Monte Carlo groups there are not a starved J; the noise of
+  those trace stages is not yet explained. Limitation: ion fractions
+  below ~10⁻⁵ set by X-rays, and He III of a thin outer wind, are not
+  reliable; the dominant stages are.
 
 ## 5. Running
 
