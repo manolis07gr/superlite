@@ -170,8 +170,10 @@ c-- value against 0.86-1.5 times without it (CSM_PHYSICS.md 4.4).
 c-- adaptive damping of the populations between iterations: in each cell
 c-- the weight of the new solution 1/(1 - g), g the slope of the solve's
 c-- output against its input along the last step (secant), in [0.1, 1]
-c-- (nltextrmod dmp_weight); f: the fixed weight in_nlteh_damp
-      logical :: in_nltex_dmpsec = .false.
+c-- (nltextrmod dmp_weight); f: the fixed weight in_nlteh_damp.  On by
+c-- default: it turns the period-2 cycle of a strongly coupled wind into a
+c-- converging iteration (CSM_PHYSICS.md 5)
+      logical :: in_nltex_dmpsec = .true.
 c-- weight of the previous iterations in the Monte Carlo group J of the
 c-- NLTE rates (exponential average against the noise of thin cells; 0:
 c-- none)
