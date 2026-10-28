@@ -45,9 +45,9 @@ separately because of their size): with them the first iteration starts
 from the radiation field of the saved state; without them it builds its
 macro-atom tables with J = B(T_R), and the later iterations recover.
 
-Time: one iteration takes 45–60 min on 2 ranks (most of it the NLTE
-solution of the metals), so six iterations are about 5–6 h per model on
-2 ranks and less on 4; the formal integral takes minutes.
+Time (4 ranks): A7 about 7 min per iteration and 13 min for the formal
+integral (tested end to end with this script); A4 is slower, up to ~45 min
+per iteration (its NLTE solution of the metals), so a few hours for both.
 
 ## Checks
 
