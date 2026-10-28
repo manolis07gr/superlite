@@ -53,7 +53,7 @@ module formalmod
 contains
 !
 !
-subroutine fi_spectrum(ncell,xarr,vxarr,tempinv,wl1,wl2,dvkms,npc,impi,nmpi,lmpi0,jgavg,dop,nes,nesdv)
+subroutine fi_spectrum(ncell,xarr,vxarr,tempinv,wl1,wl2,dvkms,npc,impi,nmpi,lmpi0,jgavg,dop,nes,nesdv,jgout)
   use gridmod, only:grd_cap,grd_sig,grd_capemit
   use bbsobmod, only:grd_capsc
   use groupmod, only:grp_ng,grp_wl
@@ -69,7 +69,10 @@ subroutine fi_spectrum(ncell,xarr,vxarr,tempinv,wl1,wl2,dvkms,npc,impi,nmpi,lmpi
   logical,intent(in),optional :: dop       !Doppler line profiles (else Sobolev resonances)
   integer,intent(in),optional :: nes       !passes of the electron-scattering J (else the Monte Carlo J)
   real*8,intent(in),optional :: nesdv      !spacing [km/s] of the J of the passes but the last two (else dvkms)
-  integer :: nnu,i,j,ic,ig,ng,np,k,jg,nt,nesp,nj,mx,ipass,jj
+!-- (J mode, with nes > 0: the J of the last pass averaged over each group
+!-- that the comoving grid covers, -1 for the others; no output files)
+  real*8,intent(out),optional :: jgout(:,:) !(ng,ncell)
+  integer :: nnu,i,j,ic,ig,ng,np,k,jg,nt,nesp,nj,mx,ipass,jj,k1,k2
   real*8 :: dln,t,x,bnu,se,sig2,wsum,lnu0,dl,lt0,dlt,lext,lj0,wdep,dmax,lprev,nga,dlj
   real*8,allocatable :: wl(:),lnu(:),chi(:,:),eta(:,:),p(:),wp(:),lng(:),etes(:,:),jgx(:,:)
   real*8,allocatable :: vdc(:,:),vdmax(:),jfi(:,:),jnw(:,:),etj(:,:),vol(:),jold(:,:),jmc0(:,:),lnj(:)
@@ -291,9 +294,21 @@ subroutine fi_spectrum(ncell,xarr,vxarr,tempinv,wl1,wl2,dvkms,npc,impi,nmpi,lmpi
              ', Ng',nga
         lprev = x
      enddo
+!-- (J mode: the group means of the J of the last pass)
+     if(present(jgout)) then
+        jgout = -1d0
+        do ig=1,ng
+           k1 = ceiling((log(cc/grp_wl(ig+1)) - lj0)/dlj - 1d-9) + 1
+           k2 = floor((log(cc/grp_wl(ig)) - lj0)/dlj + 1d-9) + 1
+           if(k1 < mx+1 .or. k2 > nj-mx .or. k2 < k1) cycle
+           do ic=1,ncell
+              jgout(ig,ic) = sum(jfi(k1:k2,ic))/dble(k2-k1+1)
+           enddo
+        enddo
+     endif
 !-- J of the last pass against the Monte Carlo J per cell, Int J dnu over
 !-- the comoving frequencies of the spectrum and its thirds
-     if(lmpi0) then
+     if(lmpi0 .and. .not.present(jgout)) then
         open(4,file='output.fi_jes',status='replace')
         write(4,'(a)') '# formal integral (in_fi_nes): Int J dnu of the last pass / Monte Carlo, per cell'
         write(4,'(a)') '# cell  r_centre[cm]  all  blue third  middle third  red third'
@@ -324,7 +339,7 @@ subroutine fi_spectrum(ncell,xarr,vxarr,tempinv,wl1,wl2,dvkms,npc,impi,nmpi,lmpi
   endif
   if(.not.lj) call allreduce_sum(nnu,lnu)
 !-- L_lambda [erg/s/A]
-  if(lmpi0) then
+  if(lmpi0 .and. .not.present(jgout)) then
      open(4,file='output.fi_spectrum',status='replace')
      write(4,'(a)') '# formal integral (in_fi): wavelength [A], L_lambda [erg/s/A], L_nu [erg/s/Hz]'
      write(4,'(a,i8,a,f8.2,a,i5,a)') '#',nnu,' points,',dvkms,' km/s spacing,',np,' rays'

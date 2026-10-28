@@ -490,6 +490,8 @@ program superlite
         call nxt_fstarved(grd_ncell,grp_ng)
         call nxt_jfill_cells(grd_ncell,grp_ng)
         call nxt_tally_finish(grd_ncell,grd_vol)
+!-- (experimental) the J of a starved band from the formal solution
+        if(in_nltex_fij) call fij_update
 !-- formal integral of the emergent spectrum with the radiation field of the
 !-- last in_fi_navg iterations
         if(in_fi .and. it>in_niter-max(in_fi_navg,1)) then
@@ -642,6 +644,32 @@ subroutine xray_emnbf
   enddo
   deallocate(em)
 end subroutine xray_emnbf
+!
+subroutine fij_update
+!-- (in_nltex_fij) the J of the groups between in_nltex_fijwl1 and
+!-- in_nltex_fijwl2 for the rates from the formal solution with the source
+!-- functions of this iteration (electron-scattering passes from the Monte
+!-- Carlo J): deterministic where the Monte Carlo has few or no packets (the
+!-- X-rays and the He II continuum of a thin wind), as CMFGEN's J.  The
+!-- groups in local detailed balance keep theirs (Lambda* S + J_ext).
+  integer :: l,ig,n
+  real*8,allocatable :: jf(:,:)
+  allocate(jf(grp_ng,grd_ncell))
+  call fi_spectrum(grd_ncell,grd_xarr,grd_vxarr,grd_tempinv,in_nltex_fijwl1*1d-8,in_nltex_fijwl2*1d-8, &
+       in_nltex_fijdv,in_fi_npc,impi,nmpi,lmpi0,dop=in_fi_doppler,nes=in_nltex_fijnes,jgout=jf)
+  n = 0
+  do l=1,grd_ncell
+     do ig=1,grp_ng
+        if(jf(ig,l)<0d0) cycle
+        if(in_nltex_ldb>0d0 .and. grd_cap(ig,l)*(grd_xarr(l+1)-grd_xarr(l))>=in_nltex_ldb) cycle
+        nxt_jg(ig,l) = jf(ig,l)
+        n = n + 1
+     enddo
+  enddo
+  if(lmpi0) write(6,'(1x,a,i8,a,f7.1,a,f8.1,a)') 'NLTE J of',n,' groups x cells from the formal solution (', &
+       in_nltex_fijwl1,' -',in_nltex_fijwl2,' A, in_nltex_fij)'
+  deallocate(jf)
+end subroutine fij_update
 !
 subroutine shock_emnbf
 !-- add the emission of the shock cells to grd_emnbf as xray_emnbf: their

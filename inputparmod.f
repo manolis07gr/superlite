@@ -293,6 +293,17 @@ c-- emissivity is smooth over the electron kernel; the wings of strong
 c-- lines then within ~5 %, for exploration; 0: the spacing of the
 c-- spectrum)
       real*8 :: in_fi_nesdv = 0d0
+c-- (experimental) the J of the groups between in_nltex_fijwl1 and
+c-- in_nltex_fijwl2 [A] in the rates from the formal solution, every
+c-- iteration after the transport: in_nltex_fijnes electron-scattering
+c-- passes on a comoving grid of in_nltex_fijdv [km/s], with the source
+c-- functions of the iteration (CMFGEN's J where the Monte Carlo is
+c-- starved: the X-rays and the He II continuum of a thin wind).  The
+c-- groups in local detailed balance keep Lambda* S + J_ext.
+      logical :: in_nltex_fij = .false.
+      real*8 :: in_nltex_fijwl1 = 5d0, in_nltex_fijwl2 = 912d0
+      real*8 :: in_nltex_fijdv = 300d0
+      integer :: in_nltex_fijnes = 3
 c-- X-ray emission of wind shocks as CMFGEN's INC_XRAYS (xraysrcmod):
 c-- plasma table in CMFGEN's RS_XRAY_FLUXES format ('none': off); two
 c-- components: filling factor, shock temperature [K], onset velocity
@@ -429,6 +440,8 @@ c-- runtime parameter namelist
      & in_nltex_overlap,
      & in_fi,in_fi_wl1,in_fi_wl2,in_fi_dv,in_fi_npc,in_fi_navg,
      & in_fi_doppler,in_fi_only,in_fi_nes,in_fi_nesdv,
+     & in_nltex_fij,in_nltex_fijwl1,in_nltex_fijwl2,in_nltex_fijdv,
+     & in_nltex_fijnes,
      & in_xray_table,in_xray_ff1,in_xray_ff2,in_xray_t1,in_xray_t2,
      & in_xray_v1,in_xray_v2,in_xray_smooth,in_xray_q,
      & in_bbsobolev,in_bbeps,in_rayleigh,in_tesolve,in_te_damp,
@@ -604,6 +617,11 @@ c
       call insertl(in_fi_only,in_l,il)
       call inserti(in_fi_nes,in_i,ii)
       call insertr(in_fi_nesdv,in_r,ir)
+      call insertl(in_nltex_fij,in_l,il)
+      call insertr(in_nltex_fijwl1,in_r,ir)
+      call insertr(in_nltex_fijwl2,in_r,ir)
+      call insertr(in_nltex_fijdv,in_r,ir)
+      call inserti(in_nltex_fijnes,in_i,ii)
       call insertl(in_bbsobolev,in_l,il)
       call insertr(in_bbeps,in_r,ir)
       call insertl(in_tesolve,in_l,il)
@@ -829,6 +847,9 @@ c
      &  stop 'in_nltex_javg: [0,1)'
       if(in_nobfopac) in_nltex_auger = .false.
       if(in_xray_q<0d0.or.in_xray_q>=1d0) stop 'in_xray_q: [0,1)'
+      if(in_nltex_fij.and.(in_nltex_fijnes<1.or.
+     &  in_nltex_fijwl1>=in_nltex_fijwl2.or.in_nltex_fijdv<=0d0))
+     &  stop 'in_nltex_fij: fijnes>=1, fijwl1<fijwl2, fijdv>0'
       if(in_nltex_ldb<0d0) then
        in_nltex_ldb = 0d0
        if(.not.in_puretran.and.in_trn_tauddmc<=30d0) in_nltex_ldb = 30d0
