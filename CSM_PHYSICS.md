@@ -1647,7 +1647,13 @@ against CMFGEN's at 1.5×10¹² cm (inner wind) and 1.2×10¹³–10¹⁴ cm (ou
   before 10⁻⁶–1 with jumps of 10²–10⁴), outer He III 0.08–0.16 of
   CMFGEN's (0.002–0.03 before) and still rising; the dominant stages as
   before (O III 0.9–1.3, C IV within 10 % outside 3×10¹² cm). The median
-  change per iteration stays ~13 %: not yet converged.
+  change per iteration stays ~13 %: not yet converged. In the H/He IIn
+  wind it changes nothing that matters: twelve iterations each with and
+  without it from the same state (`hhe_fij_*`, `hhe_fij2_*`, `hhe_fij3_*`;
+  median change 0.2–0.3 % at the end) give L within 0.02 %, H I and
+  He II fractions within 5 %, Hα 102.0 against 100.7 Å, He I 10830 −2.07
+  against −1.99 Å, He I 5876 2.3 against 1.3 Å (CMFGEN `ies` 99.8, −0.64,
+  ≈0 with the same measurement).
 
 ## 5. Running
 
