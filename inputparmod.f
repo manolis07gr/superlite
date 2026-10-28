@@ -306,6 +306,14 @@ c-- (in_xray_table), where the Monte Carlo has almost no X-ray packets
       real*8 :: in_nltex_fijwl1 = 5d0, in_nltex_fijwl2 = 912d0
       real*8 :: in_nltex_fijdv = 300d0
       integer :: in_nltex_fijnes = 3
+c-- convergence test of the NLTE iteration: the run ends (formal integral
+c-- and outputs of the last iteration as usual) when the median over the
+c-- cells of the largest relative change of a state above 1e-4 between a
+c-- solve's output and its input, before the damping, stays below
+c-- in_nltex_tol for in_nltex_nconv consecutive iterations; in_niter is the
+c-- maximum (0: off, every run takes in_niter iterations)
+      real*8 :: in_nltex_tol = 0.02d0
+      integer :: in_nltex_nconv = 2
 c-- X-ray emission of wind shocks as CMFGEN's INC_XRAYS (xraysrcmod):
 c-- plasma table in CMFGEN's RS_XRAY_FLUXES format ('none': off); two
 c-- components: filling factor, shock temperature [K], onset velocity
@@ -443,7 +451,7 @@ c-- runtime parameter namelist
      & in_fi,in_fi_wl1,in_fi_wl2,in_fi_dv,in_fi_npc,in_fi_navg,
      & in_fi_doppler,in_fi_only,in_fi_nes,in_fi_nesdv,
      & in_nltex_fij,in_nltex_fijwl1,in_nltex_fijwl2,in_nltex_fijdv,
-     & in_nltex_fijnes,
+     & in_nltex_fijnes,in_nltex_tol,in_nltex_nconv,
      & in_xray_table,in_xray_ff1,in_xray_ff2,in_xray_t1,in_xray_t2,
      & in_xray_v1,in_xray_v2,in_xray_smooth,in_xray_q,
      & in_bbsobolev,in_bbeps,in_rayleigh,in_tesolve,in_te_damp,
@@ -624,6 +632,8 @@ c
       call insertr(in_nltex_fijwl2,in_r,ir)
       call insertr(in_nltex_fijdv,in_r,ir)
       call inserti(in_nltex_fijnes,in_i,ii)
+      call insertr(in_nltex_tol,in_r,ir)
+      call inserti(in_nltex_nconv,in_i,ii)
       call insertl(in_bbsobolev,in_l,il)
       call insertr(in_bbeps,in_r,ir)
       call insertl(in_tesolve,in_l,il)
@@ -849,6 +859,8 @@ c
      &  stop 'in_nltex_javg: [0,1)'
       if(in_nobfopac) in_nltex_auger = .false.
       if(in_xray_q<0d0.or.in_xray_q>=1d0) stop 'in_xray_q: [0,1)'
+      if(in_nltex_tol<0d0.or.in_nltex_nconv<1)
+     &  stop 'in_nltex_tol >= 0, in_nltex_nconv >= 1'
       if(in_nltex_fij<0) then
        in_nltex_fij = 0
        if(trim(in_xray_table)/='none') in_nltex_fij = 1

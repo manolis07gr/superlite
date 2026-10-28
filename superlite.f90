@@ -51,6 +51,10 @@ program superlite
   real*8,allocatable :: jgfi(:,:) !formal integral: J of the last in_fi_navg iterations
   integer :: nfi
   logical :: lclump = .false.
+!-- (convergence test of the NLTE iteration: iterations in a row below
+!-- in_nltex_tol; this iteration is the last)
+  integer :: nconv = 0
+  logical :: lstop = .false.
   character(256) :: fatom(150)
 !
 !-- mpi initialization
@@ -184,6 +188,11 @@ program superlite
      nx_ovl_dv = in_nltex_overlap*1d5
      nx_ovl_lmax = in_nltex_ovllmax
      call nxt_init(grd_ncell,gas_ncell,grp_ng,grp_wl,nfatom,fatom(:nfatom),merge(in_nlteh_nlev,0,in_nlteh))
+!-- (the undamped change per cell for the convergence test, in_nltex_tol)
+     if(in_nltex_tol>0d0) then
+        allocate(nxt_resid(grd_ncell))
+        nxt_resid = 0d0
+     endif
      if(lmpi0 .and. nxo_npair>0) write(6,'(1x,a,f7.1,a,i8,a)') 'NLTE lines: overlapping resonance zones '// &
           'within',in_nltex_overlap,' km/s (',nxo_npair/2,' pairs)'
 !-- charge exchange among the NLTE elements
@@ -406,6 +415,8 @@ program superlite
      endif
 !-- update all non-permanent variables
      call gas_update(it)
+!-- (convergence test of the NLTE iteration, in_nltex_tol)
+     if(in_nltex .and. in_nltex_tol>0d0 .and. it>1 .and. allocated(nxt_resid)) call conv_test
 
      call mpi_barrier(MPI_COMM_WORLD,ierr) !MPI
      t_timelin(2) = t_time() !timeline
@@ -494,7 +505,7 @@ program superlite
         if(in_nltex_fij>0) call fij_update
 !-- formal integral of the emergent spectrum with the radiation field of the
 !-- last in_fi_navg iterations
-        if(in_fi .and. it>in_niter-max(in_fi_navg,1)) then
+        if(in_fi .and. (it>in_niter-max(in_fi_navg,1) .or. lstop)) then
            if(.not.allocated(jgfi)) then
               allocate(jgfi(grp_ng,grd_ncell))
               jgfi = 0d0
@@ -503,7 +514,7 @@ program superlite
            jgfi = jgfi + nxt_jg
            nfi = nfi + 1
         endif
-        if(in_fi .and. it==in_niter) then
+        if(in_fi .and. (it==in_niter .or. lstop)) then
            jgfi = jgfi/nfi
            call fi_spectrum(grd_ncell,grd_xarr,grd_vxarr, &
                 grd_tempinv,in_fi_wl1,in_fi_wl2,in_fi_dv,in_fi_npc,impi,nmpi,lmpi0,jgfi,in_fi_doppler,in_fi_nes,in_fi_nesdv)
@@ -543,7 +554,7 @@ program superlite
         call output_grid
         call output_grp
         if(it>1.and.in_io_opacdump=='one') in_io_opacdump = 'off'
-        if(it==in_niter.and.in_io_profdump) call output_profile
+        if((it==in_niter.or.lstop).and.in_io_profdump) call output_profile
 !-- (NLTE populations and radiation field: every iteration, to follow the
 !-- convergence)
         if(in_nltex) call nxt_write(grd_ncell,grd_rcell, &
@@ -564,7 +575,7 @@ program superlite
         endif
         if(flx_lumout>0d0) write(6,'(1x,a,es10.3,a,f7.4,a)') 'escaped outside the flux bins:', &
              flx_lumout,' erg/s (',flx_lumout/max(flx_lumout+sum(flx_luminos),1d-300),' of the total)'
-        if(it==in_niter) call write_emitchan
+        if(it==in_niter.or.lstop) call write_emitchan
         write(6,*)
      endif !impi
 !-- write timestep timing to file
@@ -573,6 +584,7 @@ program superlite
      t_timelin(5) = t_time() !timeline
      t_timeline = t_timeline + (t_timelin(2:) - t_timelin(:4))
 
+     if(lstop) exit
   enddo ! iterations
 !
 !
@@ -644,6 +656,32 @@ subroutine xray_emnbf
   enddo
   deallocate(em)
 end subroutine xray_emnbf
+!
+subroutine conv_test
+!-- (in_nltex_tol) the median over the cells of the undamped change of the
+!-- populations of this iteration's solve; below in_nltex_tol in
+!-- in_nltex_nconv consecutive iterations, this iteration is the last
+  real*8 :: r(grd_ncell),w
+  integer :: i,k
+  r = nxt_resid
+  call allreduce_sum(grd_ncell,r)
+  do i=2,grd_ncell
+     w = r(i)
+     k = i - 1
+     do while(k>=1)
+        if(r(k) <= w) exit
+        r(k+1) = r(k)
+        k = k - 1
+     enddo
+     r(k+1) = w
+  enddo
+  w = r((grd_ncell+1)/2)
+  nconv = merge(nconv+1,0,w<in_nltex_tol)
+  lstop = nconv>=in_nltex_nconv
+  if(lmpi0) write(6,'(1x,a,es9.2,a,es9.2,a,i2,a,i2,a)') 'NLTE convergence: median undamped change', &
+       w,' (in_nltex_tol',in_nltex_tol,'), below it',nconv,' of',in_nltex_nconv,' iterations'
+  if(lmpi0 .and. lstop) write(6,'(1x,a)') 'NLTE converged: this iteration is the last'
+end subroutine conv_test
 !
 subroutine fij_update
 !-- (in_nltex_fij) the J of the groups between in_nltex_fijwl1 and

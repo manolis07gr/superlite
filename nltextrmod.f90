@@ -267,6 +267,10 @@ module nltextrmod
 !-- cells of the cell's largest relative change of a state above 1e-4
 !-- (after the damping; nxt_gas_solve)
   real*8,public :: nxt_dxstat(2) = 0d0
+!-- (convergence test, superlite.f90) the largest relative change of a
+!-- state above 1e-4 between the solve's output and its input, before the
+!-- damping, per cell of the whole grid (0 in the cells of other ranks)
+  real*8,allocatable,public :: nxt_resid(:)
 !-- adaptive damping (nxt_dmpsec): the weight of the new solution in each
 !-- cell from the secant slope of its last two solves (dmp_weight), with
 !-- the log populations put into and got out of its last solve, and the
@@ -948,6 +952,17 @@ subroutine nxt_gas_solve(it,gncell,temp,trad,nelv,neoth,qb,qv,icell1,edep,kap,fc
      if(ierr==1) then
         nfail = nfail + 1
         x = xold
+     endif
+!-- (the undamped change for the convergence test)
+     if(allocated(nxt_resid)) then
+        nxt_resid(l) = 0d0
+        if(ierr/=1) then
+           do k=1,nxa_nst
+              if(x(k) > 1d-4 .and. xold(k) > 0d0) nxt_resid(l) = max(nxt_resid(l),abs(x(k)/xold(k) - 1d0))
+           enddo
+        endif
+     endif
+     if(ierr==1) then
      elseif(it>1 .and. nxt_have_mc .and. nxt_damp<1d0) then
         w = nxt_damp
         if(nxt_dmpsec) then
