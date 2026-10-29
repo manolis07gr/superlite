@@ -268,8 +268,10 @@ module nltextrmod
 !-- (after the damping; nxt_gas_solve)
   real*8,public :: nxt_dxstat(2) = 0d0
 !-- (convergence test, superlite.f90) the largest relative change of a
-!-- state above 1e-4 between the solve's output and its input, before the
-!-- damping, per cell of the whole grid (0 in the cells of other ranks)
+!-- state above 1e-4 between the solve's output and its input, per cell of
+!-- the whole grid (0 in the cells of other ranks); with the adaptive
+!-- damping times its weight 1/(1-g), the secant estimate of the distance
+!-- to the fixed point (not the fixed weight in_nlteh_damp)
   real*8,allocatable,public :: nxt_resid(:)
 !-- adaptive damping (nxt_dmpsec): the weight of the new solution in each
 !-- cell from the secant slope of its last two solves (dmp_weight), with
@@ -977,6 +979,10 @@ subroutine nxt_gas_solve(it,gncell,temp,trad,nelv,neoth,qb,qv,icell1,edep,kap,fc
            w = dmp_weight(l,xold,x)
            nwc = nwc + 1
            wcl(nwc) = w
+!-- (the convergence test takes the estimated distance to the fixed
+!-- point: an oscillating mode of slope g < 0 makes the undamped change
+!-- 1 - g = 1/w times it)
+           if(allocated(nxt_resid)) nxt_resid(l) = w*nxt_resid(l)
         endif
         if(nxt_accm>0) then
            call anderson(l,xold,x,w)
