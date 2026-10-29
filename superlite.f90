@@ -241,6 +241,7 @@ program superlite
      if(lmpi0) write(6,'(1x,a,l2)') 'NLTE lines: continuum destruction of the trapped photons (in_nltex_cdest):',nx_pc_on
      nxt_jbbeta = in_nltex_jbbeta
      nxt_dmpsec = in_nltex_dmpsec
+     nxt_accm = max(in_nltex_acc,0)
      nxt_javg = in_nltex_javg
      nxt_taumin = in_nltex_taumin
      nxt_jfill = in_nltex_jfill

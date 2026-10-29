@@ -174,6 +174,11 @@ c-- (nltextrmod dmp_weight); f: the fixed weight in_nlteh_damp.  On by
 c-- default: it turns the period-2 cycle of a strongly coupled wind into a
 c-- converging iteration (CSM_PHYSICS.md 5)
       logical :: in_nltex_dmpsec = .true.
+c-- (experimental) Anderson acceleration of the populations between
+c-- iterations with the last in_nltex_acc solves of each cell (0: off;
+c-- nltextrmod anderson): the secant of several modes at once, on top of
+c-- the damping weight
+      integer :: in_nltex_acc = 0
 c-- weight of the previous iterations in the Monte Carlo group J of the
 c-- NLTE rates (exponential average against the noise of thin cells; 0:
 c-- none)
@@ -442,7 +447,8 @@ c-- runtime parameter namelist
      & in_srctype,in_shock_dvmin,in_shock_tmax,in_shock_cie,
      & in_nltex_prev,in_nltex_dtprev,in_nltex_init,in_nltex_hold,
      & in_nltex_bbext,in_nltex_cdest,in_nltex_jbbeta,in_nltex_jbwin,
-     & in_nltex_dmpsec,in_nltex_javg,in_nltex_taumin,in_nltex_jfill,
+     & in_nltex_dmpsec,in_nltex_acc,in_nltex_javg,in_nltex_taumin,
+     & in_nltex_jfill,
      & in_nltex_fbias,in_nltex_fwl1,in_nltex_fwl2,in_nltex_ldbse,
      & in_nltex_auger,in_nltex_ovllmax,
      & in_nltex_dis,
@@ -603,6 +609,7 @@ c
       call insertl(in_nltex_cdest,in_l,il)
       call insertl(in_nltex_jbbeta,in_l,il)
       call insertl(in_nltex_dmpsec,in_l,il)
+      call inserti(in_nltex_acc,in_i,ii)
       call insertr(in_nltex_javg,in_r,ir)
       call insertr(in_nltex_taumin,in_r,ir)
       call inserti(in_nltex_jfill,in_i,ii)

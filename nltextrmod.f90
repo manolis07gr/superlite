@@ -278,6 +278,14 @@ module nltextrmod
   logical,public :: nxt_dmpsec = .false.
   real*8,allocatable :: nxt_dmpu(:,:),nxt_dmpy(:,:)   !(nst,ncell)
   real*8,allocatable :: nxt_dmpw(:)                   !(ncell)
+!-- Anderson acceleration of the populations (nxt_accm > 0: the depth of
+!-- its history): per cell, the log populations put into the last solves
+!-- and their residuals (output - input; the states above 1e-4), the
+!-- number of them kept, and the norm of the last residual
+  integer,public :: nxt_accm = 0
+  real*8,allocatable :: nxt_acu(:,:,:),nxt_acf(:,:,:)  !(nst,m,ncell)
+  integer,allocatable :: nxt_acn(:)                    !(ncell)
+  real*8,allocatable :: nxt_acr(:)                     !(ncell)
 !-- (the history of a warm start: its output.nltex_dmp_<rank> files, read
 !-- at the first solve with nxt_dmpsec; nxt_write_dmp)
   character(256) :: nxt_dmpfile = ''
@@ -970,7 +978,11 @@ subroutine nxt_gas_solve(it,gncell,temp,trad,nelv,neoth,qb,qv,icell1,edep,kap,fc
            nwc = nwc + 1
            wcl(nwc) = w
         endif
-        x = max(xold,1d-300)**(1d0-w)*x**w
+        if(nxt_accm>0) then
+           call anderson(l,xold,x,w)
+        else
+           x = max(xold,1d-300)**(1d0-w)*x**w
+        endif
         call renorm(x)
      endif
      nxt_xloc(:,i) = x
@@ -1056,6 +1068,110 @@ contains
     nxt_dmpw(lc) = dmp_weight
   end function dmp_weight
 !
+  subroutine anderson(lc,xo,xs,b)
+!-- (nxt_accm) Anderson acceleration of the fixed-point iteration of cell
+!-- lc in log populations: with the residual f = log xs - log xo of this
+!-- solve (input xo, output xs), the new input is
+!--   u + b f - sum_j g_j (dU_j + b dF_j),
+!-- dU_j, dF_j the differences of u and f from the last solves, g the least
+!-- squares fit of f by the dF_j (regularized): the secant of several modes
+!-- at once (an oscillating mode needs a small weight, which slows the
+!-- monotone ones).  b is the damping weight (nxt_damp or dmp_weight), so
+!-- without a history it is the damped step.  The states below 1e-4 take
+!-- the damped step.  The history restarts when the residual grows by more
+!-- than 2 or the accelerated step changes a state by more than a factor 10.
+    integer,intent(in) :: lc
+    real*8,intent(in) :: xo(nxa_nst),b
+    real*8,intent(inout) :: xs(nxa_nst)
+    real*8 :: u(nxa_nst),f(nxa_nst),fm(nxa_nst),un(nxa_nst),df(nxa_nst,nxt_accm),du(nxa_nst,nxt_accm)
+    real*8 :: a(nxt_accm,nxt_accm),r(nxt_accm),g(nxt_accm),fn,tr
+    logical :: msk(nxa_nst),lok
+    integer :: h,j,j2,m
+    m = nxt_accm
+    if(.not.allocated(nxt_acu)) then
+       allocate(nxt_acu(nxa_nst,m,nxt_ncell),nxt_acf(nxa_nst,m,nxt_ncell),nxt_acn(nxt_ncell),nxt_acr(nxt_ncell))
+       nxt_acn = 0
+       nxt_acr = 0d0
+    endif
+    u = log(max(xo,1d-300))
+    f = log(max(xs,1d-300)) - u
+    msk = max(xo,xs) >= 1d-4
+    fm = merge(f,0d0,msk)
+    un = u + b*f
+    fn = sqrt(sum(fm*fm))
+    h = nxt_acn(lc)
+    if(h>0 .and. fn>2d0*nxt_acr(lc)) h = 0
+    lok = .false.
+    if(h>0) then
+       do j=1,h
+          df(:,j) = merge(fm - nxt_acf(:,j,lc),0d0,msk)
+          du(:,j) = merge(u - nxt_acu(:,j,lc),0d0,msk)
+       enddo
+       do j=1,h
+          r(j) = sum(df(:,j)*fm)
+          do j2=1,h
+             a(j,j2) = sum(df(:,j)*df(:,j2))
+          enddo
+       enddo
+       tr = 0d0
+       do j=1,h
+          tr = tr + a(j,j)
+       enddo
+       do j=1,h
+          a(j,j) = a(j,j) + 1d-6*tr/h + 1d-300
+       enddo
+       call solve_small(h,a(1:h,1:h),r(1:h),g(1:h),lok)
+       if(lok) then
+          do j=1,h
+             un = un - merge(g(j)*(du(:,j) + b*df(:,j)),0d0,msk)
+          enddo
+          if(any(un/=un) .or. maxval(abs(merge(un-u,0d0,msk)))>log(10d0)) then
+             lok = .false.
+             un = u + b*f
+             h = 0
+          endif
+       else
+          h = 0
+       endif
+    endif
+!-- (the history: this solve first)
+    do j=min(h,m-1),1,-1
+       nxt_acu(:,j+1,lc) = nxt_acu(:,j,lc)
+       nxt_acf(:,j+1,lc) = nxt_acf(:,j,lc)
+    enddo
+    nxt_acu(:,1,lc) = u
+    nxt_acf(:,1,lc) = fm
+    nxt_acn(lc) = min(h+1,m)
+    nxt_acr(lc) = fn
+    xs = exp(min(un,0d0))
+  end subroutine anderson
+  subroutine solve_small(n,a,r,g,ok)
+!-- (Gaussian elimination with partial pivoting of a small system a g = r)
+    integer,intent(in) :: n
+    real*8,intent(inout) :: a(n,n),r(n)
+    real*8,intent(out) :: g(n)
+    logical,intent(out) :: ok
+    integer :: p,q,k2
+    real*8 :: t,row(n)
+    ok = .false.
+    do p=1,n
+       k2 = maxloc(abs(a(p:n,p)),1) + p - 1
+       if(abs(a(k2,p)) <= 0d0) return
+       if(k2/=p) then
+          row = a(p,:); a(p,:) = a(k2,:); a(k2,:) = row
+          t = r(p); r(p) = r(k2); r(k2) = t
+       endif
+       do q=p+1,n
+          t = a(q,p)/a(p,p)
+          a(q,p:n) = a(q,p:n) - t*a(p,p:n)
+          r(q) = r(q) - t*r(p)
+       enddo
+    enddo
+    do p=n,1,-1
+       g(p) = (r(p) - sum(a(p,p+1:n)*g(p+1:n)))/a(p,p)
+    enddo
+    ok = all(g==g)
+  end subroutine solve_small
   subroutine renorm(xx)
     real*8,intent(inout) :: xx(nxa_nst)
     integer :: je,jo,ns
