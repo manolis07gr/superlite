@@ -5,7 +5,8 @@
 # integral with 12 electron-scattering passes (as CMFGEN's cmf_flux).
 #
 # usage: Runs/iin_day20/run.sh <CMFGEN atomic dir> <work dir> [ranks] [models]
-#   CMFGEN atomic dir: atomic/ of atomic_data_21jun23 (CMFGEN web page)
+#   CMFGEN atomic dir: atomic/ of atomic_data_21jun23 (CMFGEN web page);
+#     "-" when ATOMS gives the model atoms already made
 #   ranks: MPI ranks per model (default 4; ~3 GB of memory each)
 #   models: default "A4 A7" (run one after the other)
 # environment (all optional):
@@ -32,7 +33,12 @@ set -e
 [ $# -ge 2 ] || { sed -n '2,30p' "$0"; exit 1; }
 src=$(cd "$(dirname "$0")/../.." && pwd)
 kit=$src/Runs/iin_day20
-atomic=$(cd "$1" && pwd)
+if [ "$1" = "-" ]; then
+  atomic=-
+  [ -n "$ATOMS" ] || { echo "atomic dir '-' needs ATOMS"; exit 1; }
+else
+  atomic=$(cd "$1" && pwd)
+fi
 mkdir -p "$2"; work=$(cd "$2" && pwd)
 np=${3:-4}
 models=${4:-"A4 A7"}
@@ -98,9 +104,9 @@ for m in $models; do
   f=${d}_fi
   if [ -f "$f/run.log" ] && grep -q '^exit 0' "$f/run.log"; then continue; fi
   setup "$f" $m "$d/output.nltex_state"
-  sed -i -e "s|^\( *in_niter *= *\).*|\11|" "$f/input.par"
-  printf ' in_fi_only = t\n in_fi_nes = 12\n in_fi_nesdv = 60d0\n/\n' > "$f/tail"
-  sed -i '$d' "$f/input.par"; cat "$f/tail" >> "$f/input.par"; rm "$f/tail"
+  sed -e "s|^\( *in_niter *= *\).*|\11|" -e '$d' "$f/input.par" > "$f/input.tmp"
+  printf ' in_fi_only = t\n in_fi_nes = 12\n in_fi_nesdv = 60d0\n/\n' >> "$f/input.tmp"
+  mv "$f/input.tmp" "$f/input.par"
   echo "$(date +%H:%M) $m: formal integral"
   run "$f"
 done
