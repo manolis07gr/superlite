@@ -25,7 +25,7 @@ program superlite
   use timingmod
   use countersmod
   use nltehmod, only:nlteh_set_collfits,nlteh_init
-  use nlteatommod, only:nxa_nel,nxa_nion,nxa_ion,nxa_nlin,nxa_nst,nxa_read_cx
+  use nlteatommod, only:nxa_nel,nxa_nion,nxa_ion,nxa_nlin,nxa_nst,nxa_read_cx,nxa_lgn
   use nltextrmod
   use xraysrcmod
   use formalmod, only:fi_spectrum
@@ -691,11 +691,26 @@ subroutine fij_update
 !-- Carlo J): deterministic where the Monte Carlo has few or no packets (the
 !-- X-rays and the He II continuum of a thin wind), as CMFGEN's J.  The
 !-- groups in local detailed balance keep theirs (Lambda* S + J_ext).
-  integer :: l,ig,n
-  real*8,allocatable :: jf(:,:)
-  allocate(jf(grp_ng,grd_ncell))
+  integer :: l,ig,n,k,nb
+  real*8,allocatable :: jf(:,:),jbf(:,:)
+  allocate(jf(grp_ng,grd_ncell),jbf(nxa_nlin,grd_ncell))
   call fi_spectrum(grd_ncell,grd_xarr,grd_vxarr,grd_tempinv,in_nltex_fijwl1*1d-8,in_nltex_fijwl2*1d-8, &
-       in_nltex_fijdv,in_fi_npc,impi,nmpi,lmpi0,dop=in_fi_doppler,nes=in_nltex_fijnes,jgout=jf)
+       in_nltex_fijdv,in_fi_npc,impi,nmpi,lmpi0,dop=in_fi_doppler,nes=in_nltex_fijnes,jgout=jf,jbout=jbf)
+!-- (the intensity incident on the lines in the band: the Monte Carlo
+!-- resonance estimator is starved there as the group J is, and its
+!-- fallback, the group J without the lines' own photons, left He II Lya
+!-- of the zeta Pup outer wind 20 times below its source function)
+  nb = 0
+  do l=1,grd_ncell
+     do k=1,nxa_nlin
+        if(jbf(k,l)<0d0) cycle
+        ig = nxa_lgn(k)
+        if(in_nltex_ldb>0d0 .and. grd_cap(ig,l)*(grd_xarr(l+1)-grd_xarr(l))>=in_nltex_ldb) cycle
+        nxt_jb(k,l) = jbf(k,l)
+        nxt_ljb(k,l) = .true.
+        nb = nb + 1
+     enddo
+  enddo
   n = 0
   do l=1,grd_ncell
      do ig=1,grp_ng
@@ -707,7 +722,8 @@ subroutine fij_update
   enddo
   if(lmpi0) write(6,'(1x,a,i8,a,f7.1,a,f8.1,a)') 'NLTE J of',n,' groups x cells from the formal solution (', &
        in_nltex_fijwl1,' -',in_nltex_fijwl2,' A, in_nltex_fij)'
-  deallocate(jf)
+  if(lmpi0) write(6,'(1x,a,i9,a)') 'NLTE incident intensity of',nb,' lines x cells from the formal solution'
+  deallocate(jf,jbf)
 end subroutine fij_update
 !
 subroutine shock_emnbf

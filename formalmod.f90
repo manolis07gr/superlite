@@ -53,12 +53,12 @@ module formalmod
 contains
 !
 !
-subroutine fi_spectrum(ncell,xarr,vxarr,tempinv,wl1,wl2,dvkms,npc,impi,nmpi,lmpi0,jgavg,dop,nes,nesdv,jgout)
+subroutine fi_spectrum(ncell,xarr,vxarr,tempinv,wl1,wl2,dvkms,npc,impi,nmpi,lmpi0,jgavg,dop,nes,nesdv,jgout,jbout)
   use gridmod, only:grd_cap,grd_sig,grd_capemit
   use bbsobmod, only:grd_capsc
   use groupmod, only:grp_ng,grp_wl
   use nltextrmod, only:nxt_jg,nxt_nug,nxt_dnug,grd_emnbf,nxt_estrap,nxt_vturbv,nxt_esrates
-  use nlteatommod, only:nxa_nel
+  use nlteatommod, only:nxa_nel,nxa_nlin,nxa_lnu,nxa_lel
   use nltexmod, only:nx_vdop
   use mpimod, only:allreduce_sum
   use transportmod, only:trn_thm_aniso
@@ -72,6 +72,11 @@ subroutine fi_spectrum(ncell,xarr,vxarr,tempinv,wl1,wl2,dvkms,npc,impi,nmpi,lmpi
 !-- (J mode, with nes > 0: the J of the last pass averaged over each group
 !-- that the comoving grid covers, -1 for the others; no output files)
   real*8,intent(out),optional :: jgout(:,:) !(ng,ncell)
+!-- (and the intensity incident on each NLTE line: the J of the last pass
+!-- five Doppler widths blueward of the line in the comoving frame, the
+!-- continuum and the other lines that its resonance zone receives; -1
+!-- outside the grid)
+  real*8,intent(out),optional :: jbout(:,:) !(nlin,ncell)
   integer :: nnu,i,j,ic,ig,ng,np,k,jg,nt,nesp,nj,mx,ipass,jj,k1,k2
   real*8 :: dln,t,x,bnu,se,sig2,wsum,lnu0,dl,lt0,dlt,lext,lj0,wdep,dmax,lprev,nga,dlj
   real*8,allocatable :: wl(:),lnu(:),chi(:,:),eta(:,:),p(:),wp(:),lng(:),etes(:,:),jgx(:,:)
@@ -303,6 +308,18 @@ subroutine fi_spectrum(ncell,xarr,vxarr,tempinv,wl1,wl2,dvkms,npc,impi,nmpi,lmpi
            if(k1 < mx+1 .or. k2 > nj-mx .or. k2 < k1) cycle
            do ic=1,ncell
               jgout(ig,ic) = sum(jfi(k1:k2,ic))/dble(k2-k1+1)
+           enddo
+        enddo
+     endif
+     if(present(jbout)) then
+        jbout = -1d0
+        do k=1,nxa_nlin
+           do ic=1,ncell
+              x = (log(nxa_lnu(k)) + 5d0*vdc(nxa_lel(k),ic)/cc - lj0)/dlj + 1d0
+              k1 = floor(x)
+              if(k1 < mx+1 .or. k1+1 > nj-mx) exit
+              x = x - k1
+              jbout(k,ic) = (1d0-x)*jfi(k1,ic) + x*jfi(k1+1,ic)
            enddo
         enddo
      endif

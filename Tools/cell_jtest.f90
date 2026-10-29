@@ -372,6 +372,20 @@ contains
             pu*nxa_la(kk)/max(pl*nxa_lblu(kk) - pu*nxa_lbul(kk),1d-300)
        netl(kk) = 0d0
     enddo
+!-- (He II Lya 303.78 and He I 584.33 A: whether their incident intensity
+!-- is the resonance estimator or the fallback)
+    do kk=1,nxa_nlin
+       pl = cl/nxa_lnu(kk)*1d8
+       if(abs(pl-303.78d0) > 0.1d0 .and. abs(pl-584.33d0) > 0.1d0) cycle
+       jj = nxa_lel(kk)
+       pl = nel(jj)*x(nxa_el(jj)%xoff+nxa_lsl(kk))*wlv(nxa_llv(kk))
+       pu = nel(jj)*x(nxa_el(jj)%xoff+nxa_lsu(kk))*wlv(nxa_luv(kk))
+       jlk = nx_jline(kk,ng,nxt_nug,merge(nxt_jg(:,ic),jg,jv==1),merge(nxt_jb(kk,ic),jb(kk),jv==1), &
+            merge(nxt_ljb(kk,ic),ljb(kk),jv==1))
+       write(lu,'(a,a8,f10.3,a,l2,4es12.4)') '# line ',nxa_ion(nxa_lion(kk))%name,cl/nxa_lnu(kk)*1d8, &
+            ' estimator',merge(nxt_ljb(kk,ic),ljb(kk),jv==1),netl(kk),beta(kk),jlk, &
+            pu*nxa_la(kk)/max(pl*nxa_lblu(kk) - pu*nxa_lbul(kk),1d-300)
+    enddo
     if(nx_dump_el > 0 .and. allocated(nx_dflx)) then
        write(lu,'(a,i3,a,i4,a,es12.4,a)') '# element',nx_dump_el,' state',nx_dump_st,' (fraction', &
             x(nxa_el(nx_dump_el)%xoff+nx_dump_st),'): net flows into it from each state [1/s per particle], largest'
