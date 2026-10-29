@@ -23,7 +23,8 @@
 #             Monte Carlo estimators of the saved states: without them the
 #             first iteration builds its macro-atom tables with J = B(T_R)
 #   NITER     iterations (default 6)
-#   MPIRUN    the MPI launcher (default mpirun; e.g. "srun" on a cluster)
+#   MPIRUN    the MPI launcher (default mpirun; e.g. "srun" on a cluster, or
+#             "mpirun --mca btl self,sm" on one machine without the TCP warnings)
 # Each model runs in <work dir>/<model> (run.log, output.*), its spectrum in
 # <work dir>/<model>_fi (output.fi_spectrum).  A model whose run.log ends
 # with "exit 0" is skipped, so the script can be rerun after a stop; an
@@ -83,14 +84,17 @@ setup() {   # setup <run dir> <model> <init state>
   sed -e "s|@ATOMS@|$ATOMS|" -e "s|@CIE@|$CIE|" -e "s|@INIT@|$init|" \
       -e "s|^\( *in_niter *= *\).*|\1$niter|" "$kit/$m/input.par" > "$d/input.par"
 }
+done_ok() {   # done_ok <run dir>: the run ended with exit status 0
+  [ -f "$1/run.log" ] && [ "$(tail -n 1 "$1/run.log" | tr -d ' ')" = "exit0" ]
+}
 run() {   # run <run dir>
-  (cd "$1" && OPENBLAS_NUM_THREADS=1 $mpirun -np "$np" "$exe" > run.log 2>&1; echo "exit $?" >> run.log)
-  grep -q '^exit 0' "$1/run.log" || { echo "$(date +%H:%M) $1 failed, see run.log"; exit 1; }
+  (cd "$1" && OPENBLAS_NUM_THREADS=1 $mpirun -np "$np" "$exe" > run.log 2>&1; printf '\nexit %d\n' $? >> run.log)
+  done_ok "$1" || { echo "$(date +%H:%M) $1 failed, see run.log"; exit 1; }
 }
 
 for m in $models; do
   d=$work/$m
-  if [ -f "$d/run.log" ] && grep -q '^exit 0' "$d/run.log"; then
+  if done_ok "$d"; then
     echo "$(date +%H:%M) $m done already"
   else
     mkdir -p "$d/init"
@@ -102,7 +106,7 @@ for m in $models; do
   fi
 # the emergent spectrum: formal integral of the last state
   f=${d}_fi
-  if [ -f "$f/run.log" ] && grep -q '^exit 0' "$f/run.log"; then continue; fi
+  if done_ok "$f"; then continue; fi
   setup "$f" $m "$d/output.nltex_state"
   sed -e "s|^\( *in_niter *= *\).*|\11|" -e '$d' "$f/input.par" > "$f/input.tmp"
   printf ' in_fi_only = t\n in_fi_nes = 12\n in_fi_nesdv = 60d0\n/\n' >> "$f/input.tmp"
