@@ -1660,6 +1660,27 @@ against CMFGEN's at 1.5×10¹² cm (inner wind) and 1.2×10¹³–10¹⁴ cm (ou
   comparable there, as this restart swings by ±8 Å in Hα between
   iterations in both. Default: on where an X-ray source is set (it
   removes the noise floor of the X-ray-ionized stages), off otherwise.
+* He III of the outer wind (item 3 of the plan). With the formal-solution
+  J of the band the outer He III stayed 4–9 times below CMFGEN's
+  (`zpup_c3`, five iterations with the defaults). CMFGEN ionizes He II
+  mostly from n = 2 (65 and 58 % of the photoionizations at 1.3 and
+  2.9×10¹³ cm, He2PRRR); SuperLite's He II photoionization per ion was
+  4.5 and 32 times lower and its b₂/b₁ 1341 and 23 against CMFGEN's 25 541
+  and 8586. He II Lyα (β ≈ 2×10⁻⁵) had an incident intensity of 0.08–0.35
+  of its source function, and 0 at 3.3×10¹³ cm (`cell_jtest` dump): the
+  Monte Carlo resonance estimator is starved in that band as the group J
+  is, and its fallback, the group J without the lines' own photons, comes
+  from the Monte Carlo tallies, not from the formal J that replaces the
+  group J. CMFGEN's He II Lyα source function there (from its b₂/b₁, ≈
+  1.7×10⁻⁷) is the local J of the band (SuperLite's formal J 1.4×10⁻⁷):
+  the line is in equilibrium with its surroundings. `in_nltex_fij` now
+  also gives the lines of the band their incident intensity from the
+  formal solution, the J five Doppler widths blueward of each line. Four
+  iterations from `zpup_c3` (`zpup_jb`): He III 0.93, 0.76, 0.45, 0.054,
+  0.0072 at 3, 6×10¹², 1.2, 3×10¹³ and 10¹⁴ cm against CMFGEN's 0.97, 0.86,
+  0.49, 0.072, 0.0067 (before 0.85, 0.47, 0.11, 0.0078, 0.0016), He II
+  0.55 against 0.50 at 1.2×10¹³ cm; O III, C IV, N V, O V, Ca IV within
+  25 % of before.
 
 ## 5. Running
 
