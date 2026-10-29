@@ -54,5 +54,13 @@ per iteration (its NLTE solution of the metals), so a few hours for both.
 - `grep "NLTE (it" work/A4/run.log`: the median change per iteration
   should fall below a few per cent by the last iterations; if not, run more
   (`NITER`), continuing from `work/<model>/output.nltex_state`.
-- The spectra against the earlier runs and the observations:
-  `Tools/superlite_spectrum.py` and §4.3 of `CSM_PHYSICS.md`.
+- The spectra against observed IIn spectra near day 20 (rest frame;
+  e.g. SN 2010jl at +19 d, SN 2006gy at +23 d), the models smoothed to the
+  observed resolution:
+  ```
+  Tools/compare_obs_iin.py work/day20_vs_obs.png --res 600 \
+    --model "A4=work/A4_fi/output.fi_spectrum" \
+    --model "A7=work/A7_fi/output.fi_spectrum" \
+    --obs "SN 2010jl +19 d=sn2010jl.p0019.dat" --obs "SN 2006gy +23 d=sn2006gy.p0023.dat"
+  ```
+  (prints the Hα equivalent widths; earlier runs: §4.3 of `CSM_PHYSICS.md`).
