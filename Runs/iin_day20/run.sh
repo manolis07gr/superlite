@@ -23,6 +23,9 @@
 #             Monte Carlo estimators of the saved states: without them the
 #             first iteration builds its macro-atom tables with J = B(T_R)
 #   NITER     iterations (default 6)
+#   EXTRA     namelist settings added to input.par of the iterations, e.g.
+#             EXTRA="in_nltex_overlap = 0d0" (tests; use another work dir)
+#   NOFI      if set, no formal integral (tests)
 #   MPIRUN    the MPI launcher (default mpirun; e.g. "srun" on a cluster, or
 #             "mpirun --mca btl self,sm" on one machine without the TCP warnings)
 # Each model runs in <work dir>/<model> (run.log, output.*), its spectrum in
@@ -82,7 +85,10 @@ setup() {   # setup <run dir> <model> <init state>
     ln -sfn "$src/Data/$f" "$d/$f"
   done
   sed -e "s|@ATOMS@|$ATOMS|" -e "s|@CIE@|$CIE|" -e "s|@INIT@|$init|" \
-      -e "s|^\( *in_niter *= *\).*|\1$niter|" "$kit/$m/input.par" > "$d/input.par"
+      -e "s|^\( *in_niter *= *\).*|\1$niter|" -e '$d' "$kit/$m/input.par" > "$d/input.par"
+  [ -n "$EXTRA" ] && printf ' %s\n' "$EXTRA" >> "$d/input.par"
+  [ -n "$NOFI" ] && printf ' in_fi = f\n' >> "$d/input.par"
+  printf '/\n' >> "$d/input.par"
 }
 done_ok() {   # done_ok <run dir>: the run ended with exit status 0
   [ -f "$1/run.log" ] && [ "$(tail -n 1 "$1/run.log" | tr -d ' ')" = "exit0" ]
@@ -105,6 +111,7 @@ for m in $models; do
     run "$d"
   fi
 # the emergent spectrum: formal integral of the last state
+  [ -n "$NOFI" ] && continue
   f=${d}_fi
   if done_ok "$f"; then continue; fi
   setup "$f" $m "$d/output.nltex_state"
