@@ -464,6 +464,12 @@ thick gas (Hα/Hβ 1.4, Hβ peaking above Hα), unlike the day-20 sample; it
 did so with every configuration since `s12_A7`. Neither model has the
 broad Hα shoulder or the Ca II triplet of SN 2006jd. The overlap of the
 metal blends had raised A4's Hα by a quarter (161 against 126 Å).
+Three more iterations (18 in all) move the measures by Monte Carlo
+noise only: A4 EW(Hα) 126 Å and FWHM 840 km/s unchanged, Hα/Hβ 2.71 to
+2.58, slope 1.38 to 1.42; A7 EW(Hα) 234 to 220 Å (the ±5 % scatter of
+`s12_A7`), Hα/Hβ 1.43 to 1.46, slope 1.95 to 1.93. The spectra are
+converged to about 5 %, although the largest change of a state per cell
+stays at 0.15–0.2.
 
 ### 4.4 Benchmark against CMFGEN: IIn-like dense wind
 
