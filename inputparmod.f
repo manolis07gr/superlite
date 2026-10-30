@@ -271,6 +271,9 @@ c-- atoms): O I 1025.76 in Lyman beta (Bowen fluorescence; nltexmod)
 c-- (in_nltex_overlap) partners only for the lines whose lower level is
 c-- among the first this many levels of their ion (0: all lines)
       integer :: in_nltex_ovllmax = 0
+c-- (in_nltex_overlap) only the pairs with a line of an element up to
+c-- this Z (2: with an H or He line; 0: all pairs)
+      integer :: in_nltex_ovlz = 0
 c-- formal integral of the emergent spectrum after the last iteration
 c-- (formalmod): range [cm], spacing [km/s], rays through the inner
 c-- boundary
@@ -450,7 +453,7 @@ c-- runtime parameter namelist
      & in_nltex_dmpsec,in_nltex_acc,in_nltex_javg,in_nltex_taumin,
      & in_nltex_jfill,
      & in_nltex_fbias,in_nltex_fwl1,in_nltex_fwl2,in_nltex_ldbse,
-     & in_nltex_auger,in_nltex_ovllmax,
+     & in_nltex_auger,in_nltex_ovllmax,in_nltex_ovlz,
      & in_nltex_dis,
      & in_nltex_ali,
      & in_nltex_ldb,in_nltex_vturb,in_nltex_vturbmax,in_nltex_esrates,
@@ -617,6 +620,7 @@ c
       call insertl(in_nltex_ldbse,in_l,il)
       call insertl(in_nltex_auger,in_l,il)
       call inserti(in_nltex_ovllmax,in_i,ii)
+      call inserti(in_nltex_ovlz,in_i,ii)
       call insertr(in_nltex_fwl1,in_r,ir)
       call insertr(in_nltex_fwl2,in_r,ir)
       call insertr(in_nltex_jbwin,in_r,ir)

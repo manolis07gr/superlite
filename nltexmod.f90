@@ -135,6 +135,9 @@ module nltexmod
 !-- nx_ovl_lmax levels of their ion have partners (the trapped resonance
 !-- lines; the line list of an O-star wind has 3.5e7 pairs within 150 km/s)
   integer,public :: nx_ovl_lmax = 0
+!-- (nx_ovl_zmax > 0) only the pairs with a line of an element up to this Z
+!-- (2: the pairs with an H or He line, as Lyman beta and O I 1025.76)
+  integer,public :: nx_ovl_zmax = 0
 !-- (partners thinner than nx_ovl_tmin for the mean projected gradient are
 !-- left out of a zone, nx_ovl_cell)
   real*8,public :: nx_ovl_tmin = 1d-3
@@ -641,7 +644,7 @@ subroutine nx_ovl_init(dv)
      do j=i+1,nxa_nlin
         l = nxa_lsrt(j)
         if(abs(1d0 - nxa_lnu(l)/nxa_lnu(k))*cc > nx_ovl_dv) exit
-        if(.not.(lowl(k) .and. lowl(l))) cycle
+        if(.not.(lowl(k) .and. lowl(l) .and. lowz(k,l))) cycle
         cnt(k) = cnt(k) + 1
         cnt(l) = cnt(l) + 1
      enddo
@@ -658,7 +661,7 @@ subroutine nx_ovl_init(dv)
      do j=i+1,nxa_nlin
         l = nxa_lsrt(j)
         if(abs(1d0 - nxa_lnu(l)/nxa_lnu(k))*cc > nx_ovl_dv) exit
-        if(.not.(lowl(k) .and. lowl(l))) cycle
+        if(.not.(lowl(k) .and. lowl(l) .and. lowz(k,l))) cycle
         m = nxo_ptr(k) + cnt(k)
         nxo_par(m) = l
         nxo_du(m) = (nxa_lnu(l)/nxa_lnu(k) - 1d0)*cc
@@ -718,6 +721,13 @@ contains
     lv = nxa_llv(kk)
     lowl = lv - nxa_ion(nxa_lvion(lv))%lvoff <= nx_ovl_lmax
   end function lowl
+  pure logical function lowz(kk,ll)
+!-- a line of the pair from an element up to Z = nx_ovl_zmax
+    integer,intent(in) :: kk,ll
+    lowz = .true.
+    if(nx_ovl_zmax <= 0) return
+    lowz = min(nxa_el(nxa_lel(kk))%z,nxa_el(nxa_lel(ll))%z) <= nx_ovl_zmax
+  end function lowz
 end subroutine nx_ovl_init
 !
 !
