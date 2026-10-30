@@ -7,6 +7,14 @@ slow CSM, level dissolution, Lyman Rayleigh scattering, line overlap,
 continuum destruction, adaptive damping), then their emergent spectra as
 a formal integral with 12 electron-scattering passes.
 
+The overlapping lines are those of the pairs with an H or He line
+(`in_nltex_ovlz = 2`: Lyβ and O I 1025.76 Å, He II and O III): with all
+903 546 pairs of the slow, dense CSM the metal blends made the NLTE
+iteration swing by factors of 10–600 between iterations (A4 median
+largest change 672, 21, 411, 18, 60); with the 9 384 pairs of H and He as
+without the overlap (A7: 4.2 and 0.70 against 4.2 and 0.74; A4: 11.4,
+14.9, 1.9 against 10.5, 14.3, 1.2).
+
 | file | content |
 |---|---|
 | `A4/`, `A7/` | `input.str` (structure, from `Tools/stella2superlite_csm.py`), `input.wlgrid`, `input.fluxwl` (from `Tools/make_wlgrid.py`), `input.par` (template: `@ATOMS@`, `@CIE@`, `@INIT@` filled in by `run.sh`) |

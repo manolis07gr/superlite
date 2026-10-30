@@ -68,5 +68,6 @@ in_comment = 'A7 day 20, IIn CSM physics of CSM_PHYSICS.md (Runs/iin_day20): war
  in_rayleigh = 'lyman'
  in_nltex_dmpsec = t
  in_nltex_overlap = 150d0
+ in_nltex_ovlz = 2
  in_nltex_init = '@INIT@'
 /

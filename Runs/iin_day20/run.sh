@@ -22,7 +22,11 @@
 #   JMC       a directory with A4/output.nltex_jmc and A7/output.nltex_jmc, the
 #             Monte Carlo estimators of the saved states: without them the
 #             first iteration builds its macro-atom tables with J = B(T_R)
-#   NITER     iterations (default 6)
+#   NITER     iterations (default 6; the run stops before when the NLTE
+#             populations have converged, in_nltex_tol)
+#   INIT      a work dir of an earlier run: each model starts from its
+#             <INIT>/<model>/output.nltex_state and output.nltex_jmc (to
+#             continue that run) instead of <model>/init
 #   EXTRA     namelist settings added to input.par of the iterations, e.g.
 #             EXTRA="in_nltex_overlap = 0d0" (tests; use another work dir)
 #   NOFI      if set, no formal integral (tests)
@@ -104,8 +108,13 @@ for m in $models; do
     echo "$(date +%H:%M) $m done already"
   else
     mkdir -p "$d/init"
-    cp "$kit/$m/init/output.nltex_state" "$d/init/"
-    [ -n "$JMC" ] && [ -f "$JMC/$m/output.nltex_jmc" ] && cp "$JMC/$m/output.nltex_jmc" "$d/init/"
+    if [ -n "$INIT" ] && [ -f "$INIT/$m/output.nltex_state" ]; then
+      cp "$INIT/$m/output.nltex_state" "$d/init/"
+      [ -f "$INIT/$m/output.nltex_jmc" ] && cp "$INIT/$m/output.nltex_jmc" "$d/init/"
+    else
+      cp "$kit/$m/init/output.nltex_state" "$d/init/"
+      [ -n "$JMC" ] && [ -f "$JMC/$m/output.nltex_jmc" ] && cp "$JMC/$m/output.nltex_jmc" "$d/init/"
+    fi
     setup "$d" $m "$d/init/output.nltex_state"
     echo "$(date +%H:%M) $m: $niter iterations on $np ranks"
     run "$d"
