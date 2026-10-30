@@ -419,6 +419,52 @@ A4's at 180–189 Å over those of `s12_A4`. For dense, slow CSM the static prof
 of all lines are needed; the default Sobolev lines are consistent where
 the flow is fast (A4's formal integral follows its Monte Carlo within 3 %).
 
+#### Production with the current physics (`Runs/iin_day20`, #83)
+
+A4 and A7 with the kit's defaults (local detailed balance, Auger
+ionization, static Doppler lines in the slow CSM, level dissolution,
+Lyman Rayleigh scattering, continuum destruction, adaptive damping) and
+the overlapping lines of the pairs with H or He (`in_nltex_ovlz` 2, §2):
+with all 903 546 pairs the NLTE iteration of A4 swung by factors of
+10–600 per iteration (median largest change 672, 21, 411, 18, 60), from
+the metal blends of the slow line forest; Auger ionization by the shock
+X-rays slows A7 (2.4 against 0.84 at the third iteration) but is not the
+cause. 15 iterations on 4 ranks (A4 from four iterations of the same
+configuration), then the formal integral with 12 electron-scattering
+passes. The median largest change per cell fell steadily for A4 (1.9 at
+the first iteration to 0.15 at the last) and reached 0.2 for A7 by the
+fifth, the floor of its Monte Carlo noise (0.1 in `s13_A7`); neither
+reached `in_nltex_tol` 0.02. Against observed SNe IIn near day 20 (the
+duperfit templates, 300 km/s per pixel, rest frame, not dereddened; the
+models smoothed to 600 km/s FWHM; `Tools/compare_obs_iin.py`):
+
+| spectrum | EW(Hα) Å | FWHM(Hα) km/s | Hα/Hβ | F(4500)/F(6100) |
+|---|---|---|---|---|
+| A4 | 126 | 840 | 2.7 | 1.38 |
+| A4 with all overlap pairs (`s15_A4` configuration) | 161 | 960 | 3.4 | 1.40 |
+| A7 | 234 | 1200 | 1.4 | 1.95 |
+| A7 with all overlap pairs (`s13_A7`) | 226 | 1200 | 1.5 | 1.89 |
+| SN 2010jl, +19 d | 134 | 1800 | 3.5 | 1.43 |
+| SN 2005ip, +18 d | 131 | 1500 | (blend) | 1.17 |
+| SN 2006jd, +21 d | 197 | 1500 | (blend) | 1.43 |
+| SN 1998S, +17 d | 6 | 2100 | | 2.20 |
+| SN 2006gy, +23 d (SLSN-IIn) | 19 | 3000 | | |
+
+The models are not fits to these events. A4 has the morphology of a
+day-20 SN IIn and resembles SN 2010jl: the continuum from 4000 to
+7500 Å within a few per cent of its shape, the EW of Hα of 2010jl and
+2005ip, a narrow core on electron-scattering wings that follow 2010jl's
+on the blue side to 1 % of the peak. Differences: the red wing falls
+faster beyond +2000 km/s (2010jl has He I 6678 Å at +5300 km/s, weak in
+A4), the core is narrower (840 against 1500–1800 km/s), and A4 has
+N III/C III 4640 Å and He II 4686 Å, which no spectrum of the sample has
+at this phase (SN 1998S only in its first days): A4 is too ionized near
+the shock. A7 is bluer (the slope of SN 1998S) with Balmer lines of a hot,
+thick gas (Hα/Hβ 1.4, Hβ peaking above Hα), unlike the day-20 sample; it
+did so with every configuration since `s12_A7`. Neither model has the
+broad Hα shoulder or the Ca II triplet of SN 2006jd. The overlap of the
+metal blends had raised A4's Hα by a quarter (161 against 126 Å).
+
 ### 4.4 Benchmark against CMFGEN: IIn-like dense wind
 
 CMFGEN models computed for this comparison (CMFGEN 2023 with the 21jun23

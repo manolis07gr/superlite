@@ -3,13 +3,14 @@
 """SuperLite IIn spectra (formal integral, output.fi_spectrum) against observed
 spectra (rest frame; wavelength, flux columns, '#' comments): each normalized
 to its median in a continuum window, the whole optical and an Halpha panel,
-with the Halpha equivalent widths printed.
+with the Halpha equivalent width and FWHM, the Halpha/Hbeta flux ratio (each
+above a straight continuum) and the slope F(4400-4600)/F(6000-6200) printed.
 
 usage: compare_obs_iin.py out.png --model label=path/output.fi_spectrum ...
                           --obs label=path/spectrum.dat ... [--norm 6000,6200]
                           [--res FWHM_kms]
 --res convolves the model spectra with a Gaussian of that FWHM [km/s], the
-resolution of the observed spectra (the equivalent widths do not change).
+resolution of the observed spectra (all measures are of the smoothed spectra).
 """
 import argparse
 
@@ -29,13 +30,50 @@ def air(lam):
     return np.where(lam > 2000, lam / n, lam)
 
 
-def ew(w, f, a=6450, b=6680, c1=(6200, 6300), c2=(6800, 6900)):
+HA = (6450, 6680, (6200, 6300), (6800, 6900))
+HB = (4800, 4930, (4700, 4760), (4990, 5050))
+
+
+def line(w, f, a, b, c1, c2):
+    """equivalent width [A] (emission > 0) and flux above a straight
+    continuum through the medians of the windows c1, c2; nan without them"""
+    m1 = (w > c1[0]) & (w < c1[1]); m2 = (w > c2[0]) & (w < c2[1])
+    if m1.sum() < 2 or m2.sum() < 2:
+        return np.nan, np.nan
+    x1, y1 = w[m1].mean(), np.median(f[m1]); x2, y2 = w[m2].mean(), np.median(f[m2])
+    m = (w > a) & (w < b)
+    c = y1 + (y2 - y1) * (w[m] - x1) / (x2 - x1)
+    return np.trapezoid(f[m] / c - 1, w[m]), np.trapezoid(f[m] - c, w[m])
+
+
+def ew(w, f):
+    return line(w, f, *HA)[0]
+
+
+def fwhm(w, f, l0=6562.8):
+    """FWHM [km/s] of Halpha above the continuum of HA"""
+    a, b, c1, c2 = HA
     m1 = (w > c1[0]) & (w < c1[1]); m2 = (w > c2[0]) & (w < c2[1])
     if m1.sum() < 2 or m2.sum() < 2:
         return np.nan
     x1, y1 = w[m1].mean(), np.median(f[m1]); x2, y2 = w[m2].mean(), np.median(f[m2])
-    m = (w > a) & (w < b)
-    return np.trapezoid(f[m] / (y1 + (y2 - y1) * (w[m] - x1) / (x2 - x1)) - 1, w[m])
+    m = (w > 6300) & (w < 6820)
+    y = f[m] - (y1 + (y2 - y1) * (w[m] - x1) / (x2 - x1))
+    v = (w[m] / l0 - 1) * 2.99792458e5
+    i = lo = hi = int(np.argmax(y))
+    while lo > 0 and y[lo] > y[i] / 2:
+        lo -= 1
+    while hi < len(y) - 1 and y[hi] > y[i] / 2:
+        hi += 1
+    return v[hi] - v[lo]
+
+
+def measures(w, f):
+    """Halpha EW [A], FWHM [km/s], Halpha/Hbeta, F(4400-4600)/F(6000-6200)"""
+    fa = line(w, f, *HA)[1]; fb = line(w, f, *HB)[1]
+    mb = (w > 4400) & (w < 4600); mr = (w > 6000) & (w < 6200)
+    slope = np.median(f[mb]) / np.median(f[mr]) if mb.sum() > 2 and mr.sum() > 2 else np.nan
+    return ew(w, f), fwhm(w, f), fa / fb if fb > 0 else np.nan, slope
 
 
 def smooth(w, f, fwhm):
@@ -74,12 +112,12 @@ def main():
         if k >= len(a.model) and a.vacuum_obs:
             w = air(w)
         if k < len(a.model) and a.res > 0:
-            e0 = ew(w, f)
             w, f = smooth(w, f, a.res)
         m = (w > n1) & (w < n2)
         f = f / np.median(f[m])
-        e = ew(w, f) if not (k < len(a.model) and a.res > 0) else e0
-        print(f'{lab}: Halpha EW {e:.1f} A')
+        e, fw, dec, sl = measures(w, f)
+        print(f'{lab}: Halpha EW {e:.0f} A, FWHM {fw:.0f} km/s, Halpha/Hbeta {dec:.2f}, '
+              f'F(4500)/F(6100) {sl:.2f}')
         for j, (x1, x2) in enumerate([(3500, 9000), (6250, 6900)]):
             mm = (w > x1) & (w < x2)
             ax[j].plot(w[mm], f[mm], color=col, lw=lw, label=f'{lab} (Hα EW {e:.0f} Å)' if j == 0 else lab)
