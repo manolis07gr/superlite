@@ -70,6 +70,9 @@ def main():
     if len(sys.argv) != 5:
         sys.exit(__doc__)
     old, dold, dnew, out = sys.argv[1:]
+    for d in (dold, dnew):
+        if not glob.glob(os.path.join(d, '*.atom')):
+            sys.exit(f'no .atom files in {d}')
     ao, an = atoms(dold), atoms(dnew)
     zn, cells = read_state(old)
     if [z for z, _ in zn] != sorted(an) or sorted(ao) != sorted(an):
