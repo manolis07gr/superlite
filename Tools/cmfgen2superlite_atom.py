@@ -264,8 +264,13 @@ def read_phot(path):
                 hdr[key] = s.split('!')[0].split()[0]
                 break
     terms = {}
-    i = 0
     n = len(lines)
+#   (the cross-sections follow the header; a header may list level names
+#   with the same tag, e.g. those whose resonances were clipped: Fe VIII)
+    i = 0
+    for j, s in enumerate(lines):
+        if '!Total number of data pairs' in s or '!Split J levels' in s:
+            i = j + 1
     while i < n:
         s = lines[i]
         if '!Configuration name' in s:
@@ -660,7 +665,8 @@ TWO_PHOTON = {   # (element, ion stage): (upper names, lower names, A [1/s], g o
 
 ELEM = {1: 'H', 2: 'He', 6: 'C', 7: 'N', 8: 'O', 10: 'Ne', 11: 'Na', 12: 'Mg', 13: 'Al',
         14: 'Si', 16: 'S', 18: 'Ar', 20: 'Ca', 26: 'Fe', 27: 'Co', 28: 'Ni'}
-ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII']
+ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII', 'XIII', 'XIV',
+         'XV', 'XVI', 'XVII', 'XVIII', 'XIX', 'XX', 'XXI', 'XXII', 'XXIII', 'XXIV', 'XXV', 'XXVI']
 
 
 def main():

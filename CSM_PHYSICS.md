@@ -471,6 +471,26 @@ noise only: A4 EW(Hα) 126 Å and FWHM 840 km/s unchanged, Hα/Hβ 2.71 to
 converged to about 5 %, although the largest change of a state per cell
 stays at 0.15–0.2.
 
+A4's N III 4640 Å and He II 4686 Å (EW 25 and 6 Å, 43 Å for 4600–4720 Å)
+are not from the Auger ionization (without it: 25.1 and 5.9 Å). They form
+in the unshocked CSM ahead of the shock (1.8–2.9×10¹⁵ cm, T_e ≈ 19 000 K,
+nitrogen all N IV out to 2.2×10¹⁵ cm, He III up to 0.37), photoionized by
+the X-rays of the shock cells (1.3×10⁴² erg/s of shock luminosity at
+n_e ≈ 10⁹ cm⁻³ and 1.6×10¹⁵ cm: an ionization parameter of a few hundred,
+for which X-ray-heated gas is at ~10⁵ K). Those cells (1.5–1.7×10¹⁵ cm)
+are at 9×10⁴–1.2×10⁵ K with every metal in the top state of its atom
+(sn3: C V, N VI, O VII, Fe VII and above), which has no lines: neither
+their cooling nor their absorption of the X-rays is in the model. With
+sn4 (`Runs/iin_day20/table_sn4.txt`: C V, N VI, O VII, Ne IV–VI, Mg IV,
+Si V, S V–VI, Ca V, Fe VII; 56 ions, 107 773 lines; eight iterations from
+the converted state, `Tools/extend_nltex_state.py`) N III 4640 falls to
+16 Å, He II 4686 stays at 5.7 Å, Hα rises from 123 to 156 Å and He I 5876
+falls from 5.7 to 1.4 Å; the shock cells are still at 4×10⁴–1.4×10⁵ K
+with nitrogen fully stripped and iron above Fe VIII. sn5
+(`table_sn5.txt`) takes C, N and O to their hydrogen-like ions, Ne to
+VIII, Mg to V, Si and S to VII, Ca to VI and Fe to XVI (Fe XVII, closed
+shell, as the top state), with CMFGEN's super-levels.
+
 ### 4.4 Benchmark against CMFGEN: IIn-like dense wind
 
 CMFGEN models computed for this comparison (CMFGEN 2023 with the 21jun23

@@ -36,7 +36,7 @@ module nlteatommod
   real*8,parameter :: me = 9.1093826d-28, ee = 4.80320441d-10, ev = 1.60217653d-12
   real*8,parameter,public :: nxa_sahac = 4.1412d-16     !(h^2/(2 pi m_e k))^1.5 [cm^3 K^1.5]
   real*8,parameter,public :: nxa_fsob = pi*ee*ee/(me*cc) !0.02654 cm^2/s
-  integer,parameter,public :: nxa_maxion = 8             !NLTE ions per element
+  integer,parameter,public :: nxa_maxion = 26            !NLTE ions per element
 !
   type,public :: nxion
      integer :: z = 0, stage = 0                 !atomic number, 1 = neutral
