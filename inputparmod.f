@@ -105,7 +105,7 @@ c-- line with tau = in_nlteh_tau0 (for v/r = dv/dr) and no other H lines
 c-- NLTE ions from model-atom files (Tools/cmfgen2superlite_atom.py),
 c-- names separated by blanks; with in_nlteh hydrogen is built in.
 c-- All NLTE elements share the macro-atom and statistical equilibrium.
-      character(1024) :: in_nltex_atoms = ' '
+      character(4096) :: in_nltex_atoms = ' '
 c-- directory of the model-atom files (prefixed to relative names)
       character(256) :: in_nltex_dir = ' '
 c-- charge-exchange reactions among the NLTE elements

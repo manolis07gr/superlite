@@ -1,0 +1,5 @@
+# sn6: the CMFGEN ions of table_sn5.txt (Tools/make_nlte_atoms.sh) and, from the
+# CHIANTI database (Tools/chianti2superlite_atom.py, default options), every
+# element up to its bare nucleus:
+#   ne 9-10  na 3-11  mg 6-12  si 8-14  s 8-16  ca 7-20  fe 17-26
+# e.g.  for i in $(seq 17 26); do Tools/chianti2superlite_atom.py $XUVTOP fe $i sn6/fe$i.atom; done

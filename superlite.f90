@@ -55,7 +55,7 @@ program superlite
 !-- in_nltex_tol; this iteration is the last)
   integer :: nconv = 0
   logical :: lstop = .false.
-  character(256) :: fatom(150)
+  character(256) :: fatom(300)
 !
 !-- mpi initialization
   call mpi_init(ierr) !MPI
