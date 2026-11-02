@@ -353,9 +353,10 @@ contains
   function roman(k) result(r)
     integer,intent(in) :: k
     character(5) :: r
-    character(5),parameter :: rn(12) = [character(5) :: 'I','II','III','IV','V','VI', &
-         'VII','VIII','IX','X','XI','XII']
-    r = rn(min(max(k,1),12))
+    character(5),parameter :: rn(26) = [character(5) :: 'I','II','III','IV','V','VI', &
+         'VII','VIII','IX','X','XI','XII','XIII','XIV','XV','XVI','XVII','XVIII','XIX','XX', &
+         'XXI','XXII','XXIII','XXIV','XXV','XXVI']
+    r = rn(min(max(k,1),26))
   end function roman
 end subroutine nxa_read
 !
