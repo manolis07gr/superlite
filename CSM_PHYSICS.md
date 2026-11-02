@@ -489,7 +489,23 @@ falls from 5.7 to 1.4 Å; the shock cells are still at 4×10⁴–1.4×10⁵ K
 with nitrogen fully stripped and iron above Fe VIII. sn5
 (`table_sn5.txt`) takes C, N and O to their hydrogen-like ions, Ne to
 VIII, Mg to V, Si and S to VII, Ca to VI and Fe to XVI (Fe XVII, closed
-shell, as the top state), with CMFGEN's super-levels.
+shell, as the top state), with CMFGEN's super-levels; 75 ions, 3090
+states, 208 434 lines: the extent of CMFGEN's atomic data (nothing above
+Fe XVI; nxa_maxion raised from 8 to 26). Ten iterations from the
+converted sn3 state (median largest change 0.10–0.17): the shock cells
+stay at 7.8×10⁴–1.4×10⁵ K (sn3 0.9–1.2×10⁵, sn4 0.4–1.4×10⁵), now with
+iron in Fe XIII–XVI (10–50 %) and Fe XVII and above (49–88 %), carbon
+bare, nitrogen and oxygen hydrogen-like or bare: the X-ray heating of the
+precursor does not depend on the atoms, the temperature is that of the
+photoionized gas. The CSM ahead of it is 0.4–0.9×10³ K warmer than with
+sn3, He III there half as abundant. Measures (models smoothed to
+600 km/s; sn3 / sn4 / sn5): EW(Hα) 126 / 157 / 131 Å, FWHM 840 / 960 /
+960 km/s, Hα/Hβ 2.6 / 3.9 / 4.1 (SN 2010jl 3.5), N III 4640 25 / 16 /
+18 Å, He II 4686 5.8 / 5.7 / 3.5 Å, He I 5876 5.7 / 1.4 / 1.9 Å. The
+higher stages of iron (Fe XVII and above hold half to nine tenths of the
+iron of the shock cells) need atomic data beyond CMFGEN's (levels and
+collision strengths of CHIANTI, photoionization of Verner or the
+Opacity Project).
 
 ### 4.4 Benchmark against CMFGEN: IIn-like dense wind
 
