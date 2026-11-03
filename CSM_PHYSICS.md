@@ -506,6 +506,22 @@ higher stages of iron (Fe XVII and above hold half to nine tenths of the
 iron of the shock cells) need atomic data beyond CMFGEN's (levels and
 collision strengths of CHIANTI, photoionization of Verner or the
 Opacity Project).
+With sn6 (`table_sn6.txt`: sn5 and, from CHIANTI with
+`Tools/chianti2superlite_atom.py`, Ne IX–X, Na III–XI, Mg VI–XII,
+Si VIII–XIV, S VIII–XVI, Ca VII–XX, Fe XVII–XXVI; 133 ions, 6011 states,
+280 291 lines; every element to its bare nucleus, ten iterations from the
+converted sn3 state) no element is above its last ion: the iron of the
+shock cells is Fe XIV–XIX, which cool them to 6.5–7.9×10⁴ K (sn5
+0.8–1.4×10⁵ K); the CSM ahead is 1–2×10³ K cooler than with sn5 and its
+He III half as abundant. sn3 / sn5 / sn6 (smoothed to 600 km/s): EW(Hα)
+126 / 131 / 168 Å, Hα/Hβ 2.6 / 4.1 / 2.1, N III 4640 25 / 18 / 19 Å,
+He II 4686 5.8 / 3.5 / 2.8 Å, He I 5876 5.7 / 1.9 / 0.7 Å, continuum
+slope 1.42 / 1.35 / 1.34. The Balmer lines gain a blueshifted component
+at about −2500 km/s (Hα 6510 Å, Hβ 4820 Å) from the accelerated gas of the
+shock zone, whose cooler gas recombines faster; it carries most of the
+change of Hα/Hβ. A7 (no gas above 2.5×10⁴ K, no element above sn3's
+ions) does not depend on the atoms (sn3 / sn5: EW(Hα) 234 / 220 Å,
+Hα/Hβ 1.43 / 1.45).
 
 ### 4.4 Benchmark against CMFGEN: IIn-like dense wind
 
