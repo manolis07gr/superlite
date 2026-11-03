@@ -22,6 +22,16 @@ iteration swing by factors of 10–600 between iterations (A4 median
 largest change 672, 21, 411, 18, 60); with the 9 384 pairs of H and He as
 without the overlap (A7: 4.2 and 0.70 against 4.2 and 0.74; A4: 11.4,
 14.9, 1.9 against 10.5, 14.3, 1.2).
+The pairs of lines of one element are kept as well (`in_nltex_ovlsame`:
+564 592 pairs in A7, the Fe II, Fe III, ... blends): the element's rate
+matrix holds their exchange implicitly and the statistical equilibrium
+converges (A7 median largest change 4.2, 0.77, 0.93, 0.52, 0.51, 0.33,
+0.27; 1–6 of 68 cells at the iteration limit after the first iterations).
+The pairs of two metals are left out: the statistical equilibrium, which
+solves one element after the other, does not converge with them (A7
+cells with the radiation field held fixed: at the iteration limit, and
+solutions from LTE and from the saved state differ by factors of 2 to
+10⁴; `Tools/cell_jtest.f90`, `SL_UNIQ`).
 
 | file | content |
 |---|---|
