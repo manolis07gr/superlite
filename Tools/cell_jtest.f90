@@ -53,7 +53,21 @@ program cell_jtest
   real*8 :: qb,qv,ne,nu1,nu2,s,w,nu0,dr,xo(2),wlmax,ovl,vturb,fcl
   logical :: lg,ll,ldmp,cdest
   integer :: mxit,ierr1,nit1
+  logical :: luniq
+  real*8,allocatable :: xa(:),xb(:)
 !
+!-- (SL_OVLZ: nx_ovl_zmax, the overlap pairs with a line up to this Z, as
+!-- in_nltex_ovlz; SL_UNIQ=t: the solution with the own J also from LTE
+!-- and again from itself, and the largest relative difference of a state
+!-- above 1e-4 between them: is the statistical equilibrium unique?)
+  call get_environment_variable('SL_OVLZ',arg,status=ios)
+  if(ios==0 .and. len_trim(arg)>0) read(arg,*) nx_ovl_zmax
+  call get_environment_variable('SL_OVLSAME',arg,status=ios)
+  if(ios==0 .and. trim(arg)=='t') nx_ovl_same = .true.
+  call get_environment_variable('SL_OVLFIX',arg,status=ios)
+  if(ios==0 .and. trim(arg)=='t') nx_ovl_remake = .false.
+  call get_environment_variable('SL_UNIQ',arg,status=ios)
+  luniq = ios==0 .and. trim(arg)=='t'
 !-- (SL_MAXIT: iteration limit of the statistical equilibrium, default 300)
   mxit = 300
   call get_environment_variable('SL_MAXIT',arg,status=ios)
@@ -279,6 +293,7 @@ program cell_jtest
            xo = [x(1),x(2)]
            ierr1 = ierr
            nit1 = nx_nits
+           if(luniq) call uniq
 !-- (SL_IONS=t: the ion fractions of every element of this solution to
 !-- cell_jtest_ions_<cell>: Z, stage (1 = neutral), fraction; the saved state's too)
            call get_environment_variable('SL_IONS',arg,status=ios)
@@ -295,6 +310,29 @@ program cell_jtest
           '  its',nit1,nx_nits
   enddo
 contains
+  subroutine uniq
+!-- (SL_UNIQ) the solution from LTE at the saved T_e and n_e, and the
+!-- solution started from the solution itself
+    integer :: ie2,ie3,n2,n3
+    real*8 :: d2,d3,ne2
+    if(.not.allocated(xa)) allocate(xa(nxa_nst),xb(nxa_nst))
+    xa = x
+    ne2 = hdr(5,ic)
+    call nx_lte(hdr(4,ic),ne2,xb)
+    call nx_solve_cell(hdr(4,ic),hdr(4,ic),nel,0d0,qb,qv,ng,nxt_nug,nxt_dnug,nxt_jg(:,ic),nxt_jb(:,ic), &
+         nxt_ljb(:,ic),nti,ntx,xb,ne2,beta,ie2,maxit=mxit)
+    n2 = nx_nits
+    d2 = maxval(abs(xb/max(xa,1d-300) - 1d0),mask=xa > 1d-4)
+    xb = xa
+    ne2 = ne
+    call nx_solve_cell(hdr(4,ic),hdr(4,ic),nel,0d0,qb,qv,ng,nxt_nug,nxt_dnug,nxt_jg(:,ic),nxt_jb(:,ic), &
+         nxt_ljb(:,ic),nti,ntx,xb,ne2,beta,ie3,maxit=mxit)
+    n3 = nx_nits
+    d3 = maxval(abs(xb/max(xa,1d-300) - 1d0),mask=xa > 1d-4)
+    write(*,'(a,i5,a,es10.2,a,i2,i5,a,es10.2,a,i2,i5)') ' uniq cell',ic,': from LTE',d2,' ierr/its',ie2,n2, &
+         '; from itself',d3,' ierr/its',ie3,n3
+    x = xa
+  end subroutine uniq
   subroutine ions_out(icl,x0,x1)
     integer,intent(in) :: icl
     real*8,intent(in) :: x0(:),x1(:)

@@ -164,6 +164,14 @@ module nltexmod
 !-- (nx_ovl_keep: nx_solve_cell keeps the zones the caller made for the
 !-- cell, as the thermal balance's solves at trial temperatures)
   logical,public :: nx_ovl_keep = .false.
+!-- (nx_ovl_remake = .false.: the zones of the first iteration of a solution
+!-- for all its iterations)
+  logical,public :: nx_ovl_remake = .true.
+!-- (nx_ovl_same: only the pairs of lines of one element, whose exchange
+!-- the element's rate matrix holds implicitly)
+  logical,public :: nx_ovl_same = .false.
+!-- (nx_ovl_addsame, with nx_ovl_zmax > 0: also the pairs of one element)
+  logical,public :: nx_ovl_addsame = .false.
 !-- (diagnostics: iterations of the last nx_solve_cell)
   integer,public :: nx_nits = 0
 !-- continuum destruction of the trapped photons of the lines (nx_pcont):
@@ -650,6 +658,7 @@ subroutine nx_ovl_init(dv)
         l = nxa_lsrt(j)
         if(abs(1d0 - nxa_lnu(l)/nxa_lnu(k))*cc > nx_ovl_dv) exit
         if(.not.(lowl(k) .and. lowl(l) .and. lowz(k,l))) cycle
+        if(nx_ovl_same .and. nxa_lel(k) /= nxa_lel(l)) cycle
         cnt(k) = cnt(k) + 1
         cnt(l) = cnt(l) + 1
      enddo
@@ -667,6 +676,7 @@ subroutine nx_ovl_init(dv)
         l = nxa_lsrt(j)
         if(abs(1d0 - nxa_lnu(l)/nxa_lnu(k))*cc > nx_ovl_dv) exit
         if(.not.(lowl(k) .and. lowl(l) .and. lowz(k,l))) cycle
+        if(nx_ovl_same .and. nxa_lel(k) /= nxa_lel(l)) cycle
         m = nxo_ptr(k) + cnt(k)
         nxo_par(m) = l
         nxo_du(m) = (nxa_lnu(l)/nxa_lnu(k) - 1d0)*cc
@@ -732,6 +742,7 @@ contains
     lowz = .true.
     if(nx_ovl_zmax <= 0) return
     lowz = min(nxa_el(nxa_lel(kk))%z,nxa_el(nxa_lel(ll))%z) <= nx_ovl_zmax
+    if(nx_ovl_addsame) lowz = lowz .or. nxa_lel(kk) == nxa_lel(ll)
   end function lowz
 end subroutine nx_ovl_init
 !
@@ -1717,7 +1728,7 @@ subroutine nx_solve_cell(temp,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx
 !-- (unless the caller keeps its own: nx_ovl_keep); the terms of each
 !-- element with the populations of the moment
      lz = lovl .and. .not.nx_ovl_keep .and. it==1
-     if(lovl .and. .not.nx_ovl_keep .and. it>1 .and. mod(it,10)==0) &
+     if(lovl .and. .not.nx_ovl_keep .and. nx_ovl_remake .and. it>1 .and. mod(it,10)==0) &
           lz = any(abs(x - xz) > 0.1d0*xz .and. xz > 1d-10)
      if(lz) then
         call nx_ovl_cell(temp,nel,x,wg,qb,qv)

@@ -278,6 +278,9 @@ c-- (in_nltex_overlap) incident intensity of a zone: 0 the resonance
 c-- estimator of its bluest line, 1 the J of that line's group without
 c-- the photons of its lines (smooth)
       integer :: in_nltex_ovljz = 0
+c-- (in_nltex_ovlz > 0) also the overlapping pairs of lines of one
+c-- element (exchange implicit in its rate matrix)
+      logical :: in_nltex_ovlsame = .false.
 c-- formal integral of the emergent spectrum after the last iteration
 c-- (formalmod): range [cm], spacing [km/s], rays through the inner
 c-- boundary
@@ -458,6 +461,7 @@ c-- runtime parameter namelist
      & in_nltex_jfill,
      & in_nltex_fbias,in_nltex_fwl1,in_nltex_fwl2,in_nltex_ldbse,
      & in_nltex_auger,in_nltex_ovllmax,in_nltex_ovlz,in_nltex_ovljz,
+     & in_nltex_ovlsame,
      & in_nltex_dis,
      & in_nltex_ali,
      & in_nltex_ldb,in_nltex_vturb,in_nltex_vturbmax,in_nltex_esrates,
@@ -626,6 +630,7 @@ c
       call inserti(in_nltex_ovllmax,in_i,ii)
       call inserti(in_nltex_ovlz,in_i,ii)
       call inserti(in_nltex_ovljz,in_i,ii)
+      call insertl(in_nltex_ovlsame,in_l,il)
       call insertr(in_nltex_fwl1,in_r,ir)
       call insertr(in_nltex_fwl2,in_r,ir)
       call insertr(in_nltex_jbwin,in_r,ir)

@@ -792,7 +792,7 @@ subroutine nxt_gas_solve(it,gncell,temp,trad,nelv,neoth,qb,qv,icell1,edep,kap,fc
   real*8,intent(in) :: edep(gncell),qb(gncell),qv(gncell)
   real*4,intent(in),optional :: kap(:,:)
   real*8,intent(in),optional :: fcl(gncell),dr(gncell),vel(gncell)
-  integer :: i,l,ig,ierr,nfail,k,nc,nnan
+  integer :: i,l,ig,ierr,nfail,k,nc,nnan,nlim
   real*8 :: x(nxa_nst),xold(nxa_nst),ne,beta(nxa_nlin),jg(nxt_ng),jb(nxa_nlin)
   real*8 :: nti(nxa_nst),ntx(nxa_nst),ntot,dxc(gncell),w,efc(nxa_nlin),wcl(gncell)
   integer :: nwc
@@ -814,6 +814,7 @@ subroutine nxt_gas_solve(it,gncell,temp,trad,nelv,neoth,qb,qv,icell1,edep,kap,fc
      if(.not.allocated(idump)) allocate(idump(0))
   endif
   nfail = 0
+  nlim = 0
   nnan = 0
   nc = 0
   nwc = 0
@@ -967,6 +968,8 @@ subroutine nxt_gas_solve(it,gncell,temp,trad,nelv,neoth,qb,qv,icell1,edep,kap,fc
         nfail = nfail + 1
         x = xold
      endif
+!-- (the statistical equilibrium at its iteration limit: kept, counted)
+     if(ierr==2) nlim = nlim + 1
 !-- (the undamped change for the convergence test)
      if(allocated(nxt_resid)) then
         nxt_resid(l) = 0d0
@@ -1005,6 +1008,7 @@ subroutine nxt_gas_solve(it,gncell,temp,trad,nelv,neoth,qb,qv,icell1,edep,kap,fc
      enddo
   enddo
   if(nfail>0) write(0,*) 'nxt_gas_solve: no solution in cells:',nfail
+  if(nlim>0) write(0,*) 'nxt_gas_solve: statistical equilibrium at its iteration limit in cells:',nlim
 !-- median and largest change over the cells (insertion sort)
   nxt_dxstat = 0d0
   if(nc>0) then
