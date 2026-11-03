@@ -1,27 +1,31 @@
 #!/bin/bash
 # A4 and A7 at day 20 with the IIn CSM physics of CSM_PHYSICS.md (#83):
-# NLTE model atoms, CIE shock spectra, a warm start from the saved state in
-# <model>/init, six iterations, then the emergent spectrum as a formal
+# NLTE model atoms (sn6: every element to its bare nucleus), CIE shock
+# spectra, a warm start from the saved state in <model>/init (extended to the
+# atoms), six iterations, then the emergent spectrum as a formal
 # integral with 12 electron-scattering passes (as CMFGEN's cmf_flux).
 #
 # usage: Runs/iin_day20/run.sh <CMFGEN atomic dir> <work dir> [ranks] [models]
 #   CMFGEN atomic dir: atomic/ of atomic_data_21jun23 (CMFGEN web page);
 #     "-" when ATOMS gives the model atoms already made
-#   ranks: MPI ranks per model (default 4; ~3 GB of memory each)
+#   ranks: MPI ranks per model (default 4; ~6 GB of memory each)
 #   models: default "A4 A7" (run one after the other)
 # environment (all optional):
 #   SL_BUILD  a CMake build of this branch (with MPI); default: build one in
 #             <work dir>/build
-#   ATOMS     a directory with the model atoms; default: make them in
-#             <work dir>/atoms (Tools/make_nlte_atoms.sh with table_sn3.txt
-#             and CMFGEN's line cut GF_CUT = 1e-3; identical to the atoms of
-#             the saved states)
+#   ATOMS     a directory with the model atoms (sn6, table_sn6.txt); default:
+#             make them in <work dir>/atoms, the CMFGEN ions with
+#             Tools/make_nlte_atoms.sh and table_sn5.txt (CMFGEN's line cut
+#             GF_CUT = 1e-3) and the ions beyond CMFGEN's data, every element
+#             to its bare nucleus, with Tools/chianti2superlite_atom.py from
+#             the CHIANTI database in XUVTOP
 #   CIE       the CIE table of the shocks; default: make <work dir>/shock_cie.dat
 #             with Tools/chianti_cie_spectra.py (ChiantiPy, XUVTOP set to the
 #             CHIANTI database; about an hour)
 #   JMC       a directory with A4/output.nltex_jmc and A7/output.nltex_jmc, the
-#             Monte Carlo estimators of the saved states: without them the
-#             first iteration builds its macro-atom tables with J = B(T_R)
+#             Monte Carlo estimators of the saved states (of the same atoms;
+#             those of other atoms are not used): without them the first
+#             iteration builds its macro-atom tables with J = B(T_R)
 #   NITER     iterations (default 6; the run stops before when the NLTE
 #             populations have converged, in_nltex_tol)
 #   INIT      a work dir of an earlier run: each model starts from its
@@ -65,9 +69,16 @@ exe=$SL_BUILD/superlite
 # 2. model atoms
 if [ -z "$ATOMS" ]; then
   ATOMS=$work/atoms
-  if [ ! -f "$ATOMS/fe6.atom" ]; then
+  if [ ! -f "$ATOMS/fe26.atom" ]; then
     echo "$(date +%H:%M) model atoms -> $ATOMS"
-    SL_TABLE=$kit/table_sn3.txt GFCUT=1e-3 bash "$src/Tools/make_nlte_atoms.sh" "$atomic" "$ATOMS" > "$work/atoms.log" 2>&1
+    SL_TABLE=$kit/table_sn5.txt GFCUT=1e-3 bash "$src/Tools/make_nlte_atoms.sh" "$atomic" "$ATOMS" > "$work/atoms.log" 2>&1
+    [ -n "$XUVTOP" ] && [ -d "$XUVTOP/fe/fe_17" ] || { echo "the CHIANTI ions need XUVTOP (the CHIANTI database)"; exit 1; }
+    for spec in "ne 9 10" "na 3 11" "mg 6 12" "si 8 14" "s 8 16" "ca 7 20" "fe 17 26"; do
+      set -- $spec
+      for i in $(seq $2 $3); do
+        python3 -I "$src/Tools/chianti2superlite_atom.py" "$XUVTOP" $1 $i "$ATOMS/$1$i.atom" >> "$work/atoms.log" 2>&1
+      done
+    done
   fi
 fi
 
@@ -115,6 +126,10 @@ for m in $models; do
       cp "$kit/$m/init/output.nltex_state" "$d/init/"
       [ -n "$JMC" ] && [ -f "$JMC/$m/output.nltex_jmc" ] && cp "$JMC/$m/output.nltex_jmc" "$d/init/"
     fi
+# (a state of fewer ions, e.g. the saved sn3 states, extended to the atoms:
+# the added ions start in their ground states, Tools/extend_nltex_state.py)
+    python3 -I "$src/Tools/extend_nltex_state.py" "$d/init/output.nltex_state" - "$ATOMS" \
+      "$d/init/state.tmp" > "$d/init/extend.log" && mv "$d/init/state.tmp" "$d/init/output.nltex_state"
     setup "$d" $m "$d/init/output.nltex_state"
     echo "$(date +%H:%M) $m: $niter iterations on $np ranks"
     run "$d"

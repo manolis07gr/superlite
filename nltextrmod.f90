@@ -3667,7 +3667,14 @@ subroutine nxt_read_jmc(fname,ncell,mass,lprint)
   read(iu,'(a)') line
   if(index(line,'ng nlin ncell')/=1) stop 'nxt_read_jmc: not an output.nltex_jmc file'
   read(line(14:),*) ngp,nl,npc
-  if(nl/=nxa_nlin) stop 'nxt_read_jmc: other model atoms than this model'
+  if(nl/=nxa_nlin) then
+!-- (the estimators of other model atoms, e.g. a state converted with
+!-- Tools/extend_nltex_state.py: not used)
+     close(iu)
+     if(lprint) write(6,'(1x,a,1x,a,a)') 'NLTE warm start:',trim(fname), &
+          ' is of other model atoms; the first iteration makes its tables with J = B(T_R)'
+     return
+  endif
   allocate(nub(ngp+1),mp(npc),jgp(ngp,npc),jbp(nl,npc),jgn(nxt_ng,npc))
   call skipc
   read(iu,*) nub

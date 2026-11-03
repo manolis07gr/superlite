@@ -11,7 +11,9 @@ equilibrium of the first iteration then moves them.  The Monte Carlo
 estimators (output.nltex_jmc) belong to the old lines and are not
 carried over: the first iteration builds its tables with J = B(T_R).
 
-usage: extend_nltex_state.py <old state> <old atom dir> <new atom dir> <new state>
+usage: extend_nltex_state.py <old state> <old atom dir | -> <new atom dir> <new state>
+  '-': the old ions are the first ions of each element of the new set whose
+  states add up to those of the state (as when the new set extends the old)
   each atom dir holds the .atom files of its set (those of in_nltex_atoms,
   and no others); the elements are in the order of Z, as in the run
 """
@@ -71,10 +73,23 @@ def main():
         sys.exit(__doc__)
     old, dold, dnew, out = sys.argv[1:]
     for d in (dold, dnew):
-        if not glob.glob(os.path.join(d, '*.atom')):
+        if d != '-' and not glob.glob(os.path.join(d, '*.atom')):
             sys.exit(f'no .atom files in {d}')
-    ao, an = atoms(dold), atoms(dnew)
+    an = atoms(dnew)
     zn, cells = read_state(old)
+    if dold == '-':
+        # the old ions: the first ions of each element whose states add up to the state's
+        ao = {}
+        for z, ns in zn:
+            k, tot = 0, 1
+            while k < len(an.get(z, [])) and tot < ns:
+                tot += an[z][k][1]
+                k += 1
+            if tot != ns:
+                sys.exit(f'Z={z}: no leading ions of the new atoms have the {ns} states of the state')
+            ao[z] = an[z][:k]
+    else:
+        ao = atoms(dold)
     if [z for z, _ in zn] != sorted(an) or sorted(ao) != sorted(an):
         sys.exit('the elements of the state, the old and the new atoms differ')
     plan = []

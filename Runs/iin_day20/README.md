@@ -7,6 +7,14 @@ slow CSM, level dissolution, Lyman Rayleigh scattering, line overlap,
 continuum destruction, adaptive damping), then their emergent spectra as
 a formal integral with 12 electron-scattering passes.
 
+The model atoms are sn6 (`table_sn6.txt`, 133 ions): CMFGEN's to its last
+ions (Fe XVI, the H-like C, N, O; `table_sn5.txt`) and, built from the
+CHIANTI database (`Tools/chianti2superlite_atom.py`), the ions beyond, so
+that every element reaches its bare nucleus. A4's shock-heated CSM
+(6–8×10⁴ K, iron in Fe XIV–XIX) needs them: with sn3 (44 ions, to Fe VI)
+every metal there sat in the top state of its atom; A7 does not
+(CSM_PHYSICS.md §4.3).
+
 The overlapping lines are those of the pairs with an H or He line
 (`in_nltex_ovlz = 2`: Lyβ and O I 1025.76 Å, He II and O III): with all
 903 546 pairs of the slow, dense CSM the metal blends made the NLTE
@@ -18,8 +26,9 @@ without the overlap (A7: 4.2 and 0.70 against 4.2 and 0.74; A4: 11.4,
 | file | content |
 |---|---|
 | `A4/`, `A7/` | `input.str` (structure, from `Tools/stella2superlite_csm.py`), `input.wlgrid`, `input.fluxwl` (from `Tools/make_wlgrid.py`), `input.par` (template: `@ATOMS@`, `@CIE@`, `@INIT@` filled in by `run.sh`) |
-| `A4/init/`, `A7/init/` | `output.nltex_state`: the warm-start populations (A4: `s15_A4`, two iterations of the current physics; A7: `s13_A7`) |
-| `table_sn3.txt` | the ions and levels of the model atoms, for `Tools/make_nlte_atoms.sh` |
+| `A4/init/`, `A7/init/` | `output.nltex_state`: the warm-start populations, of the sn3 atoms (A4: `s15_A4`; A7: `s13_A7`); `run.sh` extends them to the atoms of the run (`Tools/extend_nltex_state.py`: the added ions start in their ground states) |
+| `table_sn6.txt` | the model atoms: the CMFGEN ions of `table_sn5.txt` (`Tools/make_nlte_atoms.sh`) and the CHIANTI ions |
+| `table_sn3.txt`, `table_sn4.txt` | the smaller atom sets of the earlier runs |
 | `run.sh` | everything below in one script |
 
 ## Requirements
@@ -27,9 +36,12 @@ without the overlap (A7: 4.2 and 0.70 against 4.2 and 0.74; A4: 11.4,
 - gfortran, MPI (Open MPI), LAPACK/BLAS, CMake
 - the CMFGEN atomic data (`atomic_data_21jun23` from the CMFGEN web page;
   not redistributable, so the model atoms are made from it)
-- ChiantiPy with the CHIANTI database (`XUVTOP`) for the CIE spectra of
-  the radiative shocks; or a `shock_cie.dat` made before (`CIE=...`)
-- about 3 GB of memory per MPI rank and 2 GB of disk per model
+- the CHIANTI database (`XUVTOP`; v11 tested) for the ions beyond
+  CMFGEN's data, and ChiantiPy for the CIE spectra of the radiative
+  shocks (or a `shock_cie.dat` made before, `CIE=...`); python3 with numpy
+  and scipy
+- about 6 GB of memory per MPI rank (6011 states, 280 291 lines) and 3 GB
+  of disk per model
 
 ## Run
 
@@ -40,8 +52,8 @@ Runs/iin_day20/run.sh /path/to/atomic /path/to/work 4
 ```
 
 This builds SuperLite in `work/build`, makes the model atoms in
-`work/atoms` (`SL_TABLE=table_sn3.txt GFCUT=1e-3`: identical to the atoms
-of the saved states), the CIE table in `work/shock_cie.dat`, and then per
+`work/atoms` (the CMFGEN ions with `SL_TABLE=table_sn5.txt GFCUT=1e-3`,
+the others from CHIANTI), the CIE table in `work/shock_cie.dat`, and then per
 model six iterations in `work/A4`, `work/A7` and the formal integral in
 `work/A4_fi`, `work/A7_fi` (`output.fi_spectrum`). Optional environment
 variables (`SL_BUILD`, `ATOMS`, `CIE`, `JMC`, `NITER`, `MPIRUN`) are
@@ -51,17 +63,20 @@ described at the top of `run.sh`.
 (`A4/output.nltex_jmc`, `A7/output.nltex_jmc`, 30 MB compressed, given
 separately because of their size): with them the first iteration starts
 from the radiation field of the saved state; without them it builds its
-macro-atom tables with J = B(T_R), and the later iterations recover.
+macro-atom tables with J = B(T_R), and the later iterations recover. The
+estimators belong to the lines of their atoms: those of the sn3 states are
+not used with sn6 (SuperLite says so and starts from J = B(T_R)).
 
-Time (4 ranks): A7 about 7 min per iteration and 13 min for the formal
-integral (tested end to end with this script); A4 is slower, up to ~45 min
-per iteration (its NLTE solution of the metals), so a few hours for both.
+Time (4 ranks on a recent desktop): with sn6 the NLTE solution takes most
+of an iteration, 2–3 times that of sn3; about ten iterations from the
+saved states (`NITER=10`; the added ions start far from their solution).
+To continue a run, `INIT=<its work dir>`.
 
 ## Checks
 
 - `grep "NLTE (it" work/A4/run.log`: the median change per iteration
-  should fall below a few per cent by the last iterations; if not, run more
-  (`NITER`), continuing from `work/<model>/output.nltex_state`.
+  should fall to 0.1–0.2 (the floor of the Monte Carlo noise; the spectra
+  then move by ~5 %); if not, run more (`NITER`, `INIT`).
 - The spectra against observed IIn spectra near day 20 (rest frame;
   e.g. SN 2010jl at +19 d, SN 2006gy at +23 d), the models smoothed to the
   observed resolution:
