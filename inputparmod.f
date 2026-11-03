@@ -274,6 +274,10 @@ c-- among the first this many levels of their ion (0: all lines)
 c-- (in_nltex_overlap) only the pairs with a line of an element up to
 c-- this Z (2: with an H or He line; 0: all pairs)
       integer :: in_nltex_ovlz = 0
+c-- (in_nltex_overlap) incident intensity of a zone: 0 the resonance
+c-- estimator of its bluest line, 1 the J of that line's group without
+c-- the photons of its lines (smooth)
+      integer :: in_nltex_ovljz = 0
 c-- formal integral of the emergent spectrum after the last iteration
 c-- (formalmod): range [cm], spacing [km/s], rays through the inner
 c-- boundary
@@ -453,7 +457,7 @@ c-- runtime parameter namelist
      & in_nltex_dmpsec,in_nltex_acc,in_nltex_javg,in_nltex_taumin,
      & in_nltex_jfill,
      & in_nltex_fbias,in_nltex_fwl1,in_nltex_fwl2,in_nltex_ldbse,
-     & in_nltex_auger,in_nltex_ovllmax,in_nltex_ovlz,
+     & in_nltex_auger,in_nltex_ovllmax,in_nltex_ovlz,in_nltex_ovljz,
      & in_nltex_dis,
      & in_nltex_ali,
      & in_nltex_ldb,in_nltex_vturb,in_nltex_vturbmax,in_nltex_esrates,
@@ -621,6 +625,7 @@ c
       call insertl(in_nltex_auger,in_l,il)
       call inserti(in_nltex_ovllmax,in_i,ii)
       call inserti(in_nltex_ovlz,in_i,ii)
+      call inserti(in_nltex_ovljz,in_i,ii)
       call insertr(in_nltex_fwl1,in_r,ir)
       call insertr(in_nltex_fwl2,in_r,ir)
       call insertr(in_nltex_jbwin,in_r,ir)

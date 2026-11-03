@@ -138,6 +138,11 @@ module nltexmod
 !-- (nx_ovl_zmax > 0) only the pairs with a line of an element up to this Z
 !-- (2: the pairs with an H or He line, as Lyman beta and O I 1025.76)
   integer,public :: nx_ovl_zmax = 0
+!-- (nxo_jzm = 1) the incident intensity of a zone: the J of the group of
+!-- its bluest line without the photons of the group's lines (nxo_jzg, set
+!-- by the caller per cell) instead of that line's resonance estimator
+  integer,public :: nxo_jzm = 0
+  real*8,allocatable,public :: nxo_jzg(:)
 !-- (partners thinner than nx_ovl_tmin for the mean projected gradient are
 !-- left out of a zone, nx_ovl_cell)
   real*8,public :: nx_ovl_tmin = 1d-3
@@ -907,6 +912,7 @@ subroutine nx_ovl_terms(iel,nel,x,wg,jl)
      nxo_ins(k) = 0d0
      nxo_inw(k) = 0d0
      nxo_jz(k) = jl(nxo_jcl(k))
+     if(nxo_jzm == 1 .and. allocated(nxo_jzg)) nxo_jz(k) = nxo_jzg(nxa_lgn(nxo_jcl(k)))
      do m=nxo_ptr(k),nxo_ptr(k+1)-1
         j = nxo_par(m)
         je = nxa_lel(j)

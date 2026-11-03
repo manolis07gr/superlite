@@ -135,6 +135,9 @@ module nltextrmod
 !-- tally of the photons of NLTE lines on IMC steps in the line's group with
 !-- their comoving frequency history (packet%ilem): not incident on the line
   real*8,allocatable,public :: nxt_jlosum(:,:) !(ng,ncell)
+!-- (nxo_jzm = 1) J of each group without the photons of its lines (the
+!-- incident intensity of the overlap zones)
+  real*8,allocatable :: nxt_jzc(:,:) !(ng,ncell)
   real*8,allocatable,public :: nxt_jlsum(:)   !(ncell)
 !-- (diagnostics, output.nltex_ldb: per cell, over the groups in local
 !-- detailed balance at 228-504 and 504-912 A, 4 pi Int dnu of Lambda* S,
@@ -904,6 +907,7 @@ subroutine nxt_gas_solve(it,gncell,temp,trad,nelv,neoth,qb,qv,icell1,edep,kap,fc
      nx_dump = any(idump == l)
      if(present(kap) .and. present(fcl) .and. present(dr) .and. it>1 .and. nxt_have_mc) &
           call nxt_ali_cell(nxt_ng,kap(:,i),fcl(i),dr(i),lali=nxt_alion)
+     call ovl_jz(l)
      if(nxt_dtinv>0d0 .and. lfar) then
         call nx_solve_cell(temp(i),trad(i),nelv(:,i),neoth(i),qb(i),qv(i),nxt_ng, &
              nxt_nug,nxt_dnug,jg,jb,ljb,nti,ntx,x,ne,beta,ierr,xprev=nxt_xprev(:,l),dtinv=nxt_dtinv, &
@@ -1537,6 +1541,18 @@ pure function nxt_bfac(k,ic,g) result(f)
 end function nxt_bfac
 !
 !
+subroutine ovl_jz(l)
+!-- (nxo_jzm = 1) the overlap zones' incident intensities of cell l
+!-- (nxo_jzg), once there are Monte Carlo estimators
+  integer,intent(in) :: l
+  if(nxo_jzm /= 1) return
+  if(allocated(nxo_jzg)) deallocate(nxo_jzg)
+  if(.not.(nxt_have_mc .and. allocated(nxt_jzc))) return
+  allocate(nxo_jzg(nxt_ng))
+  nxo_jzg = nxt_jzc(:,l)
+end subroutine ovl_jz
+!
+!
 subroutine nxt_tally_finish(ncell,vol)
 !-----------------------------------------------------------------------
 ! Mean intensity incident on each NLTE line (after nxt_store_jg and
@@ -1590,6 +1606,15 @@ subroutine nxt_tally_finish(ncell,vol)
         enddo
      endif
   enddo
+  if(nxo_jzm == 1) then
+     if(allocated(nxt_jzc)) then
+        if(any(shape(nxt_jzc) /= [nxt_ng,ncell])) deallocate(nxt_jzc)
+     endif
+     if(.not.allocated(nxt_jzc)) allocate(nxt_jzc(nxt_ng,ncell))
+     do i=1,ncell
+        nxt_jzc(:,i) = max(nxt_jgc(:,i) - nxt_jlosum(:,i)/(4d0*pi*vol(i)*nxt_dnug),0d0)
+     enddo
+  endif
   nxt_have_mc = .true.
 end subroutine nxt_tally_finish
 !
@@ -1959,6 +1984,7 @@ contains
     fc = 1d0
     if(allocated(nxt_fcl)) fc = nxt_fcl(ic)
     nx_ovl_vtb = nxt_vturbv(0.5d0*(vxarr(ic)+vxarr(ic+1)))
+    call ovl_jz(ic)
     call nx_ovl_cell(t,nxt_nel(:,ic),nxt_x(:,ic),nxt_w(:,ic),qb/fc,qv/fc)
     do ie=1,nxa_nel
        call nx_ovl_terms(ie,nxt_nel(:,ic),nxt_x(:,ic),nxt_w(:,ic),jl)
