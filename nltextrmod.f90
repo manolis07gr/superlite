@@ -1009,6 +1009,7 @@ subroutine nxt_gas_solve(it,gncell,temp,trad,nelv,neoth,qb,qv,icell1,edep,kap,fc
   enddo
   if(nfail>0) write(0,*) 'nxt_gas_solve: no solution in cells:',nfail
   if(nlim>0) write(0,*) 'nxt_gas_solve: statistical equilibrium at its iteration limit in cells:',nlim
+  if(nx_timing) write(0,'(a,3f10.1)') ' nxt_gas_solve: seconds in nx_el_step (before the matrix, matrix, solve):',nx_tim
 !-- median and largest change over the cells (insertion sort)
   nxt_dxstat = 0d0
   if(nc>0) then

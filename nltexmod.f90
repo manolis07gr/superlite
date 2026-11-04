@@ -192,6 +192,9 @@ module nltexmod
 !-- (nx_trace: each iteration of nx_solve_cell to unit 0, with the element
 !-- of its largest change; diagnostics)
   logical,public :: nx_trace = .false.
+!-- (nx_timing) seconds in nx_el_step: before the matrix, the matrix, the solve
+  logical,public :: nx_timing = .false.
+  real*8,public :: nx_tim(3) = 0d0
   integer,public :: nx_trk = 0          !(nx_trace) element-local state of the largest change of the last nx_el_step
   real*8,public :: nx_trx(3) = 0d0      !its x, the linear solution before clipping, after
   integer,public :: nx_trneg = 0        !negative components of that linear solution
@@ -1413,6 +1416,7 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
   real*8 :: m(nxa_el(iel)%ns,nxa_el(iel)%ns),xn(nxa_el(iel)%ns),xr(nxa_el(iel)%ns)
   real*8 :: msv(nxa_el(iel)%ns,nxa_el(iel)%ns)
   integer :: ipiv(nxa_el(iel)%ns),i1
+  real :: tm0,tm1,tm2
   logical :: ltd,ldump
 !
   ierr = 0
@@ -1420,6 +1424,7 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
   ns = nxa_el(iel)%ns
   nl = size(jl)
   k0 = nxa_ion(nxa_el(iel)%ion(1))%loff
+  if(nx_timing) call cpu_time(tm0)
   les = present(sv) .and. present(etab) .and. present(wqe) .and. present(jes)
   if(les) les = sv > 0d0
   lfar = present(efar)
@@ -1497,7 +1502,13 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
      endif
      jle(k) = bjl/max(beta(k),1d-300)
   enddo
+  if(nx_timing) call cpu_time(tm1)
   call nx_el_matrix(iel,ne,r,jle,beta,nti,ntx,m)
+  if(nx_timing) then
+     call cpu_time(tm2)
+     nx_tim(1) = nx_tim(1) + (tm1 - tm0)
+     nx_tim(2) = nx_tim(2) + (tm2 - tm1)
+  endif
 !-- overlapping lines of the element: the photons of line k absorbed by its
 !-- partner j, n_u(k) A_k P(k,j), de-excite k and excite j (linear in the
 !-- population of k's upper state, so the exchange is implicit)
@@ -1540,7 +1551,12 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
      irout = ir
      return
   endif
+  if(nx_timing) call cpu_time(tm1)
   call dgesv(ns,1,m,ns,ipiv,xn,ns,info)
+  if(nx_timing) then
+     call cpu_time(tm2)
+     nx_tim(3) = nx_tim(3) + (tm2 - tm1)
+  endif
   if(nx_trace) xr = xn
   if(info/=0) then
      ierr = 1

@@ -33,11 +33,11 @@ program cell_jtest
   use nltedismod, only:nxd_on,nxd_setup,nxd_cellx
   use bfxsmod, only:bfxs_read_data
   implicit none
-  integer,parameter :: mf = 64
+  integer,parameter :: mf = 300
   character(256) :: run,line,arg,jdir,mode,adir,cxfile,fname
   character(64) :: an(mf)
   character(256) :: files(mf)
-  character(2048) :: atoms
+  character(8192) :: atoms
   character(8) :: sym(40)
   character(2),parameter :: zs(30) = [character(2) :: 'h','he','li','be','b','c','n','o','f','ne','na','mg', &
        'al','si','p','s','cl','ar','k','ca','sc','ti','v','cr','mn','fe','co','ni','cu','zn']
@@ -62,6 +62,8 @@ program cell_jtest
 !-- above 1e-4 between them: is the statistical equilibrium unique?)
   call get_environment_variable('SL_OVLZ',arg,status=ios)
   if(ios==0 .and. len_trim(arg)>0) read(arg,*) nx_ovl_zmax
+  call get_environment_variable('SL_TIMING',arg,status=ios)
+  if(ios==0 .and. trim(arg)=='t') nx_timing = .true.
   call get_environment_variable('SL_OVLK0',arg,status=ios)
   if(ios==0 .and. trim(arg)=='t') nx_ovl_k0 = .true.
   call get_environment_variable('SL_OVLIMPL',arg,status=ios)
@@ -316,6 +318,7 @@ program cell_jtest
      enddo
      write(*,'(i5,es12.4,4es15.4,a,2i2,a,2i6)') ic,0.5d0*(str(1,ic)+str(2,ic)),xo(1),x(1),xo(2),x(2),'  ierr',ierr1,ierr, &
           '  its',nit1,nx_nits
+     if(nx_timing) write(*,'(a,3f10.2)') ' nx_el_step seconds: before the matrix, matrix, solve',nx_tim
   enddo
 contains
   subroutine uniq

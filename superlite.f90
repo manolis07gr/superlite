@@ -29,7 +29,8 @@ program superlite
   use nltextrmod
   use xraysrcmod
   use formalmod, only:fi_spectrum
-  use nltexmod, only:nx_esdamp,nx_ovl_dv,nxo_npair,nx_pc_on,nx_ldbse,nx_auger,nx_ovl_lmax,nx_ovl_zmax,nxo_jzm,nx_ovl_addsame
+  use nltexmod, only:nx_esdamp,nx_ovl_dv,nxo_npair,nx_pc_on,nx_ldbse,nx_auger,nx_ovl_lmax,nx_ovl_zmax, &
+       nxo_jzm,nx_ovl_addsame,nx_timing
   use nltedismod, only:nxd_on,nxd_setup
   use bbsobmod
   use tebalmod, only:te_damp,te_ntemin,te_zsolve,te_secant
@@ -188,6 +189,10 @@ program superlite
      nx_ovl_dv = in_nltex_overlap*1d5
      nx_ovl_lmax = in_nltex_ovllmax
      nx_ovl_zmax = in_nltex_ovlz
+!-- (SL_NXTIMING=t: the seconds of the statistical equilibrium per gas update)
+     call get_environment_variable('SL_NXTIMING',fatom(1),status=i)
+     nx_timing = i==0 .and. trim(fatom(1))=='t'
+     fatom(1) = ''
      nxo_jzm = in_nltex_ovljz
      nx_ovl_addsame = in_nltex_ovlsame
      call nxt_init(grd_ncell,gas_ncell,grp_ng,grp_wl,nfatom,fatom(:nfatom),merge(in_nlteh_nlev,0,in_nlteh))
