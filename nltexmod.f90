@@ -204,9 +204,6 @@ module nltexmod
 !-- side.  nx_solve_cell takes the full system in its first three
 !-- iterations, every tenth, and for the one that ends it (nx_win_full)
   real*8,public :: nx_win_tol = 0d0
-!-- (nx_solve_cell) the logarithms of the cell's tables of nx_beta and
-!-- nx_bes for nx_el_step (nx_beta_lt, nx_bes_lt: the same numbers)
-  real*8 :: nx_lbt(0:nx_nbt) = 0d0, nx_let(0:nx_nbt) = 0d0
   logical,public :: nx_win_full = .true.
   integer,public :: nx_win_ns(2) = 0     !states solved, states of the elements (windowed steps; diagnostics)
 !-- (nx_timing) seconds in nx_el_step: before the matrix, the matrix, the solve
@@ -340,24 +337,6 @@ pure function nx_beta(kq,qb,qv,tab) result(beta)
      beta = exp((1d0-w)*log(tab(i)) + w*log(tab(i+1)))
   endif
 end function nx_beta
-!
-!
-pure function nx_beta_lt(kq,qs,lt,tab,ltab) result(beta)
-!-- nx_beta with lt = ln(kq/qs) and ltab = ln(tab) given
-  real*8,intent(in) :: kq,qs,lt,tab(0:nx_nbt),ltab(0:nx_nbt)
-  real*8 :: beta,w
-  integer :: i
-  if(kq <= 0d0 .or. lt <= nx_blt0) then
-     beta = 1d0
-  elseif(lt >= nx_blt0 + (nx_nbt-1)*nx_bdlt) then
-     beta = min(1d0,tab(0)*qs/kq)
-  else
-     w = (lt - nx_blt0)/nx_bdlt
-     i = min(int(w) + 1,nx_nbt-1)
-     w = w - (i-1)
-     beta = exp((1d0-w)*ltab(i) + w*ltab(i+1))
-  endif
-end function nx_beta_lt
 !
 !
 subroutine nx_betab_table(qb,qv,tab)
@@ -606,32 +585,6 @@ pure function nx_bes(kq,sv,wq,beta,qb,qv,tab) result(bes)
      bes = (1d0-beta)*(1d0-exp(-w))
   endif
 end function nx_bes
-!
-!
-pure function nx_bes_lt(kq,sv,wq,beta,qs,lt,tab,ltab) result(bes)
-!-- nx_bes with lt = ln(kq/qs) and ltab = ln(max(tab,1e-300)) given
-  real*8,intent(in) :: kq,sv,wq,beta,qs,lt,tab(0:nx_nbt),ltab(0:nx_nbt)
-  real*8 :: bes,w,y
-  integer :: i
-  bes = 0d0
-  if(kq <= 0d0 .or. sv <= 0d0 .or. beta >= 1d0) return
-  if(lt <= nx_blt0) return
-  if(lt >= nx_blt0 + (nx_nbt-1)*nx_bdlt) then
-     y = nx_ytrap(kq/(tab(0)*qs))
-  else
-     w = (lt - nx_blt0)/nx_bdlt
-     i = min(int(w) + 1,nx_nbt-1)
-     w = w - (i-1)
-     y = exp((1d0-w)*ltab(i) + w*ltab(i+1))
-  endif
-  w = sv*y/kq/(1d0-beta)
-  if(wq /= 0d0) w = w*exp(-min(kq*wq/(tab(0)*qs),700d0))
-  if(w < 1d-6) then
-     bes = (1d0-beta)*w*(1d0-0.5d0*w)
-  else
-     bes = (1d0-beta)*(1d0-exp(-w))
-  endif
-end function nx_bes_lt
 !
 !
 pure function nx_bew(kq,sv,qb,qv,wtab) result(bew)
@@ -1504,7 +1457,7 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
   real*8,intent(out),optional :: mout(:,:),bout(:)
   integer,intent(out),optional :: irout
   integer :: ns,nl,k,kg,k0,info,ir,mo,j
-  real*8 :: kq,bes,jle(size(jl)),b0,pin,pw,bjl,cx,dlb(4,size(jl)),wl,wu,gr,ees,pc,qsc,lt
+  real*8 :: kq,bes,jle(size(jl)),b0,pin,pw,bjl,cx,dlb(4,size(jl)),wl,wu,gr,ees,pc
   logical :: les,lesk,lfar,lfark,lovl,lstv
   real*8 :: m(nxa_el(iel)%ns,nxa_el(iel)%ns),xn(nxa_el(iel)%ns),xr(nxa_el(iel)%ns)
   real*8 :: msv(nxa_el(iel)%ns,nxa_el(iel)%ns)
@@ -1522,7 +1475,6 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
   nl = size(jl)
   k0 = nxa_ion(nxa_el(iel)%ion(1))%loff
   if(nx_timing) call cpu_time(tm0)
-  qsc = max(abs(qb),abs(qv),1d-30)
   les = present(sv) .and. present(etab) .and. present(wqe) .and. present(jes)
   if(les) les = sv > 0d0
   lfar = present(efar)
@@ -1530,9 +1482,7 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
   do k=1,nl
      kg = k0 + k
      kq = nx_kq(kg,nel,x,r%w)
-     lt = nx_blt0
-     if(kq > 0d0) lt = log(kq/qsc)
-     b0 = nx_beta_lt(kq,qsc,lt,btab,nx_lbt)
+     b0 = nx_beta(kq,qb,qv,btab)
 !-- overlapping lines (nxo_use; nx_ovl_terms): escape from the zone
 !-- rho beta and absorption by the partners of other elements sum_j P(k,j),
 !-- their photons absorbed, and the zone's incident intensity with the
@@ -1568,7 +1518,7 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
      lesk = les
      if(lesk .and. allocated(nx_esm)) lesk = nx_esm(kg)
      if(lesk) then
-        bes = nx_bes_lt(kq,sv,wqe(k),b0,qsc,lt,etab,nx_let)
+        bes = nx_bes(kq,sv,wqe(k),b0,qb,qv,etab)
 !-- (efar is read only when present: no short-circuit evaluation)
         lfark = lfar
         if(lfark) lfark = efar(k) >= 0d0
@@ -1904,8 +1854,6 @@ subroutine nx_solve_cell(temp,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx
         call nx_es_table(qb,qv,etab)
      endif
   endif
-  nx_lbt = log(max(btab,1d-300))
-  nx_let = log(max(etab,1d-300))
   call nxd_weights(temp,nx_dis,wg)
   ne = neoth + chg(x)
   do iel=1,nxa_nel

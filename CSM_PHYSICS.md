@@ -532,6 +532,28 @@ saved sn3 state extended to sn6): A4 EW(Hα) 168 to 185 Å, Hα/Hβ 2.13 to
 221 Å, Hα/Hβ 1.45 to 1.47). A7's median largest change was still 0.4–0.6
 at the last iterations (it started without the estimators of its state).
 
+Cost of the statistical equilibrium (A7, sn3 atoms, 4 ranks,
+`SL_NXTIMING=t`): one gas update spends 230–270 s per rank in `nx_el_step`
+(the per-line escape and e.s. terms 120–160 s, the matrices 30–35 s,
+`dgesv` 65–75 s) and about as much again in the overlap zones and terms;
+the 11–17 cells per rank that end at the iteration limit (300) take most
+of it.  The overlap terms now take the partners' K and K S from a cache
+per element (identical numbers; a cell 10 % faster).  Two other changes
+were dropped: profiles truncated at 7.1 Doppler widths in `nx_ovl_zone`
+and the escape tables taken in logarithms agree with the full forms to
+1e-12 and to the last bit, yet a gas update then ended with 60 instead
+of 17 cells at the limit per rank and populations of those cells moved
+by up to 15 % (`cell_jtest`, cell 20): the cells at the limit do not
+converge, and where they stop is set by rounding.  Making them converge,
+not a faster iteration, is what decides the cost and the reproducibility
+of A7.  `in_nltex_iwin` (off by default) solves an element over its
+populated ions, their neighbours and the ions they feed (others kept,
+their inflows on the right side; the full system in the first three
+iterations, every tenth and at convergence): Fe I–XVI cells within 1e-7
+of the full solution (`test_ionwin`), 30 % less per iteration with 33–60
+% of the states, but up to twice the iterations where the ionization
+moves; it is for atoms of many ions (sn6 Fe: 1568 states).
+
 ### 4.4 Benchmark against CMFGEN: IIn-like dense wind
 
 CMFGEN models computed for this comparison (CMFGEN 2023 with the 21jun23
