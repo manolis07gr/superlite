@@ -62,6 +62,10 @@ program cell_jtest
 !-- above 1e-4 between them: is the statistical equilibrium unique?)
   call get_environment_variable('SL_OVLZ',arg,status=ios)
   if(ios==0 .and. len_trim(arg)>0) read(arg,*) nx_ovl_zmax
+  call get_environment_variable('SL_OVLK0',arg,status=ios)
+  if(ios==0 .and. trim(arg)=='t') nx_ovl_k0 = .true.
+  call get_environment_variable('SL_OVLIMPL',arg,status=ios)
+  if(ios==0 .and. trim(arg)=='t') nx_ovl_impl = .true.
   call get_environment_variable('SL_OVLEVERY',arg,status=ios)
   if(ios==0 .and. len_trim(arg)>0) read(arg,*) nx_ovl_every
   call get_environment_variable('SL_TRACE',arg,status=ios)

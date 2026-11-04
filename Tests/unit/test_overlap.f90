@@ -32,6 +32,11 @@ program test_overlap
   integer :: i,nfail,nargs
   character(256) :: adir
   nfail = 0
+!-- (SL_OVLIMPL=t: the statistical equilibrium with the exchange between
+!-- the lines of two elements in one linear system, nx_ovl_impl)
+  call get_environment_variable('SL_OVLIMPL',adir)
+  nx_ovl_impl = trim(adir) == 't'
+  adir = ''
 !-- 1. one line (Q the same in all directions: qb = qv)
   dev = 0d0
   do i=1,5
