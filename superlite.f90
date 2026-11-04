@@ -57,6 +57,7 @@ program superlite
   integer :: nconv = 0
   logical :: lstop = .false.
   character(256) :: fatom(300)
+  character(8) :: envv
 !
 !-- mpi initialization
   call mpi_init(ierr) !MPI
@@ -190,9 +191,8 @@ program superlite
      nx_ovl_lmax = in_nltex_ovllmax
      nx_ovl_zmax = in_nltex_ovlz
 !-- (SL_NXTIMING=t: the seconds of the statistical equilibrium per gas update)
-     call get_environment_variable('SL_NXTIMING',fatom(1),status=i)
-     nx_timing = i==0 .and. trim(fatom(1))=='t'
-     fatom(1) = ''
+     call get_environment_variable('SL_NXTIMING',envv,status=i)
+     nx_timing = i==0 .and. trim(envv)=='t'
      nxo_jzm = in_nltex_ovljz
      nx_ovl_addsame = in_nltex_ovlsame
      call nxt_init(grd_ncell,gas_ncell,grp_ng,grp_wl,nfatom,fatom(:nfatom),merge(in_nlteh_nlev,0,in_nlteh))
