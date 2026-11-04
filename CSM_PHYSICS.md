@@ -523,6 +523,14 @@ shock zone, whose cooler gas recombines faster; it carries most of the
 change of Hα/Hβ. A7 (no gas above 2.5×10⁴ K, no element above sn3's
 ions) does not depend on the atoms (sn3 / sn5: EW(Hα) 234 / 220 Å,
 Hα/Hβ 1.43 / 1.45).
+With the overlapping pairs of one element as well (`in_nltex_ovlsame`,
+the kit's default; ten iterations, A4 from its sn6 state, A7 from the
+saved sn3 state extended to sn6): A4 EW(Hα) 168 to 185 Å, Hα/Hβ 2.13 to
+2.11, slope 1.34 to 1.30, 3500–4000 Å 10 % brighter relative to 6000–
+6200 Å (1.19 to 1.31), N III 4640 bump 30 to 31 Å, He II 4686 2.8 to
+4.0 Å, luminosity +7 %; A7 unchanged within the noise (EW(Hα) 220 to
+221 Å, Hα/Hβ 1.45 to 1.47). A7's median largest change was still 0.4–0.6
+at the last iterations (it started without the estimators of its state).
 
 ### 4.4 Benchmark against CMFGEN: IIn-like dense wind
 
