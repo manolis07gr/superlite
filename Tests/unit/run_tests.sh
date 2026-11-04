@@ -3,6 +3,7 @@
 #   usage: [SL_BUILD=<cmake build dir>] [SL_ATOMS=<model-atom dir>] \
 #          [SL_ATOMS_SL=<super-level atoms> SL_ATOMS_FULL=<the same without>] \
 #          [SL_ATOMS_OVL=<atoms with h1.atom and o1.atom>] \
+#          [SL_ATOMS_IWIN=<atoms with h1.atom and fe1.atom ... of many ions>] \
 #          Tests/unit/run_tests.sh [work_dir]
 #   (needs gfortran, LAPACK/BLAS; test_nebular links against the objects of
 #   a SuperLite CMake build given by SL_BUILD, with mpif90 for MPI builds;
@@ -36,8 +37,9 @@ build test_shockcie  "$src/shockciemod.f90"
 build test_xray     "$src/xraysrcmod.f90"
 build test_rayleigh "$src/rayleighmod.f90"
 build test_overlap  $NLTEX
+build test_ionwin   $NLTEX
 build test_nontherm "$src/nonthermmod.f90"
-tests="test_doppler test_compton test_nlteh test_nltex test_bbsob test_tebal test_superlevel test_estrap test_dopmc test_shockcie test_xray test_rayleigh test_overlap test_nontherm"
+tests="test_doppler test_compton test_nlteh test_nltex test_bbsob test_tebal test_superlevel test_estrap test_dopmc test_shockcie test_xray test_rayleigh test_overlap test_ionwin test_nontherm"
 if [ -n "$SL_BUILD" ]; then
   objs=$(find "$SL_BUILD/CMakeFiles/superlite.dir" -name "*.o" ! -name "superlite.f90.o")
   LD=gfortran; command -v mpif90 >/dev/null && grep -q "USE_MPI:BOOL=ON" "$SL_BUILD/CMakeCache.txt" && LD=mpif90
@@ -54,6 +56,7 @@ for t in $tests; do
   case $t in
     test_nltex|test_tebal) [ -n "$SL_ATOMS" ] && args="$SL_ATOMS";;
     test_overlap) [ -n "$SL_ATOMS_OVL" ] && args="$SL_ATOMS_OVL";;
+    test_ionwin) [ -n "$SL_ATOMS_IWIN" ] && args="$SL_ATOMS_IWIN";;
     test_superlevel) [ -n "$SL_ATOMS_SL" ] && args="$SL_ATOMS_SL $SL_ATOMS_FULL";;
   esac
   ./$t $args > $t.log 2>&1 || { fail=1; echo "$t FAILED"; }

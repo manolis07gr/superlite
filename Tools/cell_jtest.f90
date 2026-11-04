@@ -64,6 +64,8 @@ program cell_jtest
   if(ios==0 .and. len_trim(arg)>0) read(arg,*) nx_ovl_zmax
   call get_environment_variable('SL_TIMING',arg,status=ios)
   if(ios==0 .and. trim(arg)=='t') nx_timing = .true.
+  call get_environment_variable('SL_IWIN',arg,status=ios)
+  if(ios==0 .and. len_trim(arg)>0) read(arg,*) nx_win_tol
   call get_environment_variable('SL_OVLK0',arg,status=ios)
   if(ios==0 .and. trim(arg)=='t') nx_ovl_k0 = .true.
   call get_environment_variable('SL_OVLIMPL',arg,status=ios)

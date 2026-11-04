@@ -162,6 +162,11 @@ module nltexmod
   real*8,allocatable,public :: nxo_out(:),nxo_ins(:),nxo_inw(:),nxo_jz(:),nxo_oux(:) !(nlin)
 !-- (nxo_inwx: the part of nxo_inw from the partners of other elements)
   real*8,allocatable,public :: nxo_inwx(:) !(nlin)
+!-- (nx_ovl_terms: K and K S of every line, kept per element with the
+!-- populations, level shares and density they were made with; remade for
+!-- an element only when one of these changed)
+  real*8,allocatable :: nxo_ckq(:),nxo_cks(:),nxo_cx(:),nxo_cw(:),nxo_cn(:)
+  logical,allocatable :: nxo_cok(:)
 !-- (nx_ovl_impl) the photons that lines of one element give to the lines of
 !-- another, and the zone intensity they take from them, in one linear
 !-- system of all elements (nx_solve_cell: block matrix, GMRES with the
@@ -192,6 +197,18 @@ module nltexmod
 !-- (nx_trace: each iteration of nx_solve_cell to unit 0, with the element
 !-- of its largest change; diagnostics)
   logical,public :: nx_trace = .false.
+!-- (nx_win_tol > 0: ion window) nx_el_step solves only the states of the
+!-- ions holding more than this fraction of the element, of their neighbours
+!-- and of the ions they feed directly (Auger, charge exchange); the other
+!-- ions keep their populations, their flows into the window on the right
+!-- side.  nx_solve_cell takes the full system in its first three
+!-- iterations, every tenth, and for the one that ends it (nx_win_full)
+  real*8,public :: nx_win_tol = 0d0
+!-- (nx_solve_cell) the logarithms of the cell's tables of nx_beta and
+!-- nx_bes for nx_el_step (nx_beta_lt, nx_bes_lt: the same numbers)
+  real*8 :: nx_lbt(0:nx_nbt) = 0d0, nx_let(0:nx_nbt) = 0d0
+  logical,public :: nx_win_full = .true.
+  integer,public :: nx_win_ns(2) = 0     !states solved, states of the elements (windowed steps; diagnostics)
 !-- (nx_timing) seconds in nx_el_step: before the matrix, the matrix, the solve
   logical,public :: nx_timing = .false.
   real*8,public :: nx_tim(3) = 0d0
@@ -323,6 +340,24 @@ pure function nx_beta(kq,qb,qv,tab) result(beta)
      beta = exp((1d0-w)*log(tab(i)) + w*log(tab(i+1)))
   endif
 end function nx_beta
+!
+!
+pure function nx_beta_lt(kq,qs,lt,tab,ltab) result(beta)
+!-- nx_beta with lt = ln(kq/qs) and ltab = ln(tab) given
+  real*8,intent(in) :: kq,qs,lt,tab(0:nx_nbt),ltab(0:nx_nbt)
+  real*8 :: beta,w
+  integer :: i
+  if(kq <= 0d0 .or. lt <= nx_blt0) then
+     beta = 1d0
+  elseif(lt >= nx_blt0 + (nx_nbt-1)*nx_bdlt) then
+     beta = min(1d0,tab(0)*qs/kq)
+  else
+     w = (lt - nx_blt0)/nx_bdlt
+     i = min(int(w) + 1,nx_nbt-1)
+     w = w - (i-1)
+     beta = exp((1d0-w)*ltab(i) + w*ltab(i+1))
+  endif
+end function nx_beta_lt
 !
 !
 subroutine nx_betab_table(qb,qv,tab)
@@ -573,6 +608,32 @@ pure function nx_bes(kq,sv,wq,beta,qb,qv,tab) result(bes)
 end function nx_bes
 !
 !
+pure function nx_bes_lt(kq,sv,wq,beta,qs,lt,tab,ltab) result(bes)
+!-- nx_bes with lt = ln(kq/qs) and ltab = ln(max(tab,1e-300)) given
+  real*8,intent(in) :: kq,sv,wq,beta,qs,lt,tab(0:nx_nbt),ltab(0:nx_nbt)
+  real*8 :: bes,w,y
+  integer :: i
+  bes = 0d0
+  if(kq <= 0d0 .or. sv <= 0d0 .or. beta >= 1d0) return
+  if(lt <= nx_blt0) return
+  if(lt >= nx_blt0 + (nx_nbt-1)*nx_bdlt) then
+     y = nx_ytrap(kq/(tab(0)*qs))
+  else
+     w = (lt - nx_blt0)/nx_bdlt
+     i = min(int(w) + 1,nx_nbt-1)
+     w = w - (i-1)
+     y = exp((1d0-w)*ltab(i) + w*ltab(i+1))
+  endif
+  w = sv*y/kq/(1d0-beta)
+  if(wq /= 0d0) w = w*exp(-min(kq*wq/(tab(0)*qs),700d0))
+  if(w < 1d-6) then
+     bes = (1d0-beta)*w*(1d0-0.5d0*w)
+  else
+     bes = (1d0-beta)*(1d0-exp(-w))
+  endif
+end function nx_bes_lt
+!
+!
 pure function nx_bew(kq,sv,qb,qv,wtab) result(bew)
 !-----------------------------------------------------------------------
 ! (nxt_esrates) The expected absorption by a Sobolev line of strength kq,
@@ -804,8 +865,12 @@ pure subroutine nx_ovl_zone(nl,u,vd,kq,k,qb,qv,esc,bet1,p,aext)
   real*8,intent(out) :: esc,bet1,p(nl)
   real*8,intent(out),optional :: aext(nl)
   integer,parameter :: nmu = 8, nmax = 4000
-  integer :: n,i,j,im
-  real*8 :: umin,umax,du,qs,mu,q,dd,t,s,e1,es,wk,em,tk
+!-- (each profile on the cells within ylim Doppler widths of its centre,
+!-- exp(-ylim^2) ~ 1e-22: zero beyond; by the recurrence of a Gaussian on
+!-- a uniform grid, two exponentials a line)
+  real*8,parameter :: ylim = 7.1d0
+  integer :: n,i,j,im,i0,i1,ie
+  real*8 :: umin,umax,du,qs,mu,q,dd,t,s,e1,es,wk,em,tk,y,h,g,rr,r2
   real*8 :: tau(nl),pm(nl),a(nl),d(nl)
   real*8,allocatable :: phi(:,:)
   umin = minval(u - 5d0*vd)
@@ -815,12 +880,28 @@ pure subroutine nx_ovl_zone(nl,u,vd,kq,k,qb,qv,esc,bet1,p,aext)
   if(n > nmax) n = nmax
   du = (umax - umin)/n
   allocate(phi(nl,n))
-  do i=1,n
-     phi(:,i) = exp(-((umin + (i-0.5d0)*du - u)/vd)**2)
-  enddo
+  phi = 0d0
+  ie = n
   do j=1,nl
-     phi(j,:) = phi(j,:)/max(sum(phi(j,:)),1d-300)
+     i0 = max(1,floor((u(j) - ylim*vd(j) - umin)/du + 0.5d0))
+     i1 = min(n,ceiling((u(j) + ylim*vd(j) - umin)/du + 0.5d0))
+     if(j==k) ie = i1
+     if(i1 < i0) cycle
+     h = du/vd(j)
+     y = (umin + (i0-0.5d0)*du - u(j))/vd(j)
+     g = exp(-y*y)
+     rr = exp(-2d0*y*h - h*h)
+     r2 = exp(-2d0*h*h)
+     do i=i0,i1
+        phi(j,i) = g
+        g = g*rr
+        rr = rr*r2
+     enddo
+     phi(j,i0:i1) = phi(j,i0:i1)/max(sum(phi(j,i0:i1)),1d-300)
   enddo
+!-- (the photons of line k drift to the red: the cells to the blue of its
+!-- profile take no part, unless aext needs the whole zone)
+  if(present(aext)) ie = n
   qs = max(abs(qb),abs(qv),1d-30)
   esc = 0d0
   bet1 = 0d0
@@ -836,7 +917,7 @@ pure subroutine nx_ovl_zone(nl,u,vd,kq,k,qb,qv,esc,bet1,p,aext)
      es = 1d0
      em = 0d0
      pm = 0d0
-     do i=1,n
+     do i=1,ie
         d = tau*phi(:,i)
         dd = sum(d)
         e1 = exp(-dd)
@@ -942,11 +1023,44 @@ subroutine nx_ovl_terms(iel,nel,x,wg,jl)
 ! with the current populations x of all elements (level shares wg,
 ! element densities nel) and the incident intensities jl of all lines:
 ! nxo_out, nxo_inw, nxo_oux, nxo_ins, nxo_jz (zones of nx_ovl_cell).
+! The partners' K and K S (nx_kq, nx_ks) come from a cache per element,
+! remade when its populations, level shares or density differ from those
+! it was made with (the same numbers as computing them per pair).
 !-----------------------------------------------------------------------
   integer,intent(in) :: iel
   real*8,intent(in) :: nel(nxa_nel),x(nxa_nst),wg(nxa_nlv),jl(nxa_nlin)
-  integer :: k,m,j,je,l0,l1,o,ns,lo,nv
-  real*8 :: pjk
+  integer :: k,m,j,je,l0,l1,o,ns,lo,nv,ke,k1,k2
+  real*8 :: pjk,kqj
+  if(allocated(nxo_ckq)) then
+     if(size(nxo_ckq)/=nxa_nlin .or. size(nxo_cx)/=nxa_nst .or. size(nxo_cw)/=nxa_nlv) &
+          deallocate(nxo_ckq,nxo_cks,nxo_cx,nxo_cw,nxo_cn,nxo_cok)
+  endif
+  if(.not.allocated(nxo_ckq)) then
+     allocate(nxo_ckq(nxa_nlin),nxo_cks(nxa_nlin),nxo_cx(nxa_nst),nxo_cw(nxa_nlv), &
+          nxo_cn(nxa_nel),nxo_cok(nxa_nel))
+     nxo_cok = .false.
+  endif
+  do ke=1,nxa_nel
+     o = nxa_el(ke)%xoff
+     ns = nxa_el(ke)%ns
+     lo = nxa_el(ke)%lvoff
+     nv = nxa_el(ke)%nlv
+     if(nxo_cok(ke)) then
+        if(nxo_cn(ke)==nel(ke) .and. all(nxo_cx(o+1:o+ns)==x(o+1:o+ns)) .and. &
+             all(nxo_cw(lo+1:lo+nv)==wg(lo+1:lo+nv))) cycle
+     endif
+     k1 = nxa_ion(nxa_el(ke)%ion(1))%loff + 1
+     k2 = nxa_ion(nxa_el(ke)%ion(nxa_el(ke)%nion))%loff + &
+          nxa_ion(nxa_el(ke)%ion(nxa_el(ke)%nion))%nlin
+     do j=k1,k2
+        nxo_ckq(j) = max(nx_kq(j,nel(ke),x(o+1:o+ns),wg(lo+1:lo+nv)),0d0)
+        nxo_cks(j) = nx_ks(j,nel(ke),x(o+1:o+ns),wg(lo+1:lo+nv))
+     enddo
+     nxo_cx(o+1:o+ns) = x(o+1:o+ns)
+     nxo_cw(lo+1:lo+nv) = wg(lo+1:lo+nv)
+     nxo_cn(ke) = nel(ke)
+     nxo_cok(ke) = .true.
+  enddo
   l0 = nxa_ion(nxa_el(iel)%ion(1))%loff + 1
   l1 = nxa_ion(nxa_el(iel)%ion(nxa_el(iel)%nion))%loff + &
        nxa_ion(nxa_el(iel)%ion(nxa_el(iel)%nion))%nlin
@@ -965,13 +1079,12 @@ subroutine nx_ovl_terms(iel,nel,x,wg,jl)
         if(je /= iel) nxo_oux(k) = nxo_oux(k) + nxo_p(m)
         pjk = nxo_p(nxo_rev(m))
         if(pjk <= 0d0) cycle
-        o = nxa_el(je)%xoff
-        ns = nxa_el(je)%ns
-        lo = nxa_el(je)%lvoff
-        nv = nxa_el(je)%nlv
-        nxo_inw(k) = nxo_inw(k) + pjk*max(nx_kq(j,nel(je),x(o+1:o+ns),wg(lo+1:lo+nv)),0d0)
-        if(je /= iel) nxo_inwx(k) = nxo_inwx(k) + pjk*max(nx_kq(j,nel(je),x(o+1:o+ns),wg(lo+1:lo+nv)),0d0)
-        if(je /= iel) nxo_ins(k) = nxo_ins(k) + pjk*nx_ks(j,nel(je),x(o+1:o+ns),wg(lo+1:lo+nv))
+        kqj = nxo_ckq(j)
+        nxo_inw(k) = nxo_inw(k) + pjk*kqj
+        if(je /= iel) then
+           nxo_inwx(k) = nxo_inwx(k) + pjk*kqj
+           nxo_ins(k) = nxo_ins(k) + pjk*nxo_cks(j)
+        endif
      enddo
   enddo
 end subroutine nx_ovl_terms
@@ -1411,13 +1524,17 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
   real*8,intent(out),optional :: mout(:,:),bout(:)
   integer,intent(out),optional :: irout
   integer :: ns,nl,k,kg,k0,info,ir,mo,j
-  real*8 :: kq,bes,jle(size(jl)),b0,pin,pw,bjl,cx,dlb(4,size(jl)),wl,wu,gr,ees,pc
+  real*8 :: kq,bes,jle(size(jl)),b0,pin,pw,bjl,cx,dlb(4,size(jl)),wl,wu,gr,ees,pc,qsc,lt
   logical :: les,lesk,lfar,lfark,lovl,lstv
   real*8 :: m(nxa_el(iel)%ns,nxa_el(iel)%ns),xn(nxa_el(iel)%ns),xr(nxa_el(iel)%ns)
   real*8 :: msv(nxa_el(iel)%ns,nxa_el(iel)%ns)
   integer :: ipiv(nxa_el(iel)%ns),i1
   real :: tm0,tm1,tm2
-  logical :: ltd,ldump
+  logical :: ltd,ldump,lwin
+  integer :: nio,nw
+  integer,allocatable :: sio(:),iw(:),iou(:)
+  real*8,allocatable :: fio(:),mw(:,:),bw(:)
+  logical,allocatable :: pop(:),win(:)
 !
   ierr = 0
   d = 0d0
@@ -1425,6 +1542,7 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
   nl = size(jl)
   k0 = nxa_ion(nxa_el(iel)%ion(1))%loff
   if(nx_timing) call cpu_time(tm0)
+  qsc = max(abs(qb),abs(qv),1d-30)
   les = present(sv) .and. present(etab) .and. present(wqe) .and. present(jes)
   if(les) les = sv > 0d0
   lfar = present(efar)
@@ -1432,7 +1550,9 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
   do k=1,nl
      kg = k0 + k
      kq = nx_kq(kg,nel,x,r%w)
-     b0 = nx_beta(kq,qb,qv,btab)
+     lt = nx_blt0
+     if(kq > 0d0) lt = log(kq/qsc)
+     b0 = nx_beta_lt(kq,qsc,lt,btab,nx_lbt)
 !-- overlapping lines (nxo_use; nx_ovl_terms): escape from the zone
 !-- rho beta and absorption by the partners of other elements sum_j P(k,j),
 !-- their photons absorbed, and the zone's incident intensity with the
@@ -1468,7 +1588,7 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
      lesk = les
      if(lesk .and. allocated(nx_esm)) lesk = nx_esm(kg)
      if(lesk) then
-        bes = nx_bes(kq,sv,wqe(k),b0,qb,qv,etab)
+        bes = nx_bes_lt(kq,sv,wqe(k),b0,qsc,lt,etab,nx_let)
 !-- (efar is read only when present: no short-circuit evaluation)
         lfark = lfar
         if(lfark) lfark = efar(k) >= 0d0
@@ -1552,7 +1672,51 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
      return
   endif
   if(nx_timing) call cpu_time(tm1)
-  call dgesv(ns,1,m,ns,ipiv,xn,ns,info)
+  lwin = nx_win_tol > 0d0 .and. .not.nx_win_full .and. nxa_el(iel)%nion >= 3
+  if(lwin) then
+!-- ion window: the ion of each state (the top state as ion nion+1)
+     nio = nxa_el(iel)%nion
+     allocate(sio(ns),fio(nio+1),pop(nio+1),win(nio+1))
+     sio(ns) = nio + 1
+     do j=1,nio
+        i1 = nxa_el(iel)%ion(j)
+        sio(nxa_ion(i1)%soff+1:nxa_ion(i1)%soff+nxa_ion(i1)%nsl) = j
+     enddo
+     fio = 0d0
+     do k=1,ns
+        fio(sio(k)) = fio(sio(k)) + x(k)
+        if(ltd) fio(sio(k)) = max(fio(sio(k)),0d0) + max(xp(k),0d0)
+     enddo
+     pop = fio > nx_win_tol
+     win = pop
+     do j=1,nio+1
+        if(.not.pop(j)) cycle
+        if(j > 1) win(j-1) = .true.
+        if(j <= nio) win(j+1) = .true.
+     enddo
+     do k=1,ns
+        if(.not.pop(sio(k))) cycle
+        do j=1,ns
+           if(m(j,k) /= 0d0) win(sio(j)) = .true.
+        enddo
+     enddo
+     nw = count(win(sio))
+     lwin = nw < ns
+     if(lwin) then
+        allocate(iw(nw),iou(ns-nw),mw(nw,nw),bw(nw))
+        iw = pack([(k,k=1,ns)],win(sio))
+        iou = pack([(k,k=1,ns)],.not.win(sio))
+        mw = m(iw,iw)
+!-- the ions outside at their populations: their flows into the window (and
+!-- in the conservation row their share) on the right side
+        bw = xn(iw) - matmul(m(iw,iou),x(iou))
+        call dgesv(nw,1,mw,nw,ipiv,bw,nw,info)
+        xn = x
+        xn(iw) = bw
+        nx_win_ns = nx_win_ns + [nw,ns]
+     endif
+  endif
+  if(.not.lwin) call dgesv(ns,1,m,ns,ipiv,xn,ns,info)
   if(nx_timing) then
      call cpu_time(tm2)
      nx_tim(3) = nx_tim(3) + (tm2 - tm1)
@@ -1715,6 +1879,7 @@ subroutine nx_solve_cell(temp,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx
   logical :: lovl,lz
   real*8 :: xz(nxa_nst)
   real*8 :: dtol
+  logical :: wforce
   real*8 :: neold,nenew,d,dmax,dne,dold,jl(nxa_nlin),btab(0:nx_nbt),wg(nxa_nlv)
   real*8 :: etab(0:nx_nbt),ewtab(0:nx_nbt),sv,wq(nxa_nlin),jes(nxa_nlin)
   integer,parameter :: mcx = 4096
@@ -1759,6 +1924,8 @@ subroutine nx_solve_cell(temp,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx
         call nx_es_table(qb,qv,etab)
      endif
   endif
+  nx_lbt = log(max(btab,1d-300))
+  nx_let = log(max(etab,1d-300))
   call nxd_weights(temp,nx_dis,wg)
   ne = neoth + chg(x)
   do iel=1,nxa_nel
@@ -1807,7 +1974,11 @@ subroutine nx_solve_cell(temp,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx
   if(lse) lse = allocated(nx_ali_lst) .and. allocated(nx_ali_kap)
   if(lse) lse = size(nx_ali_lst)==ng
   if(lse) call se_init
+  wforce = .false.
   do it=1,mit
+!-- (ion window, nx_win_tol: the full systems in the first three iterations,
+!-- every tenth and the last)
+     nx_win_full = nx_win_tol <= 0d0 .or. it <= 3 .or. mod(it,10)==0 .or. wforce
      dmax = 0d0
      imx = 0
      ntneg = 0
@@ -1829,6 +2000,7 @@ subroutine nx_solve_cell(temp,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx
         if(ierr/=0) then
            nxo_use = .false.
            nx_pc_use = .false.
+           nx_win_full = .true.
            return
         endif
      else
@@ -1868,6 +2040,7 @@ subroutine nx_solve_cell(temp,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx
            ierr = ie
            nxo_use = .false.
            nx_pc_use = .false.
+           nx_win_full = .true.
            return
         endif
         if(nx_trace .and. d > dmax) then
@@ -1891,8 +2064,14 @@ subroutine nx_solve_cell(temp,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx
      dold = dne
      if(nx_trace) write(0,'(a,i5,es11.3,a,i3,a,i5,a,3es11.3,a,i6,a,es11.3,a,i5)') ' nx_trace it',it,dmax, &
           ' Z',nxa_el(max(imx,1))%z,' state',trk,' x/lin/clip',trx,' neg',ntneg,' dne',dne,' gmres',nx_gm_its
-     if(dmax < dtol .and. abs(dne) < 1d-2*dtol) exit
+     if(dmax < dtol .and. abs(dne) < 1d-2*dtol) then
+        if(nx_win_full) exit
+        wforce = .true.
+     else
+        wforce = .false.
+     endif
   enddo
+  nx_win_full = .true.
   nxo_use = .false.
   nx_pc_use = .false.
   nx_nits = min(it,mit)
