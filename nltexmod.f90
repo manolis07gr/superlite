@@ -1721,7 +1721,12 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
   if(it<=3) then
      x = xn
   else
-     x = sqrt(x*xn)        !geometric damping keeps the fractions positive
+!-- geometric damping keeps the fractions positive; the old fraction
+!-- floored at 1e-300 and the roots taken apart: x*xn underflowed to 0
+!-- for states below ~1e-154, and a state at 0 never came back (an A7 Si
+!-- state that the linear solution gave 99.7 % stayed at 0 for 300
+!-- iterations)
+     x = sqrt(max(x,1d-300))*sqrt(xn)
      x = x/sum(x)
   endif
 contains
