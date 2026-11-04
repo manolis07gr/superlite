@@ -865,12 +865,8 @@ pure subroutine nx_ovl_zone(nl,u,vd,kq,k,qb,qv,esc,bet1,p,aext)
   real*8,intent(out) :: esc,bet1,p(nl)
   real*8,intent(out),optional :: aext(nl)
   integer,parameter :: nmu = 8, nmax = 4000
-!-- (each profile on the cells within ylim Doppler widths of its centre,
-!-- exp(-ylim^2) ~ 1e-22: zero beyond; by the recurrence of a Gaussian on
-!-- a uniform grid, two exponentials a line)
-  real*8,parameter :: ylim = 7.1d0
-  integer :: n,i,j,im,i0,i1,ie
-  real*8 :: umin,umax,du,qs,mu,q,dd,t,s,e1,es,wk,em,tk,y,h,g,rr,r2
+  integer :: n,i,j,im
+  real*8 :: umin,umax,du,qs,mu,q,dd,t,s,e1,es,wk,em,tk
   real*8 :: tau(nl),pm(nl),a(nl),d(nl)
   real*8,allocatable :: phi(:,:)
   umin = minval(u - 5d0*vd)
@@ -880,28 +876,12 @@ pure subroutine nx_ovl_zone(nl,u,vd,kq,k,qb,qv,esc,bet1,p,aext)
   if(n > nmax) n = nmax
   du = (umax - umin)/n
   allocate(phi(nl,n))
-  phi = 0d0
-  ie = n
-  do j=1,nl
-     i0 = max(1,floor((u(j) - ylim*vd(j) - umin)/du + 0.5d0))
-     i1 = min(n,ceiling((u(j) + ylim*vd(j) - umin)/du + 0.5d0))
-     if(j==k) ie = i1
-     if(i1 < i0) cycle
-     h = du/vd(j)
-     y = (umin + (i0-0.5d0)*du - u(j))/vd(j)
-     g = exp(-y*y)
-     rr = exp(-2d0*y*h - h*h)
-     r2 = exp(-2d0*h*h)
-     do i=i0,i1
-        phi(j,i) = g
-        g = g*rr
-        rr = rr*r2
-     enddo
-     phi(j,i0:i1) = phi(j,i0:i1)/max(sum(phi(j,i0:i1)),1d-300)
+  do i=1,n
+     phi(:,i) = exp(-((umin + (i-0.5d0)*du - u)/vd)**2)
   enddo
-!-- (the photons of line k drift to the red: the cells to the blue of its
-!-- profile take no part, unless aext needs the whole zone)
-  if(present(aext)) ie = n
+  do j=1,nl
+     phi(j,:) = phi(j,:)/max(sum(phi(j,:)),1d-300)
+  enddo
   qs = max(abs(qb),abs(qv),1d-30)
   esc = 0d0
   bet1 = 0d0
@@ -917,7 +897,7 @@ pure subroutine nx_ovl_zone(nl,u,vd,kq,k,qb,qv,esc,bet1,p,aext)
      es = 1d0
      em = 0d0
      pm = 0d0
-     do i=1,ie
+     do i=1,n
         d = tau*phi(:,i)
         dd = sum(d)
         e1 = exp(-dd)
