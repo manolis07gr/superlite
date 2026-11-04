@@ -167,11 +167,19 @@ module nltexmod
 !-- (nx_ovl_remake = .false.: the zones of the first iteration of a solution
 !-- for all its iterations)
   logical,public :: nx_ovl_remake = .true.
+!-- (nx_ovl_every: the zones remade every this many iterations of a solution)
+  integer,public :: nx_ovl_every = 10
 !-- (nx_ovl_same: only the pairs of lines of one element, whose exchange
 !-- the element's rate matrix holds implicitly)
   logical,public :: nx_ovl_same = .false.
 !-- (nx_ovl_addsame, with nx_ovl_zmax > 0: also the pairs of one element)
   logical,public :: nx_ovl_addsame = .false.
+!-- (nx_trace: each iteration of nx_solve_cell to unit 0, with the element
+!-- of its largest change; diagnostics)
+  logical,public :: nx_trace = .false.
+  integer,public :: nx_trk = 0          !(nx_trace) element-local state of the largest change of the last nx_el_step
+  real*8,public :: nx_trx(3) = 0d0      !its x, the linear solution before clipping, after
+  integer,public :: nx_trneg = 0        !negative components of that linear solution
 !-- (diagnostics: iterations of the last nx_solve_cell)
   integer,public :: nx_nits = 0
 !-- continuum destruction of the trapped photons of the lines (nx_pcont):
@@ -1374,7 +1382,7 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
   integer :: ns,nl,k,kg,k0,info,ir,mo,j
   real*8 :: kq,bes,jle(size(jl)),b0,pin,pw,bjl,cx,dlb(4,size(jl)),wl,wu,gr,ees,pc
   logical :: les,lesk,lfar,lfark,lovl,lstv
-  real*8 :: m(nxa_el(iel)%ns,nxa_el(iel)%ns),xn(nxa_el(iel)%ns)
+  real*8 :: m(nxa_el(iel)%ns,nxa_el(iel)%ns),xn(nxa_el(iel)%ns),xr(nxa_el(iel)%ns)
   real*8 :: msv(nxa_el(iel)%ns,nxa_el(iel)%ns)
   integer :: ipiv(nxa_el(iel)%ns),i1
   logical :: ltd,ldump
@@ -1489,6 +1497,7 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
   if(ltd) xn = -dti*xp
   xn(ir) = 1d0
   call dgesv(ns,1,m,ns,ipiv,xn,ns,info)
+  if(nx_trace) xr = xn
   if(info/=0) then
      ierr = 1
      return
@@ -1496,6 +1505,11 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
   xn = max(xn,1d-300)
   xn = xn/sum(xn)
   d = maxval(abs(xn-x)/(xn+1d-30),mask=xn>1d-20)
+  if(nx_trace) then
+     nx_trk = maxloc(abs(xn-x)/(xn+1d-30),dim=1,mask=xn>1d-20)
+     if(nx_trk > 0) nx_trx = [x(nx_trk),xr(nx_trk),xn(nx_trk)]
+     nx_trneg = count(xr < 0d0)
+  endif
 !-- (diagnostics: flows with the new populations, charge exchange apart)
   if(ldump) call dump_flows
   if(ldump .and. iel == nx_dump_el .and. nx_dump_st >= 1 .and. nx_dump_st <= ns) then
@@ -1636,7 +1650,8 @@ subroutine nx_solve_cell(temp,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx
   integer,intent(in),optional :: maxit
   real*8,intent(in),optional :: xprev(nxa_nst),dtinv
   real*8,intent(in),optional :: efar(nxa_nlin) !absorption in the line cores (nx_el_step)
-  integer :: iel,ns,o,l0,l1,it,ie,k,ncx,mit
+  integer :: iel,ns,o,l0,l1,it,ie,k,ncx,mit,imx,trk,ntneg
+  real*8 :: trx(3)
   logical :: lovl,lz
   real*8 :: xz(nxa_nst)
   real*8 :: dtol
@@ -1722,13 +1737,15 @@ subroutine nx_solve_cell(temp,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx
   if(lse) call se_init
   do it=1,mit
      dmax = 0d0
+     imx = 0
+     ntneg = 0
      if(lse .and. it>1) call se_update
 !-- overlapping lines: the zones at the first iteration, and every tenth
 !-- while a population has moved by more than 10 % since they were made
 !-- (unless the caller keeps its own: nx_ovl_keep); the terms of each
 !-- element with the populations of the moment
      lz = lovl .and. .not.nx_ovl_keep .and. it==1
-     if(lovl .and. .not.nx_ovl_keep .and. nx_ovl_remake .and. it>1 .and. mod(it,10)==0) &
+     if(lovl .and. .not.nx_ovl_keep .and. nx_ovl_remake .and. it>1 .and. mod(it,nx_ovl_every)==0) &
           lz = any(abs(x - xz) > 0.1d0*xz .and. xz > 1d-10)
      if(lz) then
         call nx_ovl_cell(temp,nel,x,wg,qb,qv)
@@ -1773,6 +1790,12 @@ subroutine nx_solve_cell(temp,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx
            nx_pc_use = .false.
            return
         endif
+        if(nx_trace .and. d > dmax) then
+           imx = iel
+           trk = nx_trk
+           trx = nx_trx
+        endif
+        if(nx_trace) ntneg = ntneg + nx_trneg
         dmax = max(dmax,d)
      enddo
      neold = ne
@@ -1785,6 +1808,8 @@ subroutine nx_solve_cell(temp,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx
         ne = nenew
      endif
      dold = dne
+     if(nx_trace) write(0,'(a,i5,es11.3,a,i3,a,i5,a,3es11.3,a,i6,a,es11.3)') ' nx_trace it',it,dmax,' Z',nxa_el(max(imx,1))%z, &
+          ' state',trk,' x/lin/clip',trx,' neg',ntneg,' dne',dne
      if(dmax < dtol .and. abs(dne) < 1d-2*dtol) exit
   enddo
   nxo_use = .false.
