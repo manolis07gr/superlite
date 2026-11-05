@@ -162,6 +162,10 @@ module nltexmod
   real*8,allocatable,public :: nxo_out(:),nxo_ins(:),nxo_inw(:),nxo_jz(:),nxo_oux(:) !(nlin)
 !-- (nxo_inwx: the part of nxo_inw from the partners of other elements)
   real*8,allocatable,public :: nxo_inwx(:) !(nlin)
+!-- (nxo_smx: per line the largest source function S_j of the partners of
+!-- other elements whose photons it absorbs, nx_ovl_terms: the bound of
+!-- the zone's incident intensity in nx_el_step)
+  real*8,allocatable,public :: nxo_smx(:) !(nlin)
 !-- (nx_ovl_terms: K and K S of every line, kept per element with the
 !-- populations, level shares and density they were made with; remade for
 !-- an element only when one of these changed)
@@ -760,6 +764,9 @@ subroutine nx_ovl_init(dv)
   allocate(nxo_rho(nxa_nlin),nxo_p(max(nxo_npair,1)),nxo_jcl(nxa_nlin))
   allocate(nxo_out(nxa_nlin),nxo_ins(nxa_nlin),nxo_inw(nxa_nlin),nxo_jz(nxa_nlin),nxo_oux(nxa_nlin))
   allocate(nxo_inwx(nxa_nlin))
+  if(allocated(nxo_smx)) deallocate(nxo_smx)
+  allocate(nxo_smx(nxa_nlin))
+  nxo_smx = 0d0
   nxo_inwx = 0d0
   if(allocated(nxo_kq0)) deallocate(nxo_kq0)
   allocate(nxo_kq0(nxa_nlin))
@@ -1003,6 +1010,7 @@ subroutine nx_ovl_terms(iel,nel,x,wg,jl)
      nxo_ins(k) = 0d0
      nxo_inw(k) = 0d0
      nxo_inwx(k) = 0d0
+     nxo_smx(k) = 0d0
      nxo_jz(k) = jl(nxo_jcl(k))
      if(nxo_jzm == 1 .and. allocated(nxo_jzg)) nxo_jz(k) = nxo_jzg(nxa_lgn(nxo_jcl(k)))
      do m=nxo_ptr(k),nxo_ptr(k+1)-1
@@ -1017,6 +1025,7 @@ subroutine nx_ovl_terms(iel,nel,x,wg,jl)
         if(je /= iel) then
            nxo_inwx(k) = nxo_inwx(k) + pjk*kqj
            nxo_ins(k) = nxo_ins(k) + pjk*nxo_cks(j)
+           if(kqj > 0d0) nxo_smx(k) = max(nxo_smx(k),nxo_cks(j)/kqj)
         endif
      enddo
   enddo
@@ -1509,6 +1518,12 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
            bjl = max(nxo_rho(kg)*b0 + nxo_out(kg) - pw,0d0)*nxo_jz(kg)
         else
            bjl = max(nxo_rho(kg)*b0 + nxo_out(kg) - pw,0d0)*nxo_jz(kg) + pin
+!-- (the zone's incident intensity is a mean of its own J and the source
+!-- functions of the partners: no more than the largest of them.  The
+!-- lagged terms over the line's depth of the moment, nxo_ins/K and
+!-- nxo_inw/K, exceed it where its lower state is nearly empty: an A7 Si
+!-- state at 1e-300 took rates of 1e299/s and made the system singular)
+           bjl = min(bjl,(nxo_rho(kg)*b0 + nxo_out(kg))*max(nxo_jz(kg),nxo_smx(kg)))
         endif
      else
         beta(k) = b0
