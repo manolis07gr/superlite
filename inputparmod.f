@@ -286,6 +286,10 @@ c-- ions holding more than this fraction of it, their neighbours and the
 c-- ions they feed directly (others kept; full system every tenth
 c-- iteration and at convergence): faster for atoms of many ions
       real*8 :: in_nltex_iwin = 0d0
+c-- (in_nltex_overlap) the pairs of lines of two elements (lagged in
+c-- the rates; Bowen chains such as He II 304 - O III - N III 4640):
+c-- f keeps only the pairs of one element (implicit, converges faster)
+      logical :: in_nltex_ovlx = .true.
 c-- formal integral of the emergent spectrum after the last iteration
 c-- (formalmod): range [cm], spacing [km/s], rays through the inner
 c-- boundary
@@ -466,7 +470,7 @@ c-- runtime parameter namelist
      & in_nltex_jfill,
      & in_nltex_fbias,in_nltex_fwl1,in_nltex_fwl2,in_nltex_ldbse,
      & in_nltex_auger,in_nltex_ovllmax,in_nltex_ovlz,in_nltex_ovljz,
-     & in_nltex_ovlsame,in_nltex_iwin,
+     & in_nltex_ovlsame,in_nltex_iwin,in_nltex_ovlx,
      & in_nltex_dis,
      & in_nltex_ali,
      & in_nltex_ldb,in_nltex_vturb,in_nltex_vturbmax,in_nltex_esrates,
@@ -637,6 +641,7 @@ c
       call inserti(in_nltex_ovljz,in_i,ii)
       call insertl(in_nltex_ovlsame,in_l,il)
       call insertr(in_nltex_iwin,in_r,ir)
+      call insertl(in_nltex_ovlx,in_l,il)
       call insertr(in_nltex_fwl1,in_r,ir)
       call insertr(in_nltex_fwl2,in_r,ir)
       call insertr(in_nltex_jbwin,in_r,ir)

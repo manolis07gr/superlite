@@ -30,7 +30,7 @@ program superlite
   use xraysrcmod
   use formalmod, only:fi_spectrum
   use nltexmod, only:nx_esdamp,nx_ovl_dv,nxo_npair,nx_pc_on,nx_ldbse,nx_auger,nx_ovl_lmax,nx_ovl_zmax, &
-       nxo_jzm,nx_ovl_addsame,nx_timing,nx_win_tol
+       nxo_jzm,nx_ovl_addsame,nx_timing,nx_win_tol,nx_ovl_same
   use nltedismod, only:nxd_on,nxd_setup
   use bbsobmod
   use tebalmod, only:te_damp,te_ntemin,te_zsolve,te_secant
@@ -196,6 +196,7 @@ program superlite
      nxo_jzm = in_nltex_ovljz
      nx_ovl_addsame = in_nltex_ovlsame
      nx_win_tol = in_nltex_iwin
+     nx_ovl_same = .not.in_nltex_ovlx
      call nxt_init(grd_ncell,gas_ncell,grp_ng,grp_wl,nfatom,fatom(:nfatom),merge(in_nlteh_nlev,0,in_nlteh))
 !-- (the undamped change per cell for the convergence test, in_nltex_tol)
      if(in_nltex_tol>0d0) then
