@@ -58,6 +58,7 @@ program superlite
   logical :: lstop = .false.
   character(256) :: fatom(300)
   character(8) :: envv
+  character(64) :: envk
 !
 !-- mpi initialization
   call mpi_init(ierr) !MPI
@@ -571,6 +572,14 @@ program superlite
 !-- convergence)
         if(in_nltex) call nxt_write(grd_ncell,grd_rcell, &
              0.5d0*(grd_vxarr(:grd_ncell)+grd_vxarr(2:)),grd_tempinv,grd_radtemp,grd_vol)
+!-- (SL_NXKEEP=t: a copy per iteration, output.nltex_itNN)
+        if(in_nltex) then
+           call get_environment_variable('SL_NXKEEP',envv,status=i)
+           if(i==0 .and. trim(envv)=='t') then
+              write(envk,'(a,i2.2)') 'cp output.nltex output.nltex_it',it
+              call execute_command_line(trim(envk))
+           endif
+        endif
 !-- (the state and its radiation field every iteration as well: a run that
 !-- stops can be continued from the last one with in_nltex_init)
         if(in_nltex) call nxt_write_state(grd_ncell,grd_mass,grd_vol,grd_tempinv)
