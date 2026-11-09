@@ -206,7 +206,8 @@ module nltexmod
 !-- and of the ions they feed directly (Auger, charge exchange); the other
 !-- ions keep their populations, their flows into the window on the right
 !-- side.  nx_solve_cell takes the full system in its first three
-!-- iterations, every tenth, and for the one that ends it (nx_win_full)
+!-- iterations, every tenth, from the 31st and for the one that ends it
+!-- (nx_win_full)
   real*8,public :: nx_win_tol = 0d0
   logical,public :: nx_win_full = .true.
   integer,public :: nx_win_ns(2) = 0     !states solved, states of the elements (windowed steps; diagnostics)
@@ -1926,7 +1927,10 @@ subroutine nx_solve_cell(temp,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx
   do it=1,mit
 !-- (ion window, nx_win_tol: the full systems in the first three iterations,
 !-- every tenth and the last)
-     nx_win_full = nx_win_tol <= 0d0 .or. it <= 3 .or. mod(it,10)==0 .or. wforce
+!-- (and from the 31st on: a barely populated ion outside the window moves
+!-- only in the full iterations, and the window put an A4 cell's S ion back
+!-- each time, a cycle of 30 iterations to the limit)
+     nx_win_full = nx_win_tol <= 0d0 .or. it <= 3 .or. mod(it,10)==0 .or. wforce .or. it > 30
      dmax = 0d0
      imx = 0
      ntneg = 0
