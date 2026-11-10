@@ -73,5 +73,6 @@ in_comment = 'A7 day 20, IIn CSM physics of CSM_PHYSICS.md (Runs/iin_day20): war
  in_nltex_iwin = 1d-12
  in_nltex_ovlremake = f
  in_nltex_ovlx = f
+ in_nltex_dmask = 1d-10
  in_nltex_init = '@INIT@'
 /

@@ -295,6 +295,9 @@ c-- solution when populations move (t) or kept from its start (f; each
 c-- gas update makes them from its starting populations, so they agree at
 c-- convergence; the solutions converge in fewer iterations)
       logical :: in_nltex_ovlremake = .true.
+c-- the convergence test of the statistical equilibrium of a cell takes
+c-- the states above this fraction of their element
+      real*8 :: in_nltex_dmask = 1d-20
 c-- formal integral of the emergent spectrum after the last iteration
 c-- (formalmod): range [cm], spacing [km/s], rays through the inner
 c-- boundary
@@ -475,7 +478,8 @@ c-- runtime parameter namelist
      & in_nltex_jfill,
      & in_nltex_fbias,in_nltex_fwl1,in_nltex_fwl2,in_nltex_ldbse,
      & in_nltex_auger,in_nltex_ovllmax,in_nltex_ovlz,in_nltex_ovljz,
-     & in_nltex_ovlsame,in_nltex_iwin,in_nltex_ovlx,in_nltex_ovlremake,
+     & in_nltex_ovlsame,in_nltex_iwin,in_nltex_ovlx,
+     & in_nltex_ovlremake,in_nltex_dmask,
      & in_nltex_dis,
      & in_nltex_ali,
      & in_nltex_ldb,in_nltex_vturb,in_nltex_vturbmax,in_nltex_esrates,
@@ -648,6 +652,7 @@ c
       call insertr(in_nltex_iwin,in_r,ir)
       call insertl(in_nltex_ovlx,in_l,il)
       call insertl(in_nltex_ovlremake,in_l,il)
+      call insertr(in_nltex_dmask,in_r,ir)
       call insertr(in_nltex_fwl1,in_r,ir)
       call insertr(in_nltex_fwl2,in_r,ir)
       call insertr(in_nltex_jbwin,in_r,ir)

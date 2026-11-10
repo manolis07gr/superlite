@@ -208,6 +208,11 @@ module nltexmod
 !-- side.  nx_solve_cell takes the full system in its first three
 !-- iterations, every tenth, and for the one that ends it (nx_win_full)
   real*8,public :: nx_win_tol = 0d0
+!-- (nx_dmask) the convergence test of nx_solve_cell takes the relative
+!-- change of the states above this fraction of their element: an A4 cell
+!-- cycled for 300 iterations in a Ca state at 6e-18 and an H state at
+!-- 6e-12 with every state above 1e-10 converged
+  real*8,public :: nx_dmask = 1d-20
   logical,public :: nx_win_full = .true.
   integer,public :: nx_win_ns(2) = 0     !states solved, states of the elements (windowed steps; diagnostics)
 !-- (nx_timing) seconds in nx_el_step: before the matrix, the matrix, the solve
@@ -1673,7 +1678,7 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
   endif
   xn = max(xn,1d-300)
   xn = xn/sum(xn)
-  d = maxval(abs(xn-x)/(xn+1d-30),mask=xn>1d-20)
+  d = maxval(abs(xn-x)/(xn+1d-30),mask=xn>nx_dmask)
   if(nx_trace) then
      nx_trk = maxloc(abs(xn-x)/(xn+1d-30),dim=1,mask=xn>1d-20)
      if(nx_trk > 0) nx_trx = [x(nx_trk),xr(nx_trk),xn(nx_trk)]
