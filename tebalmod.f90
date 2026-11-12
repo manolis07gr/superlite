@@ -384,6 +384,7 @@ subroutine te_balance(told,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx,ca
   if(present(scanlu)) then
      if(scanlu > 0) then
         write(scanlu,'(a,99(1x,i2,l2))') '# Z, re-solved:',(nxa_el(it)%z,lsol(it),it=1,nxa_nel)
+        call lte_bands(scanlu)
         write(scanlu,'(a)') '#  T  f/scale  ierr  ne  x_top(el 1)  lte_net pi_heat rec_cool coll_net compton ext'// &
              ' | coll_net: states, charge exchange, lines in super-levels'
         do it=0,40
@@ -455,6 +456,33 @@ contains
        free_el = free_el + nel(je)*sum(nxa_el(je)%chg*xx(jo+1:jo+nxa_el(je)%ns))
     enddo
   end function free_el
+  subroutine lte_bands(lu)
+!-- (diagnostics) the LTE-opacity net cooling 4 pi int (capem B - capabs J)
+!-- dnu at the old temperature by wavelength band, and the absorption and
+!-- emission parts of each
+    integer,intent(in) :: lu
+    real*8,parameter :: wb(6) = [0d0,10d0,100d0,912d0,3000d0,1d99]
+    real*8 :: ab(5),em(5),wl,hk,bgg
+    integer :: ig,ib
+    ab = 0d0
+    em = 0d0
+    hk = hh/(kb*told)
+    do ig=1,ng
+       wl = cc/nug(ig)*1d8
+       ib = 5
+       do while(ib > 1 .and. wl < wb(ib))
+          ib = ib - 1
+       enddo
+       bgg = 0d0
+       if(hk*nug(ig) < 700d0) bgg = 2d0*hh*nug(ig)**3/cc**2/(exp(hk*nug(ig)) - 1d0)
+       ab(ib) = ab(ib) + 4d0*pi*capabs(ig)*jg(ig)*dnug(ig)
+       em(ib) = em(ib) + 4d0*pi*capem(ig)*bgg*dnug(ig)
+    enddo
+    write(lu,'(a)') '# LTE opacity at T_old by band [A]: <10, 10-100, 100-912, 912-3000, >3000: '// &
+         'absorbed 4pi int capabs J, emitted 4pi int capem B [erg/s/cm^3]'
+    write(lu,'(a,5es12.4)') '# absorbed',ab
+    write(lu,'(a,5es12.4)') '# emitted ',em
+  end subroutine lte_bands
 end subroutine te_balance
 !
 !
