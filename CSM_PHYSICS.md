@@ -554,6 +554,49 @@ of the full solution (`test_ionwin`), 30 % less per iteration with 33–60
 % of the states, but up to twice the iterations where the ionization
 moves; it is for atoms of many ions (sn6 Fe: 1568 states).
 
+Convergence of A4 with sn6 (4 ranks; runs of 2–10 iterations each from
+the state of the one before, `SL_NXKEEP=t` keeping `output.nltex` of
+every iteration).  What kept the cells from converging, and what was done:
+
+| cause | effect | fix |
+|---|---|---|
+| geometric damping `sqrt(x*xn)` underflowed to 0 below ~1e-154 | a state at 0 never came back (an A7 Si state with 99.7 % of Si for 300 iterations) | `sqrt(max(x,1e-300))*sqrt(xn)` |
+| lagged overlap terms of other elements over the line's own depth (`nxo_ins/K`) | rates of 1e299/s where the lower state is nearly empty: singular systems | incident intensity bounded by the partners' largest S |
+| zones remade every tenth iteration of a solution | each remake kicks the lagged terms (A4 cells 300 vs 49–129 iterations) | `in_nltex_ovlremake = f`: the zones of the solution's start |
+| pairs of H/He lines with metal lines | no unique metal ionization (solutions from LTE and the saved state 8–200× apart) | `in_nltex_ovlx = f`; N III 4640 + He II 30 vs 34 Å, O I 8446 3.5 vs 3.6 Å |
+| limit cycles in negligible states (Ca at 6e-18, H at 6e-12 of the element) | cells at the limit of 300 with everything above 1e-10 converged | `in_nltex_dmask = 1d-10` |
+| the full Fe matrix (1568 states) | `dgesv` 1350–1535 s per rank and gas update | `in_nltex_iwin = 1d-12`: slowest rank 2062 → 873 s |
+
+The ion window is not what keeps cells at the limit (cell 48 cycled the
+same without it), and Monte Carlo noise is not what keeps the outer
+iteration from converging (4× the packets: the same states, T within 1 %,
+Hα EW 177 vs 172 Å).  After these, 60 iterations from `prodset` to
+`prodset6`: the median ion fraction (of those above 1e-4) moves 1 % per
+iteration, 12–16 % of them by more than 20 % (16–25 % before); Hα EW
+172, 156, 154, 150 Å, Hα/Hβ 2.17, 1.86, 2.08, 1.96, F(4500)/F(6100) 1.34,
+1.03, 1.05, 1.08 at the ends of `prodset`, `prodset3`, `prodset5`,
+`prodset6`.  9–18 cells per rank still end some solutions at the limit.
+
+The cells beside the shock run away to a hot branch one after the
+other: cell 29 (1.83e15 cm, unshocked CSM next to the last shock cell)
+31 200 → 49 400 → 113 000 K over 12 iterations, then cell 30 33 000 →
+76 000 K over the next 10, cell 31 starting.  The thermal balance
+(`SL_TESCAN`, with the LTE term by band) has a root near 1.3e5 K for a
+cell once heated, and what heats it is the LTE-opacity term at 10–100 Å
+(4.9e-6 of 4.9e-6 erg/s/cm^3 absorbed in cell 28, 3.2e-6 in cell 29,
+nothing emitted there): the K and L shells of C, N, O, Ne, Mg, Si, S
+and Fe (`bfxs_inner`, absorption only, fast electrons that heat in this
+ionized gas) absorbing the soft X-rays of the shock.  The extended lines
+of the NLTE ions (`in_nltex_bbext`) are not it (the same term without
+them).  A hot cell absorbs less, the X-rays reach the next: an X-ray
+heating front of thermally bistable gas, physical, which in steady state
+moves about one cell per 5–10 iterations (`in_te_secant` hardly faster,
+as the cell's root rises with it).  How far it goes in a real precursor
+depends on the time the gas has been exposed, so the place to settle it
+is the time-dependent mode (model sequences, `in_nltex_prev`), not more
+steady-state iterations; each cell that flips moves Hα EW and the
+4440–4640 Å emission by 3–6 %.
+
 ### 4.4 Benchmark against CMFGEN: IIn-like dense wind
 
 CMFGEN models computed for this comparison (CMFGEN 2023 with the 21jun23
