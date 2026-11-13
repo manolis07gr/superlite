@@ -1,0 +1,77 @@
+&inputpars
+
+ in_name = 'ICN_day20'
+ in_comment = 'parameterized icn interaction (Tools/param_csm_model.py): t 20 d, v_s 4000, v_w 1000 km/s, Mdot 0.3 Msun/yr, eps 0.5, M_ej 0.5 Msun'
+
+!-- misc
+ in_nomp = 1
+ in_niter = 6
+ in_io_grabstdout = f
+ in_io_opacdump = 'off'
+ in_io_profdump = t
+
+!-- grid settings
+ in_ndim = 78, 1, 1
+
+!-- flux and group settings (input.wlgrid/input.fluxwl from Tools/make_wlgrid.py:
+!-- 100 km/s at 3500-10000 A, 1000 km/s at 1-3500 A and 1-3 um, 30000 km/s to
+!-- 300 um, bound-free edges as group boundaries)
+ in_flx_ndim = -1, 1, 1
+ in_grp_ng = 0
+
+!-- particle numbers and source
+ in_src_n2s = 18
+ in_niter_early = 0
+ in_src_n2s_early = 16
+ in_L_bol = 1.6587e+42
+ in_srctype = 'lumg'
+ in_surfsrcmu = 'isot'
+
+!-- transport
+ in_trn_tauddmc = 30d0
+ in_puretran = f
+ in_taulump = 5d0
+ in_trn_errorfatal = f
+ in_thm_thermal = t
+
+!-- opacities and NLTE hydrogen
+ in_nobbopac = f
+ in_nobfopac = f
+ in_noffopac = f
+ in_nothmson = f
+ in_nlte = t
+ in_nlte_nelem = 1
+ in_nlteh = f
+ in_nlteh_nlev = 30
+ in_nlteh_damp = 0.5d0
+ in_nltex_dir = '@ATOMS@'
+ in_nltex_atoms = 'c1.atom c2.atom c3.atom c4.atom c5.atom c6.atom ca1.atom ca2.atom ca3.atom ca4.atom ca5.atom ca6.atom ca7.atom ca8.atom ca9.atom ca10.atom ca11.atom ca12.atom ca13.atom ca14.atom ca15.atom ca16.atom ca17.atom ca18.atom ca19.atom ca20.atom fe1.atom fe2.atom fe3.atom fe4.atom fe5.atom fe6.atom fe7.atom fe8.atom fe9.atom fe10.atom fe11.atom fe12.atom fe13.atom fe14.atom fe15.atom fe16.atom fe17.atom fe18.atom fe19.atom fe20.atom fe21.atom fe22.atom fe23.atom fe24.atom fe25.atom fe26.atom h1.atom he1.atom he2.atom mg1.atom mg2.atom mg3.atom mg4.atom mg5.atom mg6.atom mg7.atom mg8.atom mg9.atom mg10.atom mg11.atom mg12.atom n1.atom n2.atom n3.atom n4.atom n5.atom n6.atom n7.atom na1.atom na2.atom na3.atom na4.atom na5.atom na6.atom na7.atom na8.atom na9.atom na10.atom na11.atom ne1.atom ne2.atom ne3.atom ne4.atom ne5.atom ne6.atom ne7.atom ne8.atom ne9.atom ne10.atom o1.atom o2.atom o3.atom o4.atom o5.atom o6.atom o7.atom o8.atom s1.atom s2.atom s3.atom s4.atom s5.atom s6.atom s7.atom s8.atom s9.atom s10.atom s11.atom s12.atom s13.atom s14.atom s15.atom s16.atom si1.atom si2.atom si3.atom si4.atom si5.atom si6.atom si7.atom si8.atom si9.atom si10.atom si11.atom si12.atom si13.atom si14.atom'
+
+ in_bbsobolev = t
+ in_bbeps = -1d0
+ in_tesolve = t
+ in_nt_emin = 100d0
+ in_tion = 'nebu'
+ in_nltex_ali = f
+ in_nltex_ldb = 30d0
+ in_nltex_vturb = 10d0
+ in_nltex_vturbmax = 20d0
+ in_nltex_dopmc = 2d0
+ in_nltex_dis = t
+ in_fi = t
+ in_fi_wl1 = 3500d-8
+ in_fi_wl2 = 10000d-8
+ in_fi_dv = 10d0
+ in_fi_navg = 1
+ in_shock_cie = '@CIE@'
+ in_rayleigh = 'lyman'
+ in_nltex_dmpsec = t
+ in_nltex_overlap = 150d0
+ in_nltex_ovlz = 2
+ in_nltex_ovlsame = t
+ in_nltex_iwin = 1d-12
+ in_nltex_ovlremake = f
+ in_nltex_ovlx = f
+ in_nltex_dmask = 1d-10
+ in_nltex_init = '@INIT@'
+/

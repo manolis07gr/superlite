@@ -122,15 +122,20 @@ for m in $models; do
     if [ -n "$INIT" ] && [ -f "$INIT/$m/output.nltex_state" ]; then
       cp "$INIT/$m/output.nltex_state" "$d/init/"
       [ -f "$INIT/$m/output.nltex_jmc" ] && cp "$INIT/$m/output.nltex_jmc" "$d/init/"
-    else
+    elif [ -f "$kit/$m/init/output.nltex_state" ]; then
       cp "$kit/$m/init/output.nltex_state" "$d/init/"
       [ -n "$JMC" ] && [ -f "$JMC/$m/output.nltex_jmc" ] && cp "$JMC/$m/output.nltex_jmc" "$d/init/"
     fi
 # (a state of fewer ions, e.g. the saved sn3 states, extended to the atoms:
-# the added ions start in their ground states, Tools/extend_nltex_state.py)
-    python3 -I "$src/Tools/extend_nltex_state.py" "$d/init/output.nltex_state" - "$ATOMS" \
-      "$d/init/state.tmp" > "$d/init/extend.log" && mv "$d/init/state.tmp" "$d/init/output.nltex_state"
-    setup "$d" $m "$d/init/output.nltex_state"
+# the added ions start in their ground states, Tools/extend_nltex_state.py;
+# a model without a state, as the parameterized IBN and ICN, starts in LTE)
+    if [ -f "$d/init/output.nltex_state" ]; then
+      python3 -I "$src/Tools/extend_nltex_state.py" "$d/init/output.nltex_state" - "$ATOMS" \
+        "$d/init/state.tmp" > "$d/init/extend.log" && mv "$d/init/state.tmp" "$d/init/output.nltex_state"
+      setup "$d" $m "$d/init/output.nltex_state"
+    else
+      setup "$d" $m none
+    fi
     echo "$(date +%H:%M) $m: $niter iterations on $np ranks"
     run "$d"
   fi
