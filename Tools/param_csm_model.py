@@ -17,10 +17,15 @@ Layers, inside out, at time t after explosion (homologous ejecta v = r/t):
               across them (the lum column rises by L_sh)
   CSM         rho = Mdot/(4 pi r^2 v_w) at speed v_w out to --rout R_s
 The luminosity entering at r_in (from the deeper ejecta) is --lin (in L_sh).
+--rs, --mcds, --lsh and --cdscomp set the shell's radius, mass, power and
+composition directly (a shell of swept-up ejecta, as the CDS models of
+Dessart et al. 2022); the ejecta inside then move as v_s r/R_s.
 Temperatures are first guesses (the run finds its own: thermal balance).
 
 Compositions (mass fractions): ibn (He-rich, CNO-processed: N up, C and O
-down; H free unless --xh), icn (C/O-rich, He-poor), iin (solar, H-rich);
+down; H free unless --xh), icn (C/O-rich, He-poor), iin (solar, H-rich),
+he4mix (the mixed ejecta of a ~4 Msun helium star, approximately as model
+he4p0 of Dessart et al. 2022 for SN 2006jc);
 metals heavier than O at solar values (Asplund et al. 2009).  Ejecta take
 the same composition unless --ejcomp is given.
 
@@ -58,6 +63,14 @@ def composition(name, xh=0.0):
         x['c'], x['n'], x['o'] = 0.02 * cno, 0.93 * cno, 0.05 * cno
         x['h'] = xh
         x['he'] = 1.0 - xh - sum(x[e] for e in EL if e not in ('h', 'he'))
+    elif name == 'he4mix':
+        # the mixed ejecta of a ~4 Msun helium-star explosion swept into one
+        # shell, as Dessart, Hillier & Kuncarayakti (2022, A&A 658, A130)
+        # for SN 2006jc (their he4p0: He ~50 %, O second, O, Mg, Si, Ca
+        # enriched, Fe 1.6 %); approximate mass fractions
+        x.update(dict(h=0.0, he=0.50, c=0.04, n=0.005, o=0.216, ne=0.06, na=0.002, mg=0.04, si=0.07,
+                      s=0.03, ar=0.005, ca=0.012, fe=0.016, ni=0.004))
+        return x
     elif name == 'icn':
         # He-burning products (C/O-rich, some He, Ne from alpha capture)
         x['ne'] = 0.03
@@ -94,6 +107,10 @@ def main():
     ap.add_argument('--ncsm', type=int, default=50)
     ap.add_argument('--lin', type=float, default=0.3, help='luminosity entering at r_in [L_sh]')
     ap.add_argument('--kit', default=None, help='template directory (default: Runs/iin_day20/A4)')
+    ap.add_argument('--rs', type=float, default=None, help='shell radius [cm] (default: v_s t)')
+    ap.add_argument('--mcds', type=float, default=None, help='shell mass [Msun] (default: the swept-up CSM)')
+    ap.add_argument('--lsh', type=float, default=None, help='shock power [erg/s] (default: eps/2 Mdot/v_w dv^3)')
+    ap.add_argument('--cdscomp', default=None, help='shell composition (default: as the CSM)')
     a = ap.parse_args()
 
     src = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -101,11 +118,12 @@ def main():
     t = a.t * DAY
     vs, vw = a.vs * 1e5, a.vw * 1e5
     mdot = a.mdot * MSUN / YR
-    rs = vs * t
+    rs = a.rs if a.rs else vs * t
     q = mdot / vw                                   # g/cm: rho = q/(4 pi r^2)
-    lsh = 0.5 * a.eps * q * (vs - vw) ** 3
+    lsh = a.lsh if a.lsh else 0.5 * a.eps * q * (vs - vw) ** 3
     lin = a.lin * lsh
-    mcds = q * max(rs - vw * t, 0.0)                # the CSM swept up to R_s
+    mcds = a.mcds * MSUN if a.mcds else q * max(rs - vw * t, 0.0)   # default: the CSM swept up to R_s
+    xcds = composition(a.cdscomp or a.comp, a.xh)
     xcsm = composition(a.comp, a.xh)
     xej = composition(a.ejcomp or a.comp, a.xh)
 
@@ -117,11 +135,11 @@ def main():
     me = a.mej * MSUN * shells / shells.sum()
     for k in range(a.nej_cells):
         tk = max(1.2e4 * (re[k] / r_cds) ** -0.5, 6e3)
-        cells.append((re[k], re[k + 1], re[k] / t, re[k + 1] / t, me[k], tk, lin, xej))
+        cells.append((re[k], re[k + 1], vs * re[k] / rs, vs * re[k + 1] / rs, me[k], tk, lin, xej))
     # cold dense shell (moving at v_s; the reverse-shocked ejecta join it)
     rc = np.linspace(r_cds, rs, a.ncds + 1)
     for k in range(a.ncds):
-        cells.append((rc[k], rc[k + 1], vs, vs, mcds / a.ncds, 7e3, lin, xcsm))
+        cells.append((rc[k], rc[k + 1], vs, vs, mcds / a.ncds, 7e3, lin, xcds))
     # smeared shock: speed v_s -> v_w, density from the shell's to the wind's
     rh = np.linspace(rs, rs * (1.0 + a.dshock), a.nshock + 1)
     vh = np.linspace(vs, vw, a.nshock + 1)
