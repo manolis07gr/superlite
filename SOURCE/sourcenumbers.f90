@@ -17,7 +17,7 @@ subroutine sourcenumbers
 
   integer :: l,iimpi
   integer*8 :: n,ndone
-  integer :: nextra,nsmean
+  integer :: nextra,nsmean,nprev
   integer*8 :: nvacant(nmpi)
   integer*8 :: nstot,nsavail,nvacantall,ncactive
   real*8 :: etot,einv,pwr,edone,en,invn
@@ -38,6 +38,7 @@ subroutine sourcenumbers
 !-- etot
   etot = sum(grd_emit**pwr) + tot_esurf**pwr
   if(etot/=etot) stop 'sourcenumbers: etot nan'
+  if(etot>huge(etot)) stop 'sourcenumbers: etot infinite'
 
 !-- number of boundary particles (if any)
   src_nsurftot = nint(tot_esurf**pwr*nstot/etot)
@@ -59,7 +60,9 @@ subroutine sourcenumbers
   if(etot==0d0) einv = 0d0
   do l=1,grd_ncell
      en = grd_emit(l)**pwr
-     if(en==0d0) cycle
+!-- (only cells that emit: a cell with negative net emission is not
+!-- counted as active, and a particle given to it could not be taken back)
+     if(.not.(en>0d0)) cycle
 !-- continuously guide the rounding towards the correct cumulative value
      n = max(1,int(en*nsavail*einv))  !round down
      if(edone*einv>ndone*invn) n = n + 1  !round up
@@ -76,6 +79,7 @@ subroutine sourcenumbers
 !-- correct to exact target number
   nsmean = int(nstot/ncactive)
   do while(nextra/=0)
+     nprev = nextra
      if(src_nsurftot>=nsmean) then
         src_nsurftot = src_nsurftot + sign(1,nextra)
         nextra = nextra - sign(1,nextra)
@@ -83,9 +87,18 @@ subroutine sourcenumbers
      do l=1,grd_ncell
         if(nextra==0) exit
         if(grd_nvol(l)<nsmean) cycle
+!-- (a cell keeps at least one particle)
+        if(nextra<0 .and. grd_nvol(l)<=1) cycle
         grd_nvol(l) = grd_nvol(l) + sign(1,nextra)
         nextra = nextra - sign(1,nextra)
      enddo
+!-- (no cell with nsmean particles or more: lower the bar instead of
+!-- looping forever; an IBND model with an evenly spread or negative
+!-- emission hung here for a day)
+     if(nextra==nprev) then
+        if(nsmean<=1) stop 'sourcenumbers: cannot correct the particle number'
+        nsmean = max(1,nsmean/2)
+     endif
   enddo
 
 !-- from total nvol (over ALL RANKS) to nvol PER RANK
