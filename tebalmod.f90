@@ -65,6 +65,9 @@ module tebalmod
 !-- exchange, lines within super-levels; set by te_terms)
   real*8,public :: te_t4parts(3) = 0d0
   integer,public :: te_zsolve = 99
+!-- (diagnostics: the last te_balance had trial temperatures whose
+!-- statistical equilibrium stopped at its iteration limit)
+  logical,public :: te_lastunc = .false.
   integer,parameter,public :: te_nterm = 6
 !-- secant steps (te_stepsec) instead of te_step (inputparmod in_te_secant)
   logical,public :: te_secant = .false.
@@ -304,13 +307,14 @@ subroutine te_balance(told,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx,ca
   real*8,intent(out),optional :: tsolout
   real*8,intent(in),optional :: xprev(nxa_nst),dtinv
   integer,intent(in),optional :: scanlu
-  integer :: it,side,ielast
+  integer :: it,side,ielast,nunc
   real*8 :: nelast,xhlast,tlast(te_nterm)
   real*8 :: a,b,c,fa,fb,fc,tsol,lo,hi,step,elc(nxa_nel),scale
   logical :: lsol(nxa_nel),lfirst
   real*8 :: pa(nxa_nlv),pb(nxa_nlv),jl(nxa_nlin),wg(nxa_nlv)
 !
   ierr = 0
+  nunc = 0
   call te_pisums(ng,nug,dnug,jg,pa,pb)
   do it=1,nxa_nlin
      jl(it) = nx_jline(it,ng,nug,jg,jb(it),ljb(it))
@@ -376,6 +380,7 @@ subroutine te_balance(told,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx,ca
      tsol = exp(c)
   endif
   if(present(tsolout)) tsolout = tsol
+  te_lastunc = nunc > 0
 !-- damping and limiter
   tnew = told**(1d0-te_damp)*tsol**te_damp
   tnew = min(max(tnew, told/te_maxfac), told*te_maxfac)
@@ -410,8 +415,12 @@ contains
     xx = x
     call solve(t,xx,ne,beta,ie,100)
 !-- (a solve that fails, singular or not converged, is retried with more
-!-- iterations; if that fails too the terms are those of the old
-!-- populations)
+!-- iterations.  If it is still at its iteration limit the terms are those
+!-- of its last iterate: the old populations would leave the collisions
+!-- between states, the largest terms of a dense cell, in detailed balance
+!-- only at the excitation temperature of those populations, and the root
+!-- would be the old temperature whatever the heating.  A singular or not
+!-- finite solve takes the old populations.)
     if(ie /= 0) then
        xx = x
        call solve(t,xx,ne,beta,ie,400)
@@ -419,7 +428,11 @@ contains
     ielast = ie
     nelast = ne
     xhlast = xx(nxa_el(1)%xoff + nxa_el(1)%ns)
-    if(ie /= 0) then
+    if(ie == 2) then
+       if(any(xx /= xx) .or. any(abs(xx) > huge(xx)) .or. any(xx < 0d0)) ie = 1
+    endif
+    if(ie == 2) nunc = nunc + 1
+    if(ie == 1) then
        xx = x
        ne = neoth + free_el(xx)
     endif

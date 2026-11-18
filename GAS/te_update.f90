@@ -21,7 +21,7 @@ subroutine te_update(it)
   use mpimod, only:lmpi0,impi
   implicit none
   integer,intent(in) :: it
-  integer :: i,l,ierr,nfail,iel,k
+  integer :: i,l,ierr,nfail,iel,k,nunc
   real*8 :: neoth,qb,qv,gext,tnew,dmax,dmin,edep,ne,tsol,edl
   real*8 :: nel(nxa_nel),x(nxa_nst),nti(nxa_nst),ntx(nxa_nst),beta(nxa_nlin),terms(te_nterm)
   real*8 :: jl(nxa_nlin)
@@ -64,6 +64,7 @@ subroutine te_update(it)
           '    T_root'
   endif
   nfail = 0
+  nunc = 0
   dmax = 1d0
   dmin = 1d0
   do i=1,gas_ncell
@@ -136,6 +137,7 @@ subroutine te_update(it)
         call te_step(gas_temp(i),tsol,dprev(i),dloc(i),tnew)
      endif
      if(ierr/=0) nfail = nfail + 1
+     if(te_lastunc) nunc = nunc + 1
      if(lout) then
         x = nxt_xloc(:,i)
         if(nxt_dtinv>0d0) then
@@ -161,8 +163,9 @@ subroutine te_update(it)
      gas_temp(i) = tnew
   enddo
   if(lout) close(41)
-  if(lmpi0) write(6,'(1x,a,i3,a,f6.3,a,f6.3,a,i4)') 'T_e (it',it,'): change factor', &
-       dmin,' ..',dmax,' (rank 0), cells without root:',nfail
+  if(lmpi0) write(6,'(1x,a,i3,a,f6.3,a,f6.3,a,i4,a,i4)') 'T_e (it',it,'): change factor', &
+       dmin,' ..',dmax,' (rank 0), cells without root:',nfail, &
+       ', with unconverged trial populations:',nunc
 end subroutine te_update
 ! vim: fdm=marker
 !

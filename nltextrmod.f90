@@ -800,6 +800,9 @@ subroutine nxt_gas_solve(it,gncell,temp,trad,nelv,neoth,qb,qv,icell1,edep,kap,fc
 !-- (diagnostics: cells whose H ground-state rates are written, from the
 !-- environment variable SL_RATEDUMP, a comma-separated list of cell numbers)
   integer,allocatable,save :: idump(:)
+!-- (and SL_NXTRACE: cells whose iterations of the statistical equilibrium
+!-- are traced, nx_trace, to standard error)
+  integer,allocatable,save :: itrace(:)
   character(256) :: env
   integer :: ios,lu,jj
   character(24) :: fname
@@ -812,6 +815,13 @@ subroutine nxt_gas_solve(it,gncell,temp,trad,nelv,neoth,qb,qv,icell1,edep,kap,fc
      if(k > 0) read(env,*,iostat=ios) idump
      if(ios /= 0) deallocate(idump)
      if(.not.allocated(idump)) allocate(idump(0))
+     call get_environment_variable('SL_NXTRACE',env,status=ios)
+     k = 0
+     if(ios == 0 .and. len_trim(env) > 0) k = count([(env(i:i)==',',i=1,len_trim(env))]) + 1
+     allocate(itrace(k))
+     if(k > 0) read(env,*,iostat=ios) itrace
+     if(ios /= 0) deallocate(itrace)
+     if(.not.allocated(itrace)) allocate(itrace(0))
   endif
   nfail = 0
   nlim = 0
@@ -909,6 +919,8 @@ subroutine nxt_gas_solve(it,gncell,temp,trad,nelv,neoth,qb,qv,icell1,edep,kap,fc
      if(present(kap) .and. present(fcl) .and. present(dr) .and. it>1 .and. nxt_have_mc) &
           call nxt_ali_cell(nxt_ng,kap(:,i),fcl(i),dr(i),lali=nxt_alion)
      call ovl_jz(l)
+     nx_trace = any(itrace == l)
+     if(nx_trace) write(0,'(a,i4,a,i5,a,es11.4)') ' nx_trace: iteration',it,' cell',l,' T',temp(i)
      if(nxt_dtinv>0d0 .and. lfar) then
         call nx_solve_cell(temp(i),trad(i),nelv(:,i),neoth(i),qb(i),qv(i),nxt_ng, &
              nxt_nug,nxt_dnug,jg,jb,ljb,nti,ntx,x,ne,beta,ierr,xprev=nxt_xprev(:,l),dtinv=nxt_dtinv, &
@@ -923,6 +935,8 @@ subroutine nxt_gas_solve(it,gncell,temp,trad,nelv,neoth,qb,qv,icell1,edep,kap,fc
         call nx_solve_cell(temp(i),trad(i),nelv(:,i),neoth(i),qb(i),qv(i),nxt_ng, &
              nxt_nug,nxt_dnug,jg,jb,ljb,nti,ntx,x,ne,beta,ierr)
      endif
+     if(nx_trace) write(0,'(a,i5,a,i2)') ' nx_trace: cell',l,' done, ierr',ierr
+     nx_trace = .false.
      call nxt_ali_off
      if(nxn_on) call nxn_done
      nx_vtb = -1d0
