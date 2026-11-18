@@ -56,7 +56,7 @@
  in_nltex_ldb = 30d0
  in_nltex_vturb = 10d0
  in_nltex_vturbmax = 20d0
- in_nltex_dopmc = 2d0
+ in_nltex_dopmc = 0d0
  in_nltex_dis = t
  in_fi = t
  in_fi_wl1 = 3500d-8

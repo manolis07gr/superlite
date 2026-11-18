@@ -111,6 +111,11 @@ def main():
     ap.add_argument('--mcds', type=float, default=None, help='shell mass [Msun] (default: the swept-up CSM)')
     ap.add_argument('--lsh', type=float, default=None, help='shock power [erg/s] (default: eps/2 Mdot/v_w dv^3)')
     ap.add_argument('--cdscomp', default=None, help='shell composition (default: as the CSM)')
+    ap.add_argument('--deposit', default='shock', choices=['shock', 'cds'],
+                    help='where the lum column rises by L_sh: across the smeared shock (radiated '
+                         'with the CIE shock spectrum) or across the shell (deposited in the gas, '
+                         'as the CDS models of Dessart et al. 2022; with in_nt_sf, in_nt_lumg the '
+                         'share given to fast electrons)')
     a = ap.parse_args()
 
     src = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -138,8 +143,11 @@ def main():
         cells.append((re[k], re[k + 1], vs * re[k] / rs, vs * re[k + 1] / rs, me[k], tk, lin, xej))
     # cold dense shell (moving at v_s; the reverse-shocked ejecta join it)
     rc = np.linspace(r_cds, rs, a.ncds + 1)
+    dcds_l = lsh if a.deposit == 'cds' else 0.0
     for k in range(a.ncds):
-        cells.append((rc[k], rc[k + 1], vs, vs, mcds / a.ncds, 7e3, lin, xcds))
+        cells.append((rc[k], rc[k + 1], vs, vs, mcds / a.ncds, 7e3, lin + dcds_l * k / a.ncds, xcds))
+    lsh_s = 0.0 if a.deposit == 'cds' else lsh
+    lin_s = lin + dcds_l
     # smeared shock: speed v_s -> v_w, density from the shell's to the wind's
     rh = np.linspace(rs, rs * (1.0 + a.dshock), a.nshock + 1)
     vh = np.linspace(vs, vw, a.nshock + 1)
@@ -150,7 +158,7 @@ def main():
         f = (k + 0.5) / a.nshock
         rho = np.exp((1 - f) * np.log(rho_cds) + f * np.log(rho_w)) if f < 0.5 else rho_w * (1 + 4 * (1 - f))
         m = rho * 4.0 / 3.0 * np.pi * (rh[k + 1] ** 3 - rh[k] ** 3)
-        cells.append((rh[k], rh[k + 1], vh[k], vh[k + 1], m, 1e4, lin + lsh * k / a.nshock, xcsm))
+        cells.append((rh[k], rh[k + 1], vh[k], vh[k + 1], m, 1e4, lin_s + lsh_s * k / a.nshock, xcsm))
     # unshocked CSM wind
     rw = np.geomspace(rh[-1], a.rout * rs, a.ncsm + 1)
     for k in range(a.ncsm):
