@@ -38,7 +38,7 @@ module nltexmod
   real*8,parameter :: pi = 3.141592653589793d0
   real*8,parameter :: cc = 2.99792458d10, hh = 6.6260693d-27, kb = 1.3806505d-16
 !
-  public :: nx_el_rates,nx_el_matrix,nx_el_step,nx_solve_cell,nx_lte,nx_kq,nx_jline
+  public :: nx_el_rates,nx_el_matrix,nx_gth_solve,nx_el_step,nx_solve_cell,nx_lte,nx_kq,nx_jline
   public :: nx_beta_table,nx_beta,nx_betab_table,nx_bfac,nx_cx_rates,nx_cx_heat
   public :: nx_ytrap,nx_es_table,nx_bes,nx_vdop,nx_jes,nx_wq,nx_wwin,nx_bew,nx_pcont
   public :: nx_ovl_init,nx_ovl_zone,nx_ovl_cell,nx_ovl_terms,nx_ks
@@ -220,6 +220,14 @@ module nltexmod
 !-- fixed weight sustains when the undamped gain is below -3: Fe III in
 !-- the dense shell of IBND2), and grows back by 1.5 while it does not
   logical,public :: nx_adamp = .true.
+!-- (nx_gth) the linear statistical equilibrium by the elimination of
+!-- Grassmann, Taksar & Heyman (1985), without subtractions: every
+!-- population positive and to full relative accuracy however small (LU
+!-- gave ~200 negative Fe states in the shell of IBND2, clipped, which
+!-- kept the iteration from converging).  Steady state with non-negative
+!-- rates between states only; else (time-dependent equations, negative
+!-- terms of overlapping lines) LU.  Takes the whole element (no ion window).
+  logical,public :: nx_gth = .true.
   real*8,allocatable :: nx_adl(:),nx_adw(:)
   logical,public :: nx_win_full = .true.
   integer,public :: nx_win_ns(2) = 0     !states solved, states of the elements (windowed steps; diagnostics)
@@ -1337,6 +1345,66 @@ subroutine nx_el_rates(iel,temp,trad,ng,nug,dnug,jg,r,xo,nelo,neo)
 end subroutine nx_el_rates
 !
 !
+subroutine nx_gth_solve(n,m,i0,p)
+!-----------------------------------------------------------------------
+! Stationary populations p (sum 1) of the rate matrix m (m(s,s') = rate
+! s' -> s per particle in s', s /= s', all >= 0; the diagonal is not
+! used) by the state reduction of Grassmann, Taksar & Heyman (1985): the
+! states are removed one by one, each one's flows redistributed over the
+! others in proportion to its rates to them; only sums, products and
+! quotients of non-negative numbers, so every p is >= 0 and accurate
+! relative to itself.  State i0 (the most populated) is kept to the end,
+! so the ratios p/p(i0) stay below ~n.  A state with no flow out to the
+! remaining ones (none in a model atom with radiative decays and
+! recombination) gets the flow it receives over 1e-300.
+!-----------------------------------------------------------------------
+  integer,intent(in) :: n,i0
+  real*8,intent(in) :: m(n,n)
+  real*8,intent(out) :: p(n)
+  real*8,allocatable :: a(:,:)
+  real*8 :: sk(n),q(n),f
+  integer :: perm(n),i,j,k
+!
+  perm(1) = i0
+  k = 1
+  do i=1,n
+     if(i==i0) cycle
+     k = k + 1
+     perm(k) = i
+  enddo
+!-- a(i,j): rate perm(i) -> perm(j)
+  allocate(a(n,n))
+  do j=1,n
+     do i=1,n
+        a(i,j) = m(perm(j),perm(i))
+     enddo
+     a(j,j) = 0d0
+  enddo
+  sk = 0d0
+  do k=n,2,-1
+     sk(k) = sum(a(k,1:k-1))
+     if(sk(k) <= 0d0) cycle
+     do j=1,k-1
+        if(a(k,j) <= 0d0) cycle
+        f = a(k,j)/sk(k)
+        a(1:k-1,j) = a(1:k-1,j) + a(1:k-1,k)*f
+     enddo
+  enddo
+  q(1) = 1d0
+  do k=2,n
+     q(k) = dot_product(q(1:k-1),a(1:k-1,k))/max(sk(k),1d-300)
+!-- (a guess far from the solution: another state may hold far more than
+!-- i0; rescaled before the ratios overflow)
+     if(q(k) > 1d250) q(1:k) = q(1:k)*1d-250
+  enddo
+  q = q/sum(q)
+  do k=1,n
+     p(perm(k)) = q(k)
+  enddo
+  deallocate(a)
+end subroutine nx_gth_solve
+!
+!
 subroutine nx_el_matrix(iel,ne,r,jl,beta,nti,ntx,m)
 !-----------------------------------------------------------------------
 ! Rate matrix of element iel: m(s,s') = rate s' -> s per particle in s',
@@ -1482,6 +1550,7 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
   real*8 :: kq,bes,jle(size(jl)),b0,pin,pw,bjl,cx,dlb(4,size(jl)),wl,wu,gr,ees,pc
   real*8 :: adg(size(x)),ads,adn,adw,adm
   integer :: ado
+  logical :: lgth
   logical :: les,lesk,lfar,lfark,lovl,lstv
   real*8 :: m(nxa_el(iel)%ns,nxa_el(iel)%ns),xn(nxa_el(iel)%ns),xr(nxa_el(iel)%ns)
   real*8 :: msv(nxa_el(iel)%ns,nxa_el(iel)%ns)
@@ -1621,6 +1690,25 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
   endif
 !-- particle conservation replaces the equation of the most populated state
   ir = maxloc(x,1)
+!-- (nx_gth: non-negative rates between states, steady state)
+  lgth = nx_gth .and. .not.ltd .and. .not.present(mout)
+  if(lgth) then
+     do k=1,ns
+        do j=1,ns
+           if(j/=k .and. m(j,k) < 0d0) lgth = .false.
+        enddo
+        if(.not.lgth) exit
+     enddo
+  endif
+  if(lgth) then
+     if(nx_timing) call cpu_time(tm1)
+     call nx_gth_solve(ns,m,ir,xn)
+     info = 0
+     if(nx_timing) then
+        call cpu_time(tm2)
+        nx_tim(3) = nx_tim(3) + (tm2 - tm1)
+     endif
+  else
   m(ir,:) = 1d0
   xn = 0d0
   if(ltd) xn = -dti*xp
@@ -1680,6 +1768,7 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
   if(nx_timing) then
      call cpu_time(tm2)
      nx_tim(3) = nx_tim(3) + (tm2 - tm1)
+  endif
   endif
   if(nx_trace) xr = xn
   if(info/=0) then
