@@ -213,6 +213,14 @@ module nltexmod
 !-- cycled for 300 iterations in a Ca state at 6e-18 and an H state at
 !-- 6e-12 with every state above 1e-10 converged
   real*8,public :: nx_dmask = 1d-20
+!-- (nx_adamp) adaptive damping of nx_solve_cell: per element, the weight
+!-- of the new solution in the geometric mean (0.5) is halved, down to
+!-- 1/64, while the log change of the populations reverses its direction
+!-- from one iteration to the next (a period-2 oscillation, which the
+!-- fixed weight sustains when the undamped gain is below -3: Fe III in
+!-- the dense shell of IBND2), and grows back by 1.5 while it does not
+  logical,public :: nx_adamp = .true.
+  real*8,allocatable :: nx_adl(:),nx_adw(:)
   logical,public :: nx_win_full = .true.
   integer,public :: nx_win_ns(2) = 0     !states solved, states of the elements (windowed steps; diagnostics)
 !-- (nx_timing) seconds in nx_el_step: before the matrix, the matrix, the solve
@@ -1472,6 +1480,8 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
   integer,intent(out),optional :: irout
   integer :: ns,nl,k,kg,k0,info,ir,mo,j
   real*8 :: kq,bes,jle(size(jl)),b0,pin,pw,bjl,cx,dlb(4,size(jl)),wl,wu,gr,ees,pc
+  real*8 :: adg(size(x)),ads,adn,adw,adm
+  integer :: ado
   logical :: les,lesk,lfar,lfark,lovl,lstv
   real*8 :: m(nxa_el(iel)%ns,nxa_el(iel)%ns),xn(nxa_el(iel)%ns),xr(nxa_el(iel)%ns)
   real*8 :: msv(nxa_el(iel)%ns,nxa_el(iel)%ns)
@@ -1746,7 +1756,29 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
 !-- for states below ~1e-154, and a state at 0 never came back (an A7 Si
 !-- state that the linear solution gave 99.7 % stayed at 0 for 300
 !-- iterations)
-     x = sqrt(max(x,1d-300))*sqrt(xn)
+     adw = 0.5d0
+     if(nx_adamp .and. allocated(nx_adw)) then
+        ado = nxa_el(iel)%xoff
+        adm = max(nx_dmask,1d-12)
+        adg = 0d0
+        where(xn > adm .and. x > adm) adg = log(xn/x)
+        ads = dot_product(adg,nx_adl(ado+1:ado+ns))
+        adn = sqrt(dot_product(adg,adg)*dot_product(nx_adl(ado+1:ado+ns),nx_adl(ado+1:ado+ns)))
+        if(adn > 0d0) then
+           if(ads < -0.3d0*adn) then
+              nx_adw(iel) = max(0.5d0*nx_adw(iel),1d0/64d0)
+           elseif(ads > 0.3d0*adn) then
+              nx_adw(iel) = min(1.5d0*nx_adw(iel),0.5d0)
+           endif
+        endif
+        nx_adl(ado+1:ado+ns) = adg
+        adw = nx_adw(iel)
+     endif
+     if(adw == 0.5d0) then
+        x = sqrt(max(x,1d-300))*sqrt(xn)
+     else
+        x = max(x,1d-300)**(1d0-adw)*xn**adw
+     endif
      x = x/sum(x)
   endif
 contains
@@ -1928,6 +1960,15 @@ subroutine nx_solve_cell(temp,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx
   if(lse) lse = size(nx_ali_lst)==ng
   if(lse) call se_init
   wforce = .false.
+!-- (nx_adamp: the weights and the last log changes, from the start)
+  if(nx_adamp) then
+     if(allocated(nx_adl)) then
+        if(size(nx_adl)/=nxa_nst .or. size(nx_adw)/=nxa_nel) deallocate(nx_adl,nx_adw)
+     endif
+     if(.not.allocated(nx_adl)) allocate(nx_adl(nxa_nst),nx_adw(nxa_nel))
+     nx_adl = 0d0
+     nx_adw = 0.5d0
+  endif
   do it=1,mit
 !-- (ion window, nx_win_tol: the full systems in the first three iterations,
 !-- every tenth and the last)
