@@ -1551,6 +1551,8 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
   real*8 :: adg(size(x)),ads,adn,adw,adm
   integer :: ado
   logical :: lgth
+  real*8 :: gpo,gnw
+  integer :: gnj,gnk
   logical :: les,lesk,lfar,lfark,lovl,lstv
   real*8 :: m(nxa_el(iel)%ns,nxa_el(iel)%ns),xn(nxa_el(iel)%ns),xr(nxa_el(iel)%ns)
   real*8 :: msv(nxa_el(iel)%ns,nxa_el(iel)%ns)
@@ -1691,14 +1693,34 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
 !-- particle conservation replaces the equation of the most populated state
   ir = maxloc(x,1)
 !-- (nx_gth: non-negative rates between states, steady state)
+!-- (negative rates of round-off size, below 1e-10 of the state's
+!-- outflow, dropped; a larger one keeps LU, and the trace names it)
   lgth = nx_gth .and. .not.ltd .and. .not.present(mout)
   if(lgth) then
+     gnw = 0d0
+     gnj = 0
+     gnk = 0
      do k=1,ns
+        gpo = 0d0
         do j=1,ns
-           if(j/=k .and. m(j,k) < 0d0) lgth = .false.
+           if(j/=k .and. m(j,k) > 0d0) gpo = gpo + m(j,k)
         enddo
-        if(.not.lgth) exit
+        do j=1,ns
+           if(j==k .or. m(j,k) >= 0d0) cycle
+           if(-m(j,k) <= 1d-10*gpo) then
+              m(j,k) = 0d0
+           else
+              lgth = .false.
+              if(-m(j,k)/max(gpo,1d-300) > gnw) then
+                 gnw = -m(j,k)/max(gpo,1d-300)
+                 gnj = j
+                 gnk = k
+              endif
+           endif
+        enddo
      enddo
+     if(nx_trace .and. .not.lgth) write(0,'(a,i3,a,i5,a,i5,a,es11.3,a,es11.3)') ' nx_trace gth off: Z', &
+          nxa_el(iel)%z,' rate',gnk,' ->',gnj,' =',m(gnj,gnk),', of the outflow',gnw
   endif
   if(lgth) then
      if(nx_timing) call cpu_time(tm1)
