@@ -1551,8 +1551,8 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
   real*8 :: adg(size(x)),ads,adn,adw,adm
   integer :: ado
   logical :: lgth
-  real*8 :: gpo,gnw
-  integer :: gnj,gnk
+  real*8 :: gpo,gnw,cxj
+  integer :: gnj,gnk,gl,gu
   logical :: les,lesk,lfar,lfark,lovl,lstv
   real*8 :: m(nxa_el(iel)%ns,nxa_el(iel)%ns),xn(nxa_el(iel)%ns),xr(nxa_el(iel)%ns)
   real*8 :: msv(nxa_el(iel)%ns,nxa_el(iel)%ns)
@@ -1663,6 +1663,12 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
 !-- overlapping lines of the element: the photons of line k absorbed by its
 !-- partner j, n_u(k) A_k P(k,j), de-excite k and excite j (linear in the
 !-- population of k's upper state, so the exchange is implicit)
+!-- (nx_gth: the excitation of the partner as a rate per particle of its
+!-- lower state, cx n_u(k)/n_l(j) with the populations of the moment, so
+!-- that no rate between states is negative; the same at convergence)
+  ltd = .false.
+  if(present(xp) .and. present(dti)) ltd = dti > 0d0
+  lgth = nx_gth .and. .not.ltd .and. .not.present(mout)
   if(nxo_use) then
      do k=1,nl
         kg = k0 + k
@@ -1671,8 +1677,18 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
            cx = nxa_la(kg)*nxo_p(mo)*r%w(nxa_luv(kg)-nxa_el(iel)%lvoff)
            m(nxa_lsl(kg),nxa_lsu(kg)) = m(nxa_lsl(kg),nxa_lsu(kg)) + cx
            m(nxa_lsu(kg),nxa_lsu(kg)) = m(nxa_lsu(kg),nxa_lsu(kg)) - cx
-           m(nxa_lsu(nxo_par(mo)),nxa_lsu(kg)) = m(nxa_lsu(nxo_par(mo)),nxa_lsu(kg)) + cx
-           m(nxa_lsl(nxo_par(mo)),nxa_lsu(kg)) = m(nxa_lsl(nxo_par(mo)),nxa_lsu(kg)) - cx
+           if(lgth) then
+              gl = nxa_lsl(nxo_par(mo))
+              gu = nxa_lsu(nxo_par(mo))
+              if(gl /= gu) then
+                 cxj = min(cx*max(x(nxa_lsu(kg)),0d0)/max(x(gl),1d-300),1d100)
+                 m(gu,gl) = m(gu,gl) + cxj
+                 m(gl,gl) = m(gl,gl) - cxj
+              endif
+           else
+              m(nxa_lsu(nxo_par(mo)),nxa_lsu(kg)) = m(nxa_lsu(nxo_par(mo)),nxa_lsu(kg)) + cx
+              m(nxa_lsl(nxo_par(mo)),nxa_lsu(kg)) = m(nxa_lsl(nxo_par(mo)),nxa_lsu(kg)) - cx
+           endif
         enddo
      enddo
   endif
@@ -1695,7 +1711,6 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
 !-- (nx_gth: non-negative rates between states, steady state)
 !-- (negative rates of round-off size, below 1e-10 of the state's
 !-- outflow, dropped; a larger one keeps LU, and the trace names it)
-  lgth = nx_gth .and. .not.ltd .and. .not.present(mout)
   if(lgth) then
      gnw = 0d0
      gnj = 0
