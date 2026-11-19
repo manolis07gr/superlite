@@ -183,6 +183,8 @@ module nltexmod
 !-- the line's lower population of the moment
   logical,public :: nx_ovl_k0 = .false.
   real*8,allocatable,public :: nxo_kq0(:) !(nlin)
+!-- (nxo_xz) the populations with which the zones were made (nx_gth)
+  real*8,allocatable,public :: nxo_xz(:) !(nst)
   integer,public :: nx_gm_its = 0, nx_gm_fail = 0   !(nx_ovl_impl) GMRES iterations of the last solve, restarts exhausted (count)
   logical,public :: nxo_use = .false.
 !-- (nx_ovl_keep: nx_solve_cell keeps the zones the caller made for the
@@ -975,6 +977,11 @@ subroutine nx_ovl_cell(temp,nel,x,wg,qb,qv)
      if(ii > 1) nxo_jcl(k) = nxo_par(mm(ii))
   enddo
   nxo_kq0 = kq
+  if(allocated(nxo_xz)) then
+     if(size(nxo_xz) /= nxa_nst) deallocate(nxo_xz)
+  endif
+  if(.not.allocated(nxo_xz)) allocate(nxo_xz(nxa_nst))
+  nxo_xz = x
 end subroutine nx_ovl_cell
 !
 !
@@ -1551,7 +1558,7 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
   real*8 :: adg(size(x)),ads,adn,adw,adm
   integer :: ado
   logical :: lgth
-  real*8 :: gpo,gnw,cxj
+  real*8 :: gpo,gnw,cxj,gz
   integer :: gnj,gnk,gl,gu
   logical :: les,lesk,lfar,lfark,lovl,lstv
   real*8 :: m(nxa_el(iel)%ns,nxa_el(iel)%ns),xn(nxa_el(iel)%ns),xr(nxa_el(iel)%ns)
@@ -1664,8 +1671,12 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
 !-- partner j, n_u(k) A_k P(k,j), de-excite k and excite j (linear in the
 !-- population of k's upper state, so the exchange is implicit)
 !-- (nx_gth: the excitation of the partner as a rate per particle of its
-!-- lower state, cx n_u(k)/n_l(j) with the populations of the moment, so
-!-- that no rate between states is negative; the same at convergence)
+!-- lower state, so that no rate between states is negative.  The zone's
+!-- P(k,j) is that of the partner's depth when the zones were made
+!-- (populations nxo_xz); a thinner partner takes proportionally fewer
+!-- photons: cx n_u(k)/max(n_l(j), n_l(j) of the zones).  With n_l(j) of
+!-- the moment alone the flow out of n_l(j) did not depend on it, and a
+!-- state whose inflow fell short of it went to 0 at a constant ratio)
   ltd = .false.
   if(present(xp) .and. present(dti)) ltd = dti > 0d0
   lgth = nx_gth .and. .not.ltd .and. .not.present(mout)
@@ -1681,7 +1692,9 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
               gl = nxa_lsl(nxo_par(mo))
               gu = nxa_lsu(nxo_par(mo))
               if(gl /= gu) then
-                 cxj = min(cx*max(x(nxa_lsu(kg)),0d0)/max(x(gl),1d-300),1d100)
+                 gz = 0d0
+                 if(allocated(nxo_xz)) gz = nxo_xz(nxa_el(iel)%xoff+gl)
+                 cxj = min(cx*max(x(nxa_lsu(kg)),0d0)/max(x(gl),gz,1d-300),1d100)
                  m(gu,gl) = m(gu,gl) + cxj
                  m(gl,gl) = m(gl,gl) - cxj
               endif
