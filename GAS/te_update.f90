@@ -61,7 +61,7 @@ subroutine te_update(it)
           'LTE-opacity net cooling, NLTE photoionization heating, NLTE recombination cooling, '// &
           'NLTE collisional net cooling, Compton net cooling, external heating'
      write(41,'(a)') '#  cell        T_e       T_old     lte_net     pi_heat     rec_cool    coll_net    compton_net ext_heat'// &
-          '    T_root'
+          '    T_root  coll_max  Z  s  u'
   endif
   nfail = 0
   nunc = 0
@@ -153,7 +153,8 @@ subroutine te_update(it)
         enddo
         call te_terms(tnew,nxt_ng,nxt_nug,nxt_dnug,nxt_jg(:,l),capabs,gas_capemit(:,i),nel,x,ne, &
              gext,terms,beta=beta,jl=jl)
-        write(41,'(i7,2f12.1,6es12.4,f12.1)') l,tnew,gas_temp(i),terms,tsol
+        write(41,'(i7,2f12.1,6es12.4,f12.1,es12.4,i4,2i6)') l,tnew,gas_temp(i),terms,tsol, &
+             te_cmax(1),nint(te_cmax(2)),nint(te_cmax(3)),nint(te_cmax(4))
      endif
      call nxt_ali_off
      if(nxn_on) call nxn_done

@@ -64,6 +64,10 @@ module tebalmod
 !-- (diagnostics: terms(4) split into collisions between states, charge
 !-- exchange, lines within super-levels; set by te_terms)
   real*8,public :: te_t4parts(3) = 0d0
+!-- (diagnostics, set by te_terms: the collisional net cooling between
+!-- states per element [erg/s/cm^3], and its largest single term: value,
+!-- Z, states s -> u of the element)
+  real*8,public :: te_collel(99) = 0d0, te_cmax(4) = 0d0
   integer,public :: te_zsolve = 99
 !-- (diagnostics: the last te_balance had trial temperatures whose
 !-- statistical equilibrium stopped at its iteration limit)
@@ -232,6 +236,8 @@ subroutine te_terms(temp,ng,nug,dnug,jg,capabs,capem,nel,x,ne,gam_ext,terms,pa,p
 !-- collisions: excitation/de-excitation between states and
 !-- ionization/three-body recombination
   sm = 0d0
+  te_collel = 0d0
+  te_cmax = 0d0
   do iel=1,nxa_nel
      if(nel(iel) <= 0d0) cycle
      o = nxa_el(iel)%xoff
@@ -243,7 +249,11 @@ subroutine te_terms(temp,ng,nug,dnug,jg,capabs,capem,nel,x,ne,gam_ext,terms,pa,p
      do s=1,ns
         if(x(o+s) <= 0d0) cycle
         do u=1,ns
-           if(u/=s) sm = sm + nel(iel)*x(o+s)*(eup(s,u) - edn(s,u))
+           if(u/=s) then
+              sm = sm + nel(iel)*x(o+s)*(eup(s,u) - edn(s,u))
+              chi = ne*nel(iel)*x(o+s)*(eup(s,u) - edn(s,u))
+              if(abs(chi) > abs(te_cmax(1))) te_cmax = [chi,dble(nxa_el(iel)%z),dble(s),dble(u)]
+           endif
         enddo
      enddo
      do k=1,nxa_el(iel)%nlv
@@ -255,6 +265,7 @@ subroutine te_terms(temp,ng,nug,dnug,jg,capabs,capem,nel,x,ne,gam_ext,terms,pa,p
         sm = sm + nel(iel)*(x(o+nxa_lvs(lv))*wg(lv)*cil(k) - x(o+nxa_lvc(lv))*wc*ne*c3l(k))*chi
      enddo
      se(iel) = se(iel) + ne*abs(sm - sh0)
+     if(iel <= size(te_collel)) te_collel(iel) = ne*(sm - sh0)
      deallocate(cq,eup,edn,cil,c3l)
   enddo
   terms(4) = ne*sm
@@ -307,7 +318,7 @@ subroutine te_balance(told,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx,ca
   real*8,intent(out),optional :: tsolout
   real*8,intent(in),optional :: xprev(nxa_nst),dtinv
   integer,intent(in),optional :: scanlu
-  integer :: it,side,ielast,nunc
+  integer :: it,side,ielast,nunc,je
   real*8 :: nelast,xhlast,tlast(te_nterm)
   real*8 :: a,b,c,fa,fb,fc,tsol,lo,hi,step,elc(nxa_nel),scale
   logical :: lsol(nxa_nel),lfirst
@@ -397,6 +408,10 @@ subroutine te_balance(told,trad,nel,neoth,qb,qv,ng,nug,dnug,jg,jb,ljb,nti,ntx,ca
            fc = fval(c)
            write(scanlu,'(f10.1,es13.4,i3,11es13.4)') exp(c), fc/max(scale,1d-300), ielast, nelast, xhlast, tlast, &
                 te_t4parts
+           write(scanlu,'(a,99(1x,i2,es11.3))') '#   coll per element (Z, incl. ionization):', &
+                (nxa_el(je)%z,te_collel(je),je=1,min(nxa_nel,size(te_collel)))
+           write(scanlu,'(a,es11.3,a,i3,a,2i6)') '#   largest term',te_cmax(1),'  Z',nint(te_cmax(2)), &
+                '  states',nint(te_cmax(3)),nint(te_cmax(4))
         enddo
      endif
   endif
