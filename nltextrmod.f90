@@ -956,6 +956,11 @@ subroutine nxt_gas_solve(it,gncell,temp,trad,nelv,neoth,qb,qv,icell1,edep,kap,fc
              ' Z',nx_ld_z,' states',nx_ld_s,' ierr',ierr
         write(0,'(a)') ' linedump:  lambda[A]  K  beta_sob  bes  es_term  beta  J_inc  J_rates  '// &
              'x_l  x_u  S  net_rad_u->l  J_group  B(T_e)'
+        write(0,'(a,4es11.3,a,4es11.3)') ' linedump: rates l->u, u->l [1/s]: total',nx_ld_m(1:2), &
+             ' collisions',nx_ld_m(3:4),'; l->u non-thermal',nx_ld_m(5),' before charge exchange',nx_ld_m(6), &
+             ' all non-thermal from l',nx_ld_m(12),' (unused)',0d0
+        write(0,'(a,es11.3,a,i6,a,2es11.3)') ' linedump: inflow into u, largest',nx_ld_m(7),' from state', &
+             nint(nx_ld_m(8)),'; total in, out',nx_ld_m(10),nx_ld_m(9)
         do k=1,nx_ld_n
            ig = nxa_lgn(nx_ld_k(k))
            write(0,'(a,f11.3,13es11.3)') ' linedump:',nx_ld_v(:,k),jg(ig), &

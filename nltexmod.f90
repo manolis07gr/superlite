@@ -212,6 +212,11 @@ module nltexmod
   logical,public :: nx_ld_on = .false.
   integer,public :: nx_ld_z = 0, nx_ld_s(2) = 0, nx_ld_n = 0, nx_ld_k(8) = 0
   real*8,public :: nx_ld_v(12,8) = 0d0
+!-- (nx_ld_on) and the rates s_l -> s_u and back per particle [1/s]: total,
+!-- collisions, non-thermal, total before charge exchange; the largest
+!-- inflow into s_u [per particle of the element per s] and its state, the
+!-- total inflow into s_u, its outflow
+  real*8,public :: nx_ld_m(12) = 0d0
 !-- (nx_win_tol > 0: ion window) nx_el_step solves only the states of the
 !-- ions holding more than this fraction of the element, of their neighbours
 !-- and of the ions they feed directly (Auger, charge exchange); the other
@@ -1566,7 +1571,7 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
   real*8 :: kq,bes,jle(size(jl)),b0,pin,pw,bjl,cx,dlb(4,size(jl)),wl,wu,gr,ees,pc
   real*8 :: adg(size(x)),ads,adn,adw,adm
   integer :: ado
-  logical :: lgth
+  logical :: lgth,lld
   real*8 :: gpo,gnw,cxj,gz
   integer :: gnj,gnk,gl,gu
   logical :: les,lesk,lfar,lfark,lovl,lstv
@@ -1742,11 +1747,45 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
      enddo
   endif
   if(ldump) msv = m
+  lld = .false.
+  if(nx_ld_on) lld = nxa_el(iel)%z == nx_ld_z .and. nx_ld_s(1) >= 1 .and. nx_ld_s(2) <= ns .and. &
+       nx_ld_s(1) /= nx_ld_s(2)
+  if(lld) then
+     gl = nx_ld_s(1)
+     gu = nx_ld_s(2)
+     nx_ld_m = 0d0
+     nx_ld_m(3) = ne*r%cq(gl,gu)
+     nx_ld_m(4) = ne*r%cq(gu,gl)
+     do k=1,nxn_xn
+        if(nxn_xl(k)-nxa_el(iel)%xoff == gl .and. nxn_xu(k)-nxa_el(iel)%xoff == gu) &
+             nx_ld_m(5) = nx_ld_m(5) + nxn_xr(k)
+        if(nxn_xl(k)-nxa_el(iel)%xoff == gl) nx_ld_m(12) = nx_ld_m(12) + nxn_xr(k)
+     enddo
+     nx_ld_m(6) = m(gu,gl)
+  endif
   if(present(ncx)) then
      do k=1,ncx
         m(cxt(k),cxf(k)) = m(cxt(k),cxf(k)) + cxr(k)
         m(cxf(k),cxf(k)) = m(cxf(k),cxf(k)) - cxr(k)
      enddo
+  endif
+  if(lld) then
+     nx_ld_m(1) = m(gu,gl)
+     nx_ld_m(2) = m(gl,gu)
+     do k=1,ns
+        if(k == gu) cycle
+        cxj = m(gu,k)*max(x(k),0d0)
+        nx_ld_m(10) = nx_ld_m(10) + cxj
+        if(cxj > nx_ld_m(7)) then
+           nx_ld_m(7) = cxj
+           nx_ld_m(8) = k
+        endif
+     enddo
+     nx_ld_m(9) = 0d0
+     do k=1,ns
+        if(k /= gu) nx_ld_m(9) = nx_ld_m(9) + m(k,gu)
+     enddo
+     nx_ld_m(9) = nx_ld_m(9)*max(x(gu),0d0)
   endif
   ltd = .false.
   if(present(xp) .and. present(dti)) ltd = dti > 0d0
