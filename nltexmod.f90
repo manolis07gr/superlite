@@ -203,6 +203,15 @@ module nltexmod
 !-- (nx_trace: each iteration of nx_solve_cell to unit 0, with the element
 !-- of its largest change; diagnostics)
   logical,public :: nx_trace = .false.
+!-- (diagnostics, nx_ld_on: the rate terms of the lines of element Z =
+!-- nx_ld_z between its states nx_ld_s(1) -> nx_ld_s(2), from the last
+!-- nx_el_step: per line wavelength [A], K, Sobolev beta, bes, the e.s.
+!-- intensity term, beta of the rates, incident J, J in the rates, x_l,
+!-- x_u, S from the populations, net radiative u->l per particle of the
+!-- element [1/s])
+  logical,public :: nx_ld_on = .false.
+  integer,public :: nx_ld_z = 0, nx_ld_s(2) = 0, nx_ld_n = 0, nx_ld_k(8) = 0
+  real*8,public :: nx_ld_v(12,8) = 0d0
 !-- (nx_win_tol > 0: ion window) nx_el_step solves only the states of the
 !-- ions holding more than this fraction of the element, of their neighbours
 !-- and of the ions they feed directly (Auger, charge exchange); the other
@@ -1659,6 +1668,33 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
         endif
      endif
      jle(k) = bjl/max(beta(k),1d-300)
+     if(nx_ld_on) then
+        if(nxa_el(iel)%z == nx_ld_z .and. nxa_lsl(kg) == nx_ld_s(1) .and. nxa_lsu(kg) == nx_ld_s(2)) then
+           j = 0
+           do mo=1,nx_ld_n
+              if(nx_ld_k(mo) == kg) j = mo
+           enddo
+           if(j == 0 .and. nx_ld_n < size(nx_ld_k)) then
+              nx_ld_n = nx_ld_n + 1
+              j = nx_ld_n
+              nx_ld_k(j) = kg
+           endif
+           if(j > 0) then
+              wl = r%w(nxa_llv(kg)-nxa_el(iel)%lvoff)*x(nxa_lsl(kg))
+              wu = r%w(nxa_luv(kg)-nxa_el(iel)%lvoff)*x(nxa_lsu(kg))
+              gr = nxa_ion(nxa_lion(kg))%g(nxa_ion(nxa_lion(kg))%lu(nxa_lloc(kg)))/ &
+                   nxa_ion(nxa_lion(kg))%g(nxa_ion(nxa_lion(kg))%ll(nxa_lloc(kg)))
+              pc = 0d0
+              if(lesk) pc = bes
+              cx = 0d0
+              if(lesk) cx = ees
+              nx_ld_v(:,j) = [1d8*cc/nxa_lnu(kg),kq,b0,pc,cx,beta(k),jl(k),jle(k), &
+                   x(nxa_lsl(kg)),x(nxa_lsu(kg)), &
+                   2d0*hh*nxa_lnu(kg)**3/cc**2/max(gr*wl/max(wu,1d-300) - 1d0,1d-300), &
+                   beta(k)*((nxa_la(kg) + nxa_lbul(kg)*jle(k))*wu - nxa_lblu(kg)*jle(k)*wl)]
+           endif
+        endif
+     endif
   enddo
   if(nx_timing) call cpu_time(tm1)
   call nx_el_matrix(iel,ne,r,jle,beta,nti,ntx,m)

@@ -803,6 +803,9 @@ subroutine nxt_gas_solve(it,gncell,temp,trad,nelv,neoth,qb,qv,icell1,edep,kap,fc
 !-- (and SL_NXTRACE: cells whose iterations of the statistical equilibrium
 !-- are traced, nx_trace, to standard error)
   integer,allocatable,save :: itrace(:)
+!-- (and SL_LINEDUMP = cell,Z,s_l,s_u: the rate terms of the lines of
+!-- element Z between its states s_l -> s_u in that cell, nltexmod nx_ld_*)
+  integer,save :: ldump(4) = -1
   character(256) :: env
   integer :: ios,lu,jj
   character(24) :: fname
@@ -822,6 +825,11 @@ subroutine nxt_gas_solve(it,gncell,temp,trad,nelv,neoth,qb,qv,icell1,edep,kap,fc
      if(k > 0) read(env,*,iostat=ios) itrace
      if(ios /= 0) deallocate(itrace)
      if(.not.allocated(itrace)) allocate(itrace(0))
+     call get_environment_variable('SL_LINEDUMP',env,status=ios)
+     if(ios == 0 .and. len_trim(env) > 0) then
+        read(env,*,iostat=ios) ldump
+        if(ios /= 0) ldump = -1
+     endif
   endif
   nfail = 0
   nlim = 0
@@ -919,6 +927,13 @@ subroutine nxt_gas_solve(it,gncell,temp,trad,nelv,neoth,qb,qv,icell1,edep,kap,fc
      if(present(kap) .and. present(fcl) .and. present(dr) .and. it>1 .and. nxt_have_mc) &
           call nxt_ali_cell(nxt_ng,kap(:,i),fcl(i),dr(i),lali=nxt_alion)
      call ovl_jz(l)
+     nx_ld_on = ldump(1) == l
+     if(nx_ld_on) then
+        nx_ld_z = ldump(2)
+        nx_ld_s = ldump(3:4)
+        nx_ld_n = 0
+        nx_ld_k = 0
+     endif
      nx_trace = any(itrace == l)
      if(nx_trace) write(0,'(a,i4,a,i5,a,es11.4)') ' nx_trace: iteration',it,' cell',l,' T',temp(i)
      if(nxt_dtinv>0d0 .and. lfar) then
@@ -936,6 +951,19 @@ subroutine nxt_gas_solve(it,gncell,temp,trad,nelv,neoth,qb,qv,icell1,edep,kap,fc
              nxt_nug,nxt_dnug,jg,jb,ljb,nti,ntx,x,ne,beta,ierr)
      endif
      if(nx_trace) write(0,'(a,i5,a,i2)') ' nx_trace: cell',l,' done, ierr',ierr
+     if(nx_ld_on) then
+        write(0,'(a,i4,a,i5,a,es11.4,a,i3,a,2i6,a,i2)') ' linedump: iteration',it,' cell',l,' T',temp(i), &
+             ' Z',nx_ld_z,' states',nx_ld_s,' ierr',ierr
+        write(0,'(a)') ' linedump:  lambda[A]  K  beta_sob  bes  es_term  beta  J_inc  J_rates  '// &
+             'x_l  x_u  S  net_rad_u->l  J_group  B(T_e)'
+        do k=1,nx_ld_n
+           ig = nxa_lgn(nx_ld_k(k))
+           write(0,'(a,f11.3,13es11.3)') ' linedump:',nx_ld_v(:,k),jg(ig), &
+                2d0*6.6260693d-27*nxa_lnu(nx_ld_k(k))**3/2.99792458d10**2/ &
+                (exp(min(6.6260693d-27*nxa_lnu(nx_ld_k(k))/(1.3806505d-16*temp(i)),700d0)) - 1d0)
+        enddo
+        nx_ld_on = .false.
+     endif
      nx_trace = .false.
      call nxt_ali_off
      if(nxn_on) call nxn_done
