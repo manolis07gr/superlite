@@ -121,7 +121,14 @@ def main():
             cur = [k]
     groups.append(cur)
 
-    m = col['m_cell']
+    m = col['m_cell'].copy()
+    # some MESA/STELLA profiles (e.g. the C-series CSM zones) carry zero cell
+    # masses: take those from the density and the zone volume
+    bad = ~(m > 0)
+    if bad.any():
+        mv = col['rho'] * 4.0 / 3.0 * np.pi * (r_out ** 3 - r_in ** 3)
+        print(f'{bad.sum()} zones with zero cell mass: mass = rho * volume ({mv[bad].sum() / MSUN:.4f} Msun)')
+        m[bad] = mv[bad]
     rows = []
     for g in groups:
         mg = m[g].sum()
