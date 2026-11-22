@@ -111,6 +111,9 @@ def main():
     ap.add_argument('--mcds', type=float, default=None, help='shell mass [Msun] (default: the swept-up CSM)')
     ap.add_argument('--lsh', type=float, default=None, help='shock power [erg/s] (default: eps/2 Mdot/v_w dv^3)')
     ap.add_argument('--cdscomp', default=None, help='shell composition (default: as the CSM)')
+    ap.add_argument('--fcds', type=float, default=1.0,
+                    help='volume filling factor of the clumps in the shell (microclumping, the fcl '
+                         'column; 1: smooth)')
     ap.add_argument('--deposit', default='shock', choices=['shock', 'cds'],
                     help='where the lum column rises by L_sh: across the smeared shock (radiated '
                          'with the CIE shock spectrum) or across the shell (deposited in the gas, '
@@ -133,6 +136,7 @@ def main():
     xej = composition(a.ejcomp or a.comp, a.xh)
 
     cells = []   # (r1, r2, v1, v2, mass, T, L_inner, x)
+    fcl = []     # volume filling factor per cell
     # ejecta
     r_in, r_cds = a.rin * rs, rs * (1.0 - a.dcds)
     re = np.linspace(r_in, r_cds, a.nej_cells + 1)
@@ -146,6 +150,7 @@ def main():
     dcds_l = lsh if a.deposit == 'cds' else 0.0
     for k in range(a.ncds):
         cells.append((rc[k], rc[k + 1], vs, vs, mcds / a.ncds, 7e3, lin + dcds_l * k / a.ncds, xcds))
+        fcl.append((len(cells) - 1, a.fcds))
     lsh_s = 0.0 if a.deposit == 'cds' else lsh
     lin_s = lin + dcds_l
     # smeared shock: speed v_s -> v_w, density from the shell's to the wind's
@@ -167,12 +172,18 @@ def main():
         cells.append((rw[k], rw[k + 1], vw, vw, m, tk, lin + lsh, xcsm))
 
     os.makedirs(a.out, exist_ok=True)
+    lfcl = a.fcds < 1.0
+    fc = [1.0] * len(cells)
+    for i, f in fcl:
+        fc[i] = f
     with open(os.path.join(a.out, 'input.str'), 'w') as fh:
         fh.write('# 1D spherical\n')
-        fh.write('# %8d %10d 1 %d %d\n' % (len(cells), 1, len(EL) + 8, len(EL)))
-        fh.write('# x_left  x_right  vx_left  vx_right  mass  rad_temp  temp  lum  ' + '  '.join(EL) + '\n')
-        for r1, r2, v1, v2, m, tk, lk, x in cells:
-            fh.write(' '.join('%.6e' % v for v in [r1, r2, v1, v2, m, tk, tk, lk] + [x[e] for e in EL]) + '\n')
+        fh.write('# %8d %10d 1 %d %d\n' % (len(cells), 1, len(EL) + 8 + lfcl, len(EL)))
+        fh.write('# x_left  x_right  vx_left  vx_right  mass  rad_temp  temp  lum  ' + ('fcl  ' if lfcl else '')
+                 + '  '.join(EL) + '\n')
+        for i, (r1, r2, v1, v2, m, tk, lk, x) in enumerate(cells):
+            fh.write(' '.join('%.6e' % v for v in [r1, r2, v1, v2, m, tk, tk, lk] + ([fc[i]] if lfcl else [])
+                              + [x[e] for e in EL]) + '\n')
     ltot = lin + lsh
     name = a.name or '%s_d%g' % (a.comp, a.t)
     par = open(os.path.join(kit, 'input.par')).read().splitlines()
