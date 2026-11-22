@@ -34,6 +34,7 @@
 #   EXTRA     namelist settings added to input.par of the iterations, e.g.
 #             EXTRA="in_nltex_overlap = 0d0" (tests; use another work dir)
 #   NOFI      if set, no formal integral (tests)
+#   KIT       directory of the model inputs (default: this directory)
 #   MPIRUN    the MPI launcher (default mpirun; e.g. "srun" on a cluster, or
 #             "mpirun --mca btl self,sm" on one machine without the TCP warnings)
 # Each model runs in <work dir>/<model> (run.log, output.*), its spectrum in
@@ -44,7 +45,7 @@
 set -e
 [ $# -ge 2 ] || { sed -n '2,30p' "$0"; exit 1; }
 src=$(cd "$(dirname "$0")/../.." && pwd)
-kit=$src/Runs/iin_day20
+kit=${KIT:-$src/Runs/iin_day20}
 if [ "$1" = "-" ]; then
   atomic=-
   [ -n "$ATOMS" ] || { echo "atomic dir '-' needs ATOMS"; exit 1; }
