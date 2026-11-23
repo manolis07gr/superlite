@@ -1755,6 +1755,13 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
         kg = k0 + k
         do mo=nxo_ptr(kg),nxo_ptr(kg+1)-1
            if(nxa_lel(nxo_par(mo)) /= iel .or. nxo_p(mo) <= 0d0) cycle
+!-- (a partner between the same two states, as the lines of a multiplet
+!-- between two super-levels: the exchange moves one atom down and one up
+!-- between them, no net flow.  In the GTH form the upward half is lagged,
+!-- a coupling of the two states faster than all their other rates that
+!-- left the iteration creeping at a few 1e-5 per step: Si III 3p2 3P -
+!-- 3s3p 3P, 1298.89/1298.96)
+           if(nxa_lsl(nxo_par(mo)) == nxa_lsl(kg) .and. nxa_lsu(nxo_par(mo)) == nxa_lsu(kg)) cycle
            cx = nxa_la(kg)*nxo_p(mo)*r%w(nxa_luv(kg)-nxa_el(iel)%lvoff)
            m(nxa_lsl(kg),nxa_lsu(kg)) = m(nxa_lsl(kg),nxa_lsu(kg)) + cx
            m(nxa_lsu(kg),nxa_lsu(kg)) = m(nxa_lsu(kg),nxa_lsu(kg)) - cx
