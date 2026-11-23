@@ -1,0 +1,2 @@
+twin of Runs/iin_day20/C14: age 30.3709 d, 775-8930 km/s, mass 2.4530 Msun (kit 2.4530), 95 SuperLite cells, 240 CMFGEN points
+power added 7.6902e+42 erg/s (all as heat), inner boundary 6.8159e+39 erg/s, L_bol (in_L_bol) 7.6970e+42
