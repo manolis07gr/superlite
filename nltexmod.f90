@@ -151,6 +151,17 @@ module nltexmod
   integer,allocatable,public :: nxo_par(:),nxo_rev(:) !(npair)
   real*8,allocatable,public :: nxo_du(:)              !(npair)
   real*8,allocatable,public :: nxo_rho(:)             !(nlin)
+!-- (nxo_ra: the absorption of the zone's incident intensity by the line,
+!-- <A_k/tau_k> of nx_ovl_zone, relative to the line's own Sobolev
+!-- <(1 - exp(-tau))/tau>; 1 without overlap.  The rates take ra beta J:
+!-- the identity A_k/tau_k = esc + sum_j P(k,j) - sum_j tau_j P(j,k)/tau_k
+!-- holds only for the depths the zones were made with, and with the depths
+!-- of the moment its two sides of order 1 left a difference of order 1
+!-- where it is of order 1/tau: Si III 1206.555 in a dense shell absorbed
+!-- 5e8 times the incident photons, pumped 3s3p 1P to a quarter of Si
+!-- through 1206.500, and its collisional de-excitation heated the gas
+!-- with 1e4 times the deposited power)
+  real*8,allocatable,public :: nxo_ra(:)              !(nlin)
   real*8,allocatable,public :: nxo_p(:)               !(npair)
   integer,allocatable,public :: nxo_jcl(:)            !(nlin)
 !-- (nx_ovl_terms, per line with the current populations: the probability
@@ -726,6 +737,7 @@ subroutine nx_ovl_init(dv)
   real*8 :: du
   if(allocated(nxo_ptr)) deallocate(nxo_ptr,nxo_par,nxo_rev,nxo_du)
   if(allocated(nxo_rho)) deallocate(nxo_rho,nxo_p,nxo_jcl,nxo_out,nxo_ins,nxo_inw,nxo_jz,nxo_oux)
+  if(allocated(nxo_ra)) deallocate(nxo_ra)
   if(allocated(nxo_inwx)) deallocate(nxo_inwx)
   nx_ovl_dv = max(dv,0d0)
   nxo_npair = 0
@@ -798,7 +810,7 @@ subroutine nx_ovl_init(dv)
         if(nxo_rev(m)==0) stop 'nx_ovl_init: pair without its reverse'
      enddo
   enddo
-  allocate(nxo_rho(nxa_nlin),nxo_p(max(nxo_npair,1)),nxo_jcl(nxa_nlin))
+  allocate(nxo_rho(nxa_nlin),nxo_p(max(nxo_npair,1)),nxo_jcl(nxa_nlin),nxo_ra(nxa_nlin))
   allocate(nxo_out(nxa_nlin),nxo_ins(nxa_nlin),nxo_inw(nxa_nlin),nxo_jz(nxa_nlin),nxo_oux(nxa_nlin))
   allocate(nxo_inwx(nxa_nlin))
   if(allocated(nxo_smx)) deallocate(nxo_smx)
@@ -809,6 +821,7 @@ subroutine nx_ovl_init(dv)
   allocate(nxo_kq0(nxa_nlin))
   nxo_kq0 = 0d0
   nxo_rho = 1d0
+  nxo_ra = 1d0
   nxo_p = 0d0
   nxo_jcl = [(k,k=1,nxa_nlin)]
   nxo_oux = 0d0
@@ -837,7 +850,7 @@ contains
 end subroutine nx_ovl_init
 !
 !
-pure subroutine nx_ovl_zone(nl,u,vd,kq,k,qb,qv,esc,bet1,p,aext)
+pure subroutine nx_ovl_zone(nl,u,vd,kq,k,qb,qv,esc,bet1,p,aext,atau)
 !-----------------------------------------------------------------------
 ! Resonance zone of nl overlapping lines in the Sobolev approximation with
 ! complete redistribution over Doppler profiles: centres u [cm/s] (to the
@@ -855,12 +868,13 @@ pure subroutine nx_ovl_zone(nl,u,vd,kq,k,qb,qv,esc,bet1,p,aext)
 ! 1, and with A_k the absorption by line k of photons incident from the
 ! blue, tau_k (esc + sum_{j/=k} p(j)) = A_k + sum_{j/=k} tau_j p_j(k) per
 ! direction (detailed balance; test_overlap).  aext (optional): A_j
-! averaged over the directions.
+! averaged over the directions; atau (optional): A_j/tau_j averaged over
+! the directions (A_j/tau_j -> 1 for tau_j -> 0).
 !-----------------------------------------------------------------------
   integer,intent(in) :: nl,k
   real*8,intent(in) :: u(nl),vd(nl),kq(nl),qb,qv
   real*8,intent(out) :: esc,bet1,p(nl)
-  real*8,intent(out),optional :: aext(nl)
+  real*8,intent(out),optional :: aext(nl),atau(nl)
   integer,parameter :: nmu = 8, nmax = 4000
   integer :: n,i,j,im
   real*8 :: umin,umax,du,qs,mu,q,dd,t,s,e1,es,wk,em,tk
@@ -884,6 +898,7 @@ pure subroutine nx_ovl_zone(nl,u,vd,kq,k,qb,qv,esc,bet1,p,aext)
   bet1 = 0d0
   p = 0d0
   if(present(aext)) aext = 0d0
+  if(present(atau)) atau = 0d0
   do im=1,nmu
      mu = (im-0.5d0)/nmu
      q = max(abs(mu*mu*qb + (1d0-mu*mu)*qv),1d-3*qs)
@@ -916,6 +931,15 @@ pure subroutine nx_ovl_zone(nl,u,vd,kq,k,qb,qv,esc,bet1,p,aext)
      esc = esc + em
      p = p + pm
      if(present(aext)) aext = aext + a
+     if(present(atau)) then
+        do j=1,nl
+           if(tau(j) > 1d-10) then
+              atau(j) = atau(j) + a(j)/tau(j)
+           else
+              atau(j) = atau(j) + 1d0
+           endif
+        enddo
+     endif
      tk = tau(k)
      if(tk > 1d-6) then
         bet1 = bet1 + (1d0 - exp(-tk))/tk
@@ -927,6 +951,7 @@ pure subroutine nx_ovl_zone(nl,u,vd,kq,k,qb,qv,esc,bet1,p,aext)
   bet1 = bet1/nmu
   p = p/nmu
   if(present(aext)) aext = aext/nmu
+  if(present(atau)) atau = atau/nmu
 end subroutine nx_ovl_zone
 !
 !
@@ -946,7 +971,7 @@ subroutine nx_ovl_cell(temp,nel,x,wg,qb,qv)
   integer,parameter :: mz = 64
   integer :: k,m,j,iel,nl,ii,o,ns,lo,nv,mm(mz)
   real*8 :: kq(nxa_nlin),vdl(nxa_nel),qtyp,esc,bet1
-  real*8 :: uu(mz),vv(mz),kk(mz),pp(mz)
+  real*8 :: uu(mz),vv(mz),kk(mz),pp(mz),at(mz)
   if(nxo_npair <= 0) return
   qtyp = max((abs(qb) + 2d0*abs(qv))/3d0,1d-3*max(abs(qb),abs(qv)),1d-30)
   do iel=1,nxa_nel
@@ -962,6 +987,7 @@ subroutine nx_ovl_cell(temp,nel,x,wg,qb,qv)
   enddo
   do k=1,nxa_nlin
      nxo_rho(k) = 1d0
+     nxo_ra(k) = 1d0
      nxo_jcl(k) = k
      if(nxo_ptr(k+1) <= nxo_ptr(k)) cycle
      nxo_p(nxo_ptr(k):nxo_ptr(k+1)-1) = 0d0
@@ -981,8 +1007,11 @@ subroutine nx_ovl_cell(temp,nel,x,wg,qb,qv)
         mm(nl) = m
      enddo
      if(nl < 2) cycle
-     call nx_ovl_zone(nl,uu(1:nl),vv(1:nl),kk(1:nl),1,qb,qv,esc,bet1,pp(1:nl))
-     if(bet1 > 0d0) nxo_rho(k) = esc/bet1
+     call nx_ovl_zone(nl,uu(1:nl),vv(1:nl),kk(1:nl),1,qb,qv,esc,bet1,pp(1:nl),atau=at(1:nl))
+     if(bet1 > 0d0) then
+        nxo_rho(k) = esc/bet1
+        nxo_ra(k) = min(at(1)/bet1,1d0)
+     endif
      ii = 1
      do j=2,nl
         nxo_p(mm(j)) = pp(j)
@@ -1601,9 +1630,9 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
      b0 = nx_beta(kq,qb,qv,btab)
 !-- overlapping lines (nxo_use; nx_ovl_terms): escape from the zone
 !-- rho beta and absorption by the partners of other elements sum_j P(k,j),
-!-- their photons absorbed, and the zone's incident intensity with the
-!-- factor of detailed balance over all partners (LTE gives J = S); beta
-!-- and beta*J of the rates.  The exchange with the partners of the element
+!-- their photons absorbed, and the zone's incident intensity absorbed by
+!-- the line, ra beta (nxo_ra: A_k/tau_k of the zone); beta and beta*J of
+!-- the rates.  The exchange with the partners of the element
 !-- is in its rate matrix (below).
      lovl = nxo_use
      if(lovl) lovl = nxo_out(kg) > 0d0 .or. nxo_inw(kg) > 0d0
@@ -1624,7 +1653,7 @@ subroutine nx_el_step(iel,nel,ne,qb,qv,btab,jl,r,nti,ntx,it,x,beta,d,ierr, &
            if(kq > 0d0) pw = pw - nxo_inwx(kg)/kq
            bjl = max(nxo_rho(kg)*b0 + nxo_out(kg) - pw,0d0)*nxo_jz(kg)
         else
-           bjl = max(nxo_rho(kg)*b0 + nxo_out(kg) - pw,0d0)*nxo_jz(kg) + pin
+           bjl = nxo_ra(kg)*b0*nxo_jz(kg) + pin
 !-- (the zone's incident intensity is a mean of its own J and the source
 !-- functions of the partners: no more than the largest of them.  The
 !-- lagged terms over the line's depth of the moment, nxo_ins/K and

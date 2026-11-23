@@ -2046,9 +2046,8 @@ contains
        if(nxo_out(kk) <= 0d0 .and. nxo_inw(kk) <= 0d0) cycle
        kc = nxt_kq(kk,ic)/fc
        bc = nxo_rho(kk)*nxt_beta(kk,ic)
-       bx = bc + nxo_out(kk)
-       if(kc > 0d0) bx = bx - nxo_inw(kk)/kc
-       bx = max(bx,0d0)
+!-- (the incident intensity absorbed: nxo_ra beta, nltexmod)
+       bx = nxo_ra(kk)*nxt_beta(kk,ic)
        bu(kk) = bu(kk) - nxt_beta(kk,ic) + bc
        bj(kk) = bj(kk) - nxt_beta(kk,ic)*jl(kk) + bx*nxo_jz(kk)
        nxt_beta(kk,ic) = bc
