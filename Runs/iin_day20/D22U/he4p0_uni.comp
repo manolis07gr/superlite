@@ -1,0 +1,12 @@
+# he4p0 uniform: mass average of he4p0_strat.prof (he4p0 CDS composition (Dessart, Hillier & Kuncarayakti 2022 Fig. 4, vector-extracted from the PDF); not plotted there, filled from the deficit: Ne = 0.4 O, S = 0.5 Si, the rest as Fe (56Co, 56Fe, Ni), Na = 1e-3 O)
+he  5.57622e-01
+c   6.04290e-02
+n   3.88545e-03
+o   1.98334e-01
+ne  7.79869e-02
+na  1.98334e-04
+mg  2.40615e-02
+si  3.24506e-02
+s   1.52043e-02
+ca  8.96088e-04
+fe  2.89326e-02

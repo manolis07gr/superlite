@@ -1,7 +1,7 @@
 &inputpars
 
- in_name = 'D22A_he2p6_cds3e15_p2e42'
- in_comment = 'twin of Dessart, Hillier & Kuncarayakti 2022 pwr2e42_he2p6_CDS_3e15 (Tools/ibn_cds_reference.py --comp he2p6_mix)'
+ in_name = 'D22S_he4p0_cds3e15_p2e42'
+ in_comment = 'twin of Dessart, Hillier & Kuncarayakti 2022 pwr2e42_he4p0_CDS_3e15 (Tools/ibn_cds_reference.py)'
 
 !-- misc
  in_nomp = 1

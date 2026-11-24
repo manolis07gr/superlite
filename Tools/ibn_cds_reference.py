@@ -63,6 +63,10 @@ def main():
     ap.add_argument('--comp', default=None, help='file of mass fractions ("el X" per line, # comments) '
                     'for the shell and the ejecta, instead of he4mix; with --comp-csm also for the CSM')
     ap.add_argument('--comp-csm', action='store_true', help='the CSM takes the --comp composition too')
+    ap.add_argument('--comp-profile', default=None, help='file of the shell composition against velocity '
+                    '(# header line naming the elements after v[km/s]; one row per velocity): '
+                    'a stratified shell, interpolated in v and held constant beyond the table; '
+                    'the ejecta and (with --comp-csm) the CSM take its innermost and outermost rows')
     a = ap.parse_args()
     t = a.t * DAY
     dvp = a.dvpow if a.dvpow else np.sqrt(2.0) * a.scds
@@ -92,11 +96,35 @@ def main():
     ash = a.mcds * MSUN / np.sum(sh * dm)
     aej = a.mej * MSUN / np.sum(ej * dm)
 
+    prof = None
+    if a.comp_profile:
+        names = None
+        rows = []
+        for l in open(a.comp_profile):
+            if l.startswith('#'):
+                t_ = l[1:].split()
+                if t_ and t_[0].lower().startswith('v['):
+                    names = [w.lower() for w in t_ if w.lower() in EL]
+                continue
+            if l.strip(): rows.append([float(w) for w in l.split()])
+        rows = np.array(rows)
+        rows = rows[np.argsort(rows[:, 0])]
+        prof = {'v': rows[:, 0]}
+        for i, e in enumerate(names): prof[e] = rows[:, i + 1]
+        for e in EL: prof.setdefault(e, np.zeros(len(rows)))
+        tot = sum(prof[e] for e in EL)
+        for e in EL: prof[e] = prof[e] / tot
+
     def rho_x(v):
         sh, ej, cs = rho_parts(v)
         sh, ej = ash * sh, aej * ej
         rho = sh + ej + cs
-        x = {e: (sh * x_sh[e] + ej * x_sh[e] + cs * x_csm[e]) / rho for e in EL}
+        if prof is None:
+            x = {e: (sh * x_sh[e] + ej * x_sh[e] + cs * x_csm[e]) / rho for e in EL}
+        else:
+            xv = {e: np.interp(v, prof['v'], prof[e]) for e in EL}
+            xc = {e: (prof[e][-1] if a.comp_csm else x_csm[e]) for e in EL}
+            x = {e: ((sh + ej) * xv[e] + cs * xc[e]) / rho for e in EL}
         return rho, x
 
     pw = lambda v: np.exp(-((v - a.vcds) / dvp) ** 2)
