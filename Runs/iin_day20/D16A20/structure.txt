@@ -1,0 +1,2 @@
+model A of Dessart+2016 from modelA_20d_raw.npz: 120 cells, 5.25e+13-5.94e+15 cm, mass 10.4361 Msun, L_bol 2.3770e+43 erg/s
+composition: h 0.6255 he 0.3613 c 0.00237 n 0.000693 o 0.00573 ne 0.00126 na 2.9e-05 mg 0.000708 si 0.000665 s 0.000309 ca 6.4e-05 fe 0.00129
