@@ -43,9 +43,31 @@ non-thermal routine changed to scale its rates by the shock power too,
 and the separate shock heating skipped.  That is a change to CMFGEN to
 report to its author, not something done here.
 
-## Restart
+## Running the corrected model
 
-The corrected run can start from the saved populations of the first run
-(SCRTEMP, POINT1, POINT2 at iteration 33): copy VADAT into the model
-directory and run `run_cmfgen.sh` again.  T will move a lot at first,
-because the heating halves.
+A restart from the first run's populations (iteration 33) did not
+converge: each restart read the stored BA matrix (`BAMAT`) of the old
+state and took a stale step, and the populations, built with twice the
+heating, kept swinging (at iteration 38, over 1000 of about 1350
+variables per depth changed by more than 100 % at depths 1-21).  Two
+rules for running it:
+
+1. **Start fresh** (no `SCRTEMP`, `POINT1`, `POINT2`): LTE start,
+   `LTE_EST = T`.  The first 15-17 iterations are LAMBDA iterations
+   with T fixed; the variables changing by more than 100 % per depth
+   fell from 818 to 0 by iteration 15.
+2. **Delete `BAMAT` and `BAMATPNT` before every restart.**  CMFGEN reads
+   them at restart and skips computing BA.
+
+Then **set `LAM_VAL` to 1e15** (restart, it is read at start).  In the
+cool inner layers (depths 65-80) a few trace levels (O V) fall almost to
+zero and come back in LAMBDA iterations, where impurity species are not
+fixed.  The maximum change stays at 1e5-1e11 %, above `LAM_VAL = 1e4`,
+so CMFGEN never leaves LAMBDA mode and T is never freed
+(`DO_T_AUTO` frees it when the maximum change falls below 50 %).  At
+iteration 17 the luminosity was 2.22e9 Lsun, against 1.567e9 Lsun
+deposited.  With LAMBDA iterations off, the BA iterations fix the
+impurity species (`FIX_IMP = T`) and T can vary.
+
+Each iteration that computes BA takes about 80 minutes on 2 threads
+(80 depths, NT = 1596); one that reuses it, a few minutes.
