@@ -76,4 +76,5 @@
  in_nltex_ovlx = f
  in_nltex_dmask = 1d-10
  in_nltex_init = '@INIT@'
+ in_nltex_fij = 1
 /

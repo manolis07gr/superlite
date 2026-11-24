@@ -32,6 +32,18 @@ solves one element after the other, does not converge with them (A7
 cells with the radiation field held fixed: at the iteration limit, and
 solutions from LTE and from the saved state differ by factors of 2 to
 10⁴; `Tools/cell_jtest.f90`, `SL_UNIQ`).
+All models take the J of 5–912 Å from the formal solution
+(`in_nltex_fij = 1`, as CMFGEN's J). In the thin outer CSM of the Ibn shell
+IBNHT the Monte Carlo had no packet in 99–100 % of the groups of
+504–853 Å (98 % of 853–912 Å) of cells 61–80 with 2¹⁸ packets: N I and O I
+there were set by the packets that happened to arrive (N I 1e-3 of N with
+2¹⁸ packets, 1e-6 with 2²⁰) and Ne I stayed neutral (its edge, 575 Å, in the
+starved band). With the formal-solution J Ne II rose from 1e-5 to 1e-2 of
+Ne there, N I fell to 3e-6, and the median largest change of the NLTE
+iteration fell from a flat 0.46–0.60 to 0.62, 0.59, 0.49, 0.43, 0.37, ...,
+0.20–0.24 after 15 iterations (biasing the emission into the band,
+`in_nltex_fbias`, filled few of those groups: the cold CSM itself emits
+little there). It costs about a minute of a 5–6 minute IBNHT iteration.
 
 | file | content |
 |---|---|
