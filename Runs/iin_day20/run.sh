@@ -29,8 +29,9 @@
 #   NITER     iterations (default 6; the run stops before when the NLTE
 #             populations have converged, in_nltex_tol)
 #   INIT      a work dir of an earlier run: each model starts from its
-#             <INIT>/<model>/output.nltex_state and output.nltex_jmc (to
-#             continue that run) instead of <model>/init
+#             <INIT>/<model>/output.nltex_state, output.nltex_jmc and
+#             output.nltex_dmp_* (to continue that run, its adaptive damping
+#             too) instead of <model>/init
 #   EXTRA     namelist settings added to input.par of the iterations, e.g.
 #             EXTRA="in_nltex_overlap = 0d0" (tests; use another work dir)
 #   NOFI      if set, no formal integral (tests)
@@ -123,6 +124,9 @@ for m in $models; do
     if [ -n "$INIT" ] && [ -f "$INIT/$m/output.nltex_state" ]; then
       cp "$INIT/$m/output.nltex_state" "$d/init/"
       [ -f "$INIT/$m/output.nltex_jmc" ] && cp "$INIT/$m/output.nltex_jmc" "$d/init/"
+# (the adaptive damping history, read next to the state: without it the
+# weights start again from in_nltex_damp and the first iterations jump)
+      for f in "$INIT/$m"/output.nltex_dmp_*; do [ -f "$f" ] && cp "$f" "$d/init/"; done
     elif [ -f "$kit/$m/init/output.nltex_state" ]; then
       cp "$kit/$m/init/output.nltex_state" "$d/init/"
       [ -n "$JMC" ] && [ -f "$JMC/$m/output.nltex_jmc" ] && cp "$JMC/$m/output.nltex_jmc" "$d/init/"
