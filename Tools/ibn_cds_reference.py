@@ -58,6 +58,9 @@ def main():
     ap.add_argument('--vmin', type=float, default=1200.0)
     ap.add_argument('--vmax', type=float, default=6000.0)
     ap.add_argument('--power', type=float, default=6e42)
+    ap.add_argument('--decay', type=float, default=0.0, help='radioactive decay power [erg/s] added to the '
+                    'deposition, per unit volume in proportion to the Fe-group mass density (56Co with Fe, as '
+                    'the twins fold it), fully trapped, as heat (SuperLite lum column only; not in SN_HYDRO_DATA)')
     ap.add_argument('--dvpow', type=float, default=None, help="CMFGEN DVLOC_SHOCK_POWER [km/s]")
     ap.add_argument('--ncell', type=int, default=80, help='SuperLite cells')
     ap.add_argument('--comp', default=None, help='file of mass fractions ("el X" per line, # comments) '
@@ -174,6 +177,7 @@ def main():
     cells = []
     psum = 0.0
     pcell = []
+    dcell = []
     for k in range(len(edges) - 1):
         vv = np.linspace(edges[k], edges[k + 1], 401)
         rr = vv * 1e5 * t
@@ -184,7 +188,10 @@ def main():
         p = np.sum(pw(vv) * w)
         cells.append((rr[0], rr[-1], vv[0] * 1e5, vv[-1] * 1e5, m, xm))
         pcell.append(p)
+        dcell.append(np.sum(rh * xx['fe'] * w))
     pcell = np.array(pcell) * a.power / np.sum(pcell)
+    if a.decay > 0:
+        pcell = pcell + np.array(dcell) * a.decay / np.sum(dcell)
     lum = np.concatenate([[0.0], np.cumsum(pcell)[:-1]])
     with open(os.path.join(a.out, 'input.str'), 'w') as f:
         f.write('# 1D spherical\n')
@@ -201,7 +208,9 @@ def main():
                 'exp(-((v-%g)/%.2f)^2)\n' % (a.t, t, a.mcds, a.vcds, a.scds, a.mej, a.nej, a.mdot, a.vw,
                                              a.vmin, a.vmax, a.power, a.vcds, dvp))
         f.write('SuperLite cells %d, mass %.4f Msun; CMFGEN hydro points %d\n' % (len(cells), mtot, len(vs)))
-        f.write('L_bol (in_L_bol) %.4e erg/s\n' % a.power)
+        if a.decay > 0:
+            f.write('decay power %.4e erg/s (Fe-group profile, SuperLite only)\n' % a.decay)
+        f.write('L_bol (in_L_bol) %.4e erg/s\n' % (a.power + a.decay))
     print(open(os.path.join(a.out, 'structure.txt')).read(), end='')
 
 

@@ -23,7 +23,7 @@
  in_src_n2s = 18
  in_niter_early = 0
  in_src_n2s_early = 16
- in_L_bol = 2.0000e+42
+ in_L_bol = 2.2961e+42
  in_srctype = 'lumg'
  in_surfsrcmu = 'isot'
 

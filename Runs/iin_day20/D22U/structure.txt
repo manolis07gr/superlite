@@ -1,3 +1,4 @@
 t 173.611111 d (1.5000e+07 s); shell 1.62 Msun at 2000 km/s, sigma 70 km/s; ejecta 0.0001 Msun v^-8; CSM Mdot 1e-05 Msun/yr / v_w 600 km/s; 1200-6000 km/s; power 2.000e+42 erg/s, profile exp(-((v-2000)/98.99)^2)
 SuperLite cells 80, mass 1.6242 Msun; CMFGEN hydro points 259
-L_bol (in_L_bol) 2.0000e+42 erg/s
+decay power 2.9607e+41 erg/s (Fe-group profile, SuperLite only)
+L_bol (in_L_bol) 2.2961e+42 erg/s
