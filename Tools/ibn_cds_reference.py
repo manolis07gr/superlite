@@ -60,10 +60,21 @@ def main():
     ap.add_argument('--power', type=float, default=6e42)
     ap.add_argument('--dvpow', type=float, default=None, help="CMFGEN DVLOC_SHOCK_POWER [km/s]")
     ap.add_argument('--ncell', type=int, default=80, help='SuperLite cells')
+    ap.add_argument('--comp', default=None, help='file of mass fractions ("el X" per line, # comments) '
+                    'for the shell and the ejecta, instead of he4mix; with --comp-csm also for the CSM')
+    ap.add_argument('--comp-csm', action='store_true', help='the CSM takes the --comp composition too')
     a = ap.parse_args()
     t = a.t * DAY
     dvp = a.dvpow if a.dvpow else np.sqrt(2.0) * a.scds
     x_sh, x_csm = norm(HE4MIX), norm(CSM)
+    if a.comp:
+        c = {}
+        for l in open(a.comp):
+            t_ = l.split('#')[0].split()
+            if len(t_) >= 2: c[t_[0].lower()] = float(t_[1])
+        c = {k: c.get(k, 0.0) for k in EL}
+        x_sh = norm(c)
+        if a.comp_csm: x_csm = x_sh
 
     def rho_parts(v):
         """density [g/cm^3] of shell, ejecta, CSM at velocity v [km/s] (unnormalized shell/ejecta)"""
