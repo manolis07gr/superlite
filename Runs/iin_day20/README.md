@@ -5,7 +5,8 @@ interaction models at day 20) with the current physics and defaults
 (local detailed balance, Auger ionization, static Doppler lines in the
 slow CSM, level dissolution, Lyman Rayleigh scattering, line overlap,
 continuum destruction, adaptive damping), then their emergent spectra as
-a formal integral with 12 electron-scattering passes.
+a formal integral with up to 12 electron-scattering passes (stopped once
+the luminosity and every cell's J change by less than 10⁻³, `in_fi_nestol`).
 
 The model atoms are sn6 (`table_sn6.txt`, 133 ions): CMFGEN's to its last
 ions (Fe XVI, the H-like C, N, O; `table_sn5.txt`) and, built from the

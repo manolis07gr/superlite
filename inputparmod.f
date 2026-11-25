@@ -333,6 +333,10 @@ c-- emissivity is smooth over the electron kernel; the wings of strong
 c-- lines then within ~5 %, for exploration; 0: the spacing of the
 c-- spectrum)
       real*8 :: in_fi_nesdv = 0d0
+c-- (stop the passes once L and the J of every cell change by less than
+c-- this between passes, then the two on the grid of the spectrum; 0: all
+c-- in_fi_nes passes)
+      real*8 :: in_fi_nestol = 0d0
 c-- the J of the groups between in_nltex_fijwl1 and
 c-- in_nltex_fijwl2 [A] in the rates from the formal solution, every
 c-- iteration after the transport: in_nltex_fijnes electron-scattering
@@ -493,7 +497,7 @@ c-- runtime parameter namelist
      & in_nltex_esdamp,in_nltex_dopmc,in_nltex_dopz,in_nltex_dopes,
      & in_nltex_overlap,
      & in_fi,in_fi_wl1,in_fi_wl2,in_fi_dv,in_fi_npc,in_fi_navg,
-     & in_fi_doppler,in_fi_only,in_fi_nes,in_fi_nesdv,
+     & in_fi_doppler,in_fi_only,in_fi_nes,in_fi_nesdv,in_fi_nestol,
      & in_nltex_fij,in_nltex_fijwl1,in_nltex_fijwl2,in_nltex_fijdv,
      & in_nltex_fijnes,in_nltex_tol,in_nltex_nconv,
      & in_xray_table,in_xray_ff1,in_xray_ff2,in_xray_t1,in_xray_t2,
@@ -681,6 +685,7 @@ c
       call insertl(in_fi_only,in_l,il)
       call inserti(in_fi_nes,in_i,ii)
       call insertr(in_fi_nesdv,in_r,ir)
+      call insertr(in_fi_nestol,in_r,ir)
       call inserti(in_nltex_fij,in_i,ii)
       call insertr(in_nltex_fijwl1,in_r,ir)
       call insertr(in_nltex_fijwl2,in_r,ir)

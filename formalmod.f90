@@ -53,7 +53,7 @@ module formalmod
 contains
 !
 !
-subroutine fi_spectrum(ncell,xarr,vxarr,tempinv,wl1,wl2,dvkms,npc,impi,nmpi,lmpi0,jgavg,dop,nes,nesdv,jgout,jbout)
+subroutine fi_spectrum(ncell,xarr,vxarr,tempinv,wl1,wl2,dvkms,npc,impi,nmpi,lmpi0,jgavg,dop,nes,nesdv,jgout,jbout,nestol)
   use gridmod, only:grd_cap,grd_sig,grd_capemit
   use bbsobmod, only:grd_capsc
   use groupmod, only:grp_ng,grp_wl
@@ -69,6 +69,7 @@ subroutine fi_spectrum(ncell,xarr,vxarr,tempinv,wl1,wl2,dvkms,npc,impi,nmpi,lmpi
   logical,intent(in),optional :: dop       !Doppler line profiles (else Sobolev resonances)
   integer,intent(in),optional :: nes       !passes of the electron-scattering J (else the Monte Carlo J)
   real*8,intent(in),optional :: nesdv      !spacing [km/s] of the J of the passes but the last two (else dvkms)
+  real*8,intent(in),optional :: nestol     !stop the passes on the coarse grid once L and every cell's J change by less (then the two fine passes; else all nes)
 !-- (J mode, with nes > 0: the J of the last pass averaged over each group
 !-- that the comoving grid covers, -1 for the others; no output files)
   real*8,intent(out),optional :: jgout(:,:) !(ng,ncell)
@@ -77,8 +78,8 @@ subroutine fi_spectrum(ncell,xarr,vxarr,tempinv,wl1,wl2,dvkms,npc,impi,nmpi,lmpi
 !-- continuum and the other lines that its resonance zone receives; -1
 !-- outside the grid)
   real*8,intent(out),optional :: jbout(:,:) !(nlin,ncell)
-  integer :: nnu,i,j,ic,ig,ng,np,k,jg,nt,nesp,nj,mx,ipass,jj,k1,k2
-  real*8 :: dln,t,x,bnu,se,sig2,wsum,lnu0,dl,lt0,dlt,lext,lj0,wdep,dmax,lprev,nga,dlj
+  integer :: nnu,i,j,ic,ig,ng,np,k,jg,nt,nesp,nj,mx,ipass,jj,k1,k2,nend
+  real*8 :: dln,t,x,bnu,se,sig2,wsum,lnu0,dl,lt0,dlt,lext,lj0,wdep,dmax,lprev,nga,dlj,estol
   real*8,allocatable :: wl(:),lnu(:),chi(:,:),eta(:,:),p(:),wp(:),lng(:),etes(:,:),jgx(:,:)
   real*8,allocatable :: vdc(:,:),vdmax(:),jfi(:,:),jnw(:,:),etj(:,:),vol(:),jold(:,:),jmc0(:,:),lnj(:)
   real*4,allocatable :: etr(:,:)
@@ -249,8 +250,14 @@ subroutine fi_spectrum(ncell,xarr,vxarr,tempinv,wl1,wl2,dvkms,npc,impi,nmpi,lmpi
      jmc0 = jfi
      lprev = 0d0
      lswitch = .false.
-     do ipass=1,nesp
-        if(.not.lfine .and. ipass == nesp-1) then
+     estol = 0d0
+     if(present(nestol)) estol = nestol
+     nend = nesp
+     ipass = 0
+     do
+        ipass = ipass + 1
+        if(ipass > nend) exit
+        if(.not.lfine .and. ipass == nend-1) then
            call jfine
            lswitch = .true.
         endif
@@ -279,7 +286,7 @@ subroutine fi_spectrum(ncell,xarr,vxarr,tempinv,wl1,wl2,dvkms,npc,impi,nmpi,lmpi
 !-- every third pass Ng's acceleration from the last three J (the passes
 !-- are a linear iteration; in a thick scattering wind it converges slowly)
         nga = 0d0
-        if(mod(ipass,3) == 0 .and. ipass < nesp .and. .not.lswitch) call ngacc(nga)
+        if(mod(ipass,3) == 0 .and. ipass < nend .and. .not.lswitch) call ngacc(nga)
         jold = jfi
         jfi = jnw
         if(lfine) then
@@ -297,6 +304,17 @@ subroutine fi_spectrum(ncell,xarr,vxarr,tempinv,wl1,wl2,dvkms,npc,impi,nmpi,lmpi
         if(lmpi0) write(6,'(1x,a,i3,a,es11.4,a,f8.4,a,es9.2,a,f8.3)') 'formal integral: e.s. pass',ipass, &
              ', L =',x,' erg/s, change',x/max(lprev,1d-300)-1d0,', largest change of a cell J',dmax, &
              ', Ng',nga
+!-- (converged on the coarse grid: the two passes on the grid of the
+!-- spectrum next, or the end; not right after Ng's step)
+        if(estol > 0d0 .and. .not.lswitch .and. nga == 0d0 .and. ipass >= 3 .and. ipass < nend-2 .and. &
+             dmax < estol .and. abs(x/max(lprev,1d-300)-1d0) < estol) then
+           if(lfine) then
+              nend = ipass
+           else
+              nend = ipass + 2
+           endif
+           if(lmpi0) write(6,'(1x,a,es9.2,a,i3)') 'formal integral: passes converged to',estol,', last pass',nend
+        endif
         lprev = x
      enddo
 !-- (J mode: the group means of the J of the last pass)

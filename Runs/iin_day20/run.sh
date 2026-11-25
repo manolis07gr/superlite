@@ -3,7 +3,8 @@
 # NLTE model atoms (sn6: every element to its bare nucleus), CIE shock
 # spectra, a warm start from the saved state in <model>/init (extended to the
 # atoms), six iterations, then the emergent spectrum as a formal
-# integral with 12 electron-scattering passes (as CMFGEN's cmf_flux).
+# integral with up to 12 electron-scattering passes (as CMFGEN's cmf_flux;
+# they stop once L and every cell's J change by less than 1e-3).
 #
 # usage: Runs/iin_day20/run.sh <CMFGEN atomic dir> <work dir> [ranks] [models]
 #   CMFGEN atomic dir: atomic/ of atomic_data_21jun23 (CMFGEN web page);
@@ -150,7 +151,7 @@ for m in $models; do
   if done_ok "$f"; then continue; fi
   setup "$f" $m "$d/output.nltex_state"
   sed -e "s|^\( *in_niter *= *\).*|\11|" -e '$d' "$f/input.par" > "$f/input.tmp"
-  printf ' in_fi_only = t\n in_fi_nes = 12\n in_fi_nesdv = 60d0\n/\n' >> "$f/input.tmp"
+  printf ' in_fi_only = t\n in_fi_nes = 12\n in_fi_nesdv = 60d0\n in_fi_nestol = 1d-3\n/\n' >> "$f/input.tmp"
   mv "$f/input.tmp" "$f/input.par"
   echo "$(date +%H:%M) $m: formal integral"
   run "$f"
