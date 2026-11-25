@@ -40,3 +40,24 @@ Made with (P = the directory of the composition files)
       --mdot 1e-5 --power 2e42 --decay 2.9607e41 --comp-profile $P/he4p0_strat.prof --comp-csm  # D22S
 
 `SN_HYDRO_DATA` is the same structure for CMFGEN.
+
+## The deposited power as fast electrons (D22UN, D22UF, D22SF)
+
+D22U and D22S put the deposited power into the gas as heat. Their shells
+came out with He neutral (He I 1.00 in D22U; He I 0.6–0.9 in the He-rich
+outer layers of D22S at 11–13 kK), while Dessart+22 find He "partially
+ionized" (he4p0) and "nearly once ionized" in the He-rich shells: the He I
+lines of CMFGEN's spectra (3889, 5876, 6678, 7065 A) are missing, and in
+D22S the hot He-rich layers cool instead through C II] 2326, N II] 2143,
+Si III] 1892, C III] 1909, C II 1335 and Mg II 2800 (Sobolev estimates from
+the state, cells at 1990–2130 km/s), UV lines that CMFGEN's spectrum does
+not have.
+
+- D22UN: D22U with the decay share of the power (0.1289) as fast
+  electrons (`in_nt_lumg`; exact in the uniform model, whose decay and
+  shock deposition profiles are the same): He II 0.16 of the shell's He
+  after five iterations.
+- D22UF, D22SF: D22U and D22S with all of the deposited power as fast
+  electrons (`in_nt_lumg = 1`), as the energy of the shock reaches the
+  gas in CMFGEN's treatment of Dessart's injected power (inferred from the
+  ionization the paper reports; the paper does not say).
