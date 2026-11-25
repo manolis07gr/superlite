@@ -53,7 +53,6 @@
  in_nt_emin = 100d0
  in_nt_sf = t
  in_nt_lumg = 1d0
-! (all the deposited power, shock and decay, as fast electrons: Dessart+22 find He "partially ionized" and "nearly once ionized" in the He-rich CDS, which thermal heating at ~1e4 K does not give)
  in_tion = 'nebu'
  in_nltex_ali = f
  in_nltex_ldb = 30d0
