@@ -83,3 +83,21 @@ Results (SuperLite / CMFGEN luminosity in 1000–3000, 3000–5000,
   but the UV excess does not shrink (Mg II 2800 and C II] 2326 strengthen)
   and the red stays 35–40% low; in the uniform model the deposition is not
   the main cause of the difference.
+
+## CMFGEN's shock-power width (D22SG, D22UG)
+
+The width of the power profile is not in the text of Dessart+22, and the
+twins took dv = sqrt(2) sigma = 99 km/s, which makes the power per unit
+mass uniform through the shell. The dashed "normalized power deposition
+profile" of their Fig. 7 (read from the PDF at 600 dpi: peak at
+2000 km/s, -1.77 dex at +-100 km/s, -3 dex at 2130 km/s) is
+exp(-((v - 2000)/dv)^2) with dv = 49.5 km/s, i.e. DVLOC_SHOCK_POWER = 50 km/s
+of CMFGEN's Gaussian shock power per unit volume (which CMFGEN passes to its
+non-thermal solver with the decay energy). With dv = 50 the He-rich outer
+layers of the stratified shell (2070-2260 km/s) receive 3-100 times less
+power per unit mass than in D22SF (the decay floor remains), and the inner
+shell (<1950 km/s) 3 times less; the uniform shell's wings 8 times less.
+D22SG and D22UG are D22SF and D22UF with `--dvpow 50`, warm-started from
+their states. In D22SF those outer layers are the ones at 10.5-13 kK with
+Fe 99% Fe III, cooling through the UV intercombination lines, where
+Dessart+22 find a large part of the Fe II emission.
