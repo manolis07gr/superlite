@@ -61,3 +61,25 @@ not have.
   electrons (`in_nt_lumg = 1`), as the energy of the shock reaches the
   gas in CMFGEN's treatment of Dessart's injected power (inferred from the
   ionization the paper reports; the paper does not say).
+
+Results (SuperLite / CMFGEN luminosity in 1000–3000, 3000–5000,
+5000–7000, 7000–10000 A; 12 NLTE iterations each, final median change
+0.24 for D22UF and 0.18 for D22SF):
+
+| model | deposition | UV | blue | green-red | red |
+|---|---|---|---|---|---|
+| D22U  | heat | 6.98 | 0.98 | 0.55 | 0.47 |
+| D22UN | decay share fast | 6.17 | 0.96 | 0.66 | 0.57 |
+| D22UF | all fast | 7.44 | 0.92 | 0.66 | 0.58 |
+| D22S  | heat | 2.40 | 0.70 | 0.79 | 0.66 |
+| D22SF | all fast | 1.75 | 0.71 | 0.90 | 0.81 |
+
+- D22SF: the He-rich outer layers become mostly once ionized (He II
+  0.28–0.82, outward), 0.3–1.2 kK cooler, and He I 3889, 5876, 6678 and
+  7065 appear at nearly CMFGEN's strength. The UV intercombination lines
+  halve but remain (Mg II 2800, C II] 2326, N II] 2143, Si III] 1892), and
+  3000–5000 A stays 30% low.
+- D22UF: the shell's He II rises to 0.3–0.5 and weak He I lines appear,
+  but the UV excess does not shrink (Mg II 2800 and C II] 2326 strengthen)
+  and the red stays 35–40% low; in the uniform model the deposition is not
+  the main cause of the difference.
