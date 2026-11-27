@@ -15,5 +15,5 @@ no thick outer boundary, no inserted boundary points, and their model atom
 (H I, He I-II, C I-III, N I-III, O I-II, Na I, Si II, Ca II, Fe II-V; no
 Sc II, Ti II here). Convergence from the LTE start: full linearization at
 every iteration ([LAM_VAL] 1e30, [N_FIX_BA] 0), corrections limited to a
-factor 2 ([MAX_LIN] 2); [NUM_BNDS] 1 (disk: the BA matrix of 1627 levels
-and 3 bands is 7 GB).
+factor 2 ([MAX_LIN] 2); [NUM_BNDS] 3 (with the full 1627-level set and 3 bands the BA matrix was 7 GB on disk; the Dessart atom set needs ~2 GB)
+

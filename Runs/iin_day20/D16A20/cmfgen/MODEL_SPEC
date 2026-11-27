@@ -1,7 +1,7 @@
 80          [ND]                !Number of depth points
 10          [NC]                !Number of core rays
 90          [NP]                !Number of impact parameters [ND+NC]
-1           [NUM_BNDS]          !Use 3 for tridiagonal matrix
+3           [NUM_BNDS]          !Use 3 for tridiagonal matrix
 500000      [NCF_MAX]           !Total number of frequencies
 500         [MAX_SIM]           !Maximum # of lines whose Doppler profile overlap
 300000      [NLINE_MAX]         !Maximum # of bound-bound transitions
