@@ -1,0 +1,262 @@
+7470.922      [RSTAR]            !Rp (10^10 cm): set from SN_HYDRO_DATA
+77.50816432   [RMAX]             !Rmax/Rp
+F             [DO_HYDRO]
+
+11            [VEL_LAW]          !SN hydro model (SN_HYDRO_DATA)
+5625.0D0      [VINF]             !Outer velocity (km/s)
+1.74D+03      [LSTAR]            !Luminosity (Lsun): the deposited power, for th
+10.44D0       [MASS]             !Mass (Msun)
+
+F             [DO_CL]            !Allow for clumping in the model?
+EXPO          [CL_LAW]           !Law to evaluate clumping factors.
+2             [N_CL_PAR]         !Number of clumping parameters
+1.0           [CL_PAR_1]
+100           [CL_PAR_2]
+
+-0.6255D0     [HYD/X]            !mass fractions: overwritten by SN_HYDRO_DATA
+-0.50D0       [HE/X]             !mass fractions: overwritten by SN_HYDRO_DATA
+-0.04D0       [CARB/X]
+-0.005D0      [NIT/X]
+-0.216D0      [OXY/X]
+-0.06D0       [NEON/X]
+-0.002D0      [SOD/X]
+-0.04D0       [MAG/X]
+-0.07D0       [SIL/X]
+-0.03D0       [SUL/X]
+-0.012D0      [CAL/X]
+-0.016D0      [IRON/X]
+
+!  Supernova options
+F             [PURE_HUB]         !Pure Hubble flow
+F             [DO_DDT]           !Steady state (no comoving time derivative)
+20.0D0        [SN_AGE]           !Age (days)
+T             [INC_RAD_DECAYS]   !Decays on only to define isotopes: only stable
+LOCAL         [GAMRAY_TRANS]
+F             [INS_DEP]
+USE_HYDRO     [SN_T_OPT]         !Starting T from SN_HYDRO_DATA
+T             [JG_W_V]
+F             [TRT_NON_TE]       !Off: shock power is heat only (with T it enter
+F             [INC_SHOCK_POWER]  !Power deposited with a Gaussian profile in vel
+F             [SCL_PWR_BY_FCL]
+F             [ADD_SHOCK_POWER_SLOWLY]
+6.0D+42       [PRESCRIBED_SHOCK_POWER]  !erg/s
+2000.0D0      [VLOC_SHOCK_POWER]  !km/s
+98.995D0      [DVLOC_SHOCK_POWER] !km/s: exp(-((v-VLOC)/DVLOC)^2)
+F             [LIN_RD_SN_DATA]
+0             [N_IB_INS]
+0             [N_OB_INS]
+
+F             [RD_CF_FILE]       !Read in continuum frequencies from file
+3.49897D-3    [MIN_CF]           !Minimum continuum frequency if calculating NU
+1000.00D0     [MAX_CF]           !Maximum continuum frequency if calculating NU
+1.10D0        [FRAC_SP]          !Fractional spacing for small frequencies
+1.05D0        [AMP_FAC]          !Amplification factor for large frequency range
+0.10D0        [MAX_BF]           !Maximum frequency spacing close to bf edge
+
+T             [DO_DIS]           !Allow for level dissolution
+200.0D0       [dV_LEV]           !Spacing in km/s on low side of bf edge.
+1.4           [AMP_DIS]          !Amplification factor on low side of bf edge.
+0.1           [MIN_DIS]          !Minimum frequency for level disolution.
+
+3000.0        [SIG_GAU_KMS]      !Sigma of Gaussian used to smooth phot. cross-s
+
+F             [CROSS]
+750.0         [V_CROSS]
+0.5           [EXT_LINE_VAR]     !Extent of variation region beyond resonance zo
+0.01          [ZNET_VAR_LIM]     !Iterate on net rates when ABS(ZNET-1) < ZNET_V
+T             [WNET]             !Iterate on net rates for weak lines.
+0.10          [WK_LIM]           !Weak line opacity limit
+
+T             [DIF]              !No diffusion approximation at the inner bounda
+DIFFUSION     [IB_METH]          !Reflecting inner boundary, no core luminosity
+T             [COH_ES]           !Assume coherent electron scattering?
+F             [OLD_J]
+F             [MIX_COH]          !Mix coherencies in variation of J
+0.1           [ES_FAC]           !How close RJ and RJ_ES to use COH
+
+LINMON        [METHOD]           !Use log interp to compute chi.
+N_ON_J        [N_TYPE]           !How to handle N in MOM_J_CMF
+20000.0D0     [VFRAC_FG]         !Maximum velocity spacing along ray in FG_J_CMF
+20000.0D0     [VFRAC_MOM]        !Maximum velocity spacing along ray in MOM_J_CM
+INT/INS       [FG_OPT]           !Solution options for FG
+F             [THK_CONT]         !Thick boundary condition for continuum ?
+T             [TRAP_J]           !Use trapazoidal weights to compute J ?
+
+1.0D0         [TDOP]             !Temperature for Doppler profile
+4.0D8         [AMASS_DOP]        !Atomic mass for Doppler profile
+10.0D0        [VTURB]            !Turbulent Velocity (SuperLite in_nltex_vturb)
+
+6.0           [MAX_DOP]          !Max. half-width of resonace zone
+1.0D0         [FRAC_DOP]         !Spacing in CMF resonace zone [in Doppler width
+10.0          [dV_CMF_PROF]      !Spacing (in km/s) across CMF profile.
+50.0          [dV_CMF_WING]      !Spacing in e.s. line wings of CMF profile.
+2500.0        [ES_WING_EXT]      !Ext. of non-coh e.s. wings beyond res. zone (k
+3.0           [R_CMF_WING_EXT]   !Ext. of coh. e.s. wings beyond res. zone (in V
+
+1.1           [OBS_EXT_RAT]      !Half-Width of Observed profile in Vinf (>= 1.0
+10.0          [dV_OBS_PROF]      !Spacing (in km/s) across observed profile (km/
+50.0          [dV_OBS_WING]      !Spacing in e.s. line wings (km/s).
+1000.0        [dV_OBS_BIG]       !Spacing between lines (km/s).
+
+F             [USE_FIXED_J]      !Use a previously computed J
+F             [FLUX_CAL_ONLY]    !Do a flux calculation only?
+F             [EXT_FRM_SOL]      !Extend formal solutiona factor of 10 in R
+T             [INS_F_FRM_SOL]    !Insert extra frequencies in the formal sol?
+INT           [FRM_OPT]          !Methot for formal solution?
+F             [DO_SOB_LINES]     !Compute rates for Sobolev transitions in flux
+F             [SOB_FREQ_IN_OBS]
+
+SOB           [GLOBAL_LINE]      !Comoving-frame lines (needed with the zero-flu
+T             [NOV_CONT]         !Continuum without velocity terms (Sobolev line
+F             [STOP_IF_BP]       !Warn only: the Sobolev, static-continuum mode
+F             [LAM_SET]          !Swith to SOB for long wavelengths?
+0.0E+03       [F_LAM_BEG]        !Lambda to begin flux calculation.
+4.5E+04       [F_LAM_END]        !Lambda to end flux calculation.
+1.0D-3        [GF_CUT]           !Omit lines with gf < GFCUT (as the SuperLite a
+9             [GF_LEV_CUT]       !> GF_LEV_CUT
+10            [AT_CUT]           !Only cut if Atomic # >= AT_CUT
+10            [MIN_TRANS]        !Minimum # of trans from level before cut.
+
+F             [THK_LINE]         !Thk line boundary condition ?
+T             [CHK_L_POS]        !Check for negative line opacity?
+ESEC_CHK      [NEG_OPAC_OPT]     !Negative opacity option
+F             [He2_RES=0]        !Set rates in He2 resonance lines to zero?
+
+F             [ALLOW_OL]         !Include line overlap?
+50.0          [OL_DIF]           !Max velocity dif for overlap (km/s)?
+
+T             [INC_CHG]          !Include charge exchange reactions
+T             [INC_TWO]          !Include two photon transitions
+F             [INC_AD]           !No adiabatic cooling (not in SuperLite's balan
+F             [INC_RAY]          !No Rayleigh scattering (no H)
+F             [INC_ADV]          !No advection
+T             [SCL_LN]           !Scale line cooling/heating rates
+0.5           [SCL_LN_FAC]       !Factor for determining when to scale H/C rates
+
+F             [INC_XRAYS]
+F             [FF_XRAYS]
+F             [X_SM_WIND]
+500           [VS_XRAYS]
+0.0           [FIL_FAC_1]
+300           [T_SHOCK_1]
+500.          [V_SHOCK_1]
+0.0           [FIL_FAC_2]
+500           [T_SHOCK_2]
+500.          [V_SHOCK_2]
+F             [XSLOW]
+0.07000000    [XFI1_BEG]
+0.07000000    [XFI2_BEG]
+100.0         [XSCL_FAC]
+
+F             [RD_IN_R_GRID]     !New model: R grid from SN_HYDRO_DATA
+F             [GRID]             !New model, non-GRID option
+F             [LIN_INT]
+T             [POP_SCALE]        !Scale pops to satisfy abundance Eq.
+F             [IT_ON_T]          !Iterate on initial T distribution ?
+2.0           [T_INIT_TAU]       !For INIT_TEMP guess
+0.2           [GREY_TAU]         !Set T to TGREY for tau > ?
+T             [LTE_EST]          !LTE starting populations
+0.8           [T_EXC]            !Minimum excitation T (10^4 K) for the LTE esti
+LTE           [DC_METH]          !LTE departure coefficients to start (no XzV_IN
+
+F             [DIE_AS_LINE]      !Treat dielectronic as non-overlapping lines
+1000.0D0      [VSM_DIE]          !Smoothing velocity (km/s)
+
+F             [FIX_NE]           !Fixed Electron density ?
+T             [FIX_IMP]          !Fix impurity species automatically (trace high
+T             [FIX_T]   !Fixed T: CMFGEN post-processed model A with T held fixe
+F             [FIX_T_AUTO]       !Automatic variable T
+0.0           [TAU_SCL_T]        !Fix T for this optical depth.
+TRIDIAG       [SOL_METH]
+MAJOR         [SCALE_OPT]        !Scaling option (MAJOR, LOCAL, NONE, or GLOBAL)
+1.0D-03       [EPS_TERM]         !Terminate when %frac change smaller
+2.0D0         [MAX_LIN]          !Maximum fractional change allowed for lineariz
+2.0D0         [MAX_LAM]          !Maximum fractional change allowed for LAMBDA i
+1.0D+100      [MAX_CHNG]         !Terminate with error if %frac change > MAX_CHN
+T             [COMP_BA]          !Compute BA matrix
+T             [STORE_BA_INV]
+T             [WR_PRT_INV]
+0             [N_FIX_BA]         !Number of iterations to hold BA fixed
+T             [STORE_BA]
+1.0D-03       [BA_CHK_FAC]
+1.0D-30       [FIX_BA]           !Fix BA if %change smaller
+
+1.0D+30       [LAM_VAL]          !Do LAMBDA iterations if %change > (was 800: al
+1             [NUM_LAM]          !Number of Lambda iteration per full linearizat
+
+F             [RD_SOL]           !Read in solution matrix
+T             [JC_W_EDD]         !Use Eddington factors to compute continuum J
+T             [JBAR_W_EDD]       !Use Eddington factors to compute JBAR for line
+F             [INC_GRID]         !Do an error calculation ?
+2             [N_INS]            !NPINS
+F             [ALL_FREQ]
+3.19          [ACC_END]
+1             [ST_INT]
+30            [END_INT]
+50            [ND_QUAD]
+LOG           [INTERP_TYPE]      !LOG or LIN plane
+
+5000          [N_PAR]            !Rate of BA incremantation by BA_PAR.
+
+F             [COMP_F]           !Compute new Continuum f values ?
+1.0D-04       [ACC_F]            !Convergence accuracy for F
+
+T             [DO_NG]            !Use NG acceleration
+F             [CHK_NG]
+3.0D0         [BEG_NG]           !Start  NG when percentage change <
+30            [IBEG_NG]
+5             [BW_NG]
+30            [ITS/NG]           !Number of iterations per NG aceleration
+
+!  Dielectronic recombination off (as the SuperLite atoms, DIE=none)
+F,F           [DIE_HI]
+F,F           [DIE_HeI]
+F,F           [DIE_He2]
+F,F           [DIE_CI]
+F,F           [DIE_C2]
+F,F           [DIE_CIII]
+F,F           [DIE_CIV]
+F,F           [DIE_NI]
+F,F           [DIE_N2]
+F,F           [DIE_NIII]
+F,F           [DIE_NIV]
+F,F           [DIE_OI]
+F,F           [DIE_O2]
+F,F           [DIE_OIII]
+F,F           [DIE_OIV]
+F,F           [DIE_OV]
+F,F           [DIE_NeI]
+F,F           [DIE_Ne2]
+F,F           [DIE_NeIII]
+F,F           [DIE_NeIV]
+F,F           [DIE_NaI]
+F,F           [DIE_Na2]
+F,F           [DIE_MgI]
+F,F           [DIE_Mg2]
+F,F           [DIE_MgIII]
+F,F           [DIE_MgIV]
+F,F           [DIE_SkI]
+F,F           [DIE_Sk2]
+F,F           [DIE_SkIII]
+F,F           [DIE_SkIV]
+F,F           [DIE_SI]
+F,F           [DIE_S2]
+F,F           [DIE_SIII]
+F,F           [DIE_SIV]
+F,F           [DIE_CaI]
+F,F           [DIE_Ca2]
+F,F           [DIE_CaIII]
+F,F           [DIE_CaIV]
+F,F           [DIE_FeI]
+F,F           [DIE_Fe2]
+F,F           [DIE_FeIII]
+F,F           [DIE_FeIV]
+F,F           [DIE_FeV]
+F,F           [DIE_FeSIX]
+F             [INC_PEN]          !No Penning ionization (not in SuperLite)
+T             [REL_OBS]          !All relativistic terms in the observer frame s
+T             [REL_CMF]          !All relativistic terms in the CMF solution
+F             [USE_J_REL]        !Relativistic moment equations (steady state)
+F             [INCL_REL]         !Relativistic terms in the moment equations
+F             [INCL_ADV_TRANS]   !Advection terms in the moment equations
+F             [AUTO_ADD]         !No ions added from a previous model

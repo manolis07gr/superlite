@@ -1,0 +1,27 @@
+80          [ND]                !Number of depth points
+10          [NC]                !Number of core rays
+90          [NP]                !Number of impact parameters [ND+NC]
+1           [NUM_BNDS]          !Use 3 for tridiagonal matrix
+500000      [NCF_MAX]           !Total number of frequencies
+500         [MAX_SIM]           !Maximum # of lines whose Doppler profile overlap
+300000      [NLINE_MAX]         !Maximum # of bound-bound transitions
+21          [NLF]               !For CMF option only
+
+30,30       [HI_NSF]
+51,51       [HeI_NSF]
+30,30       [He2_NSF]
+31,59       [CI_NSF]
+21,39       [C2_NSF]
+21,38       [CIII_NSF]
+22,58       [NI_NSF]
+23,41       [N2_NSF]
+21,42       [NIII_NSF]
+24,58       [OI_NSF]
+26,57       [O2_NSF]
+22,71       [NaI_NSF]
+32,62       [Sk2_NSF]
+44,77       [Ca2_NSF]
+209,827       [Fe2_NSF]
+83,698       [FeIII_NSF]
+51,300       [FeIV_NSF]
+47,191       [FeV_NSF]
