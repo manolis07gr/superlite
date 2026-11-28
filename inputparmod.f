@@ -427,6 +427,11 @@ c-- by diffusion (a supernova's L_bol above its deposition), not deposited
 c-- in the gas: emitted with a Planck spectrum at the cell's radiation
 c-- temperature and left out of the heating of the thermal balance
       real*8 :: in_lumg_rad = 0d0
+c-- (lumg) the emission of each cell is its thermal emissivity at the fixed
+c-- T (the cooling rate of the k-packet, all channels) times its volume,
+c-- not normalized to in_L_bol, and the energy a packet gives to the
+c-- thermal pool is lost: T held fixed as in CMFGEN (with in_tesolve = f)
+      logical :: in_lumg_thermal = .false.
 c-- free-free opacity with each element as a fully ionized atom of
 c-- charge Z (released code) instead of its ions from the EOS
       logical :: in_fflegacy = .false.
@@ -506,7 +511,7 @@ c-- runtime parameter namelist
      & in_te_zsolve,in_te_secant,
      & in_tion,
      & in_nt_emin,in_nt_sf,in_nt_sfemax,in_nt_sfde,in_nt_lumg,
-     & in_lumg_rad,
+     & in_lumg_rad,in_lumg_thermal,
      & in_fflegacy,
 !phys opac
      & in_opacmixrossel,
@@ -706,6 +711,7 @@ c
       call insertr(in_nt_sfde,in_r,ir)
       call insertr(in_nt_lumg,in_r,ir)
       call insertr(in_lumg_rad,in_r,ir)
+      call insertl(in_lumg_thermal,in_l,il)
       call insertl(in_fflegacy,in_l,il)
       call insertl(in_nobbopac,in_l,il)
       call insertl(in_nobfopac,in_l,il)
@@ -935,6 +941,9 @@ c
      &  stop 'in_nltex_fwl1 < in_nltex_fwl2'
       if(in_lumg_rad<0d0.or.in_nt_lumg+in_lumg_rad>1d0)
      &  stop 'in_lumg_rad: [0,1-in_nt_lumg]'
+      if(in_lumg_thermal.and.(in_srctype/='lumg'.or.in_tesolve
+     &  .or..not.in_nltex)) stop
+     &  'in_lumg_thermal: lumg, in_nltex, in_tesolve=f'
       if(in_lumg_rad>0d0.and.in_srctype/='lumg')
      &  stop 'in_lumg_rad: in_srctype=lumg'
       if(in_nltex_hold.and.trim(in_nltex_init)=='none')

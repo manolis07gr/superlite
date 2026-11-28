@@ -178,6 +178,11 @@ module nltextrmod
   integer,public :: nxt_nko = 0               !k-packet outcomes: thermal, bf cooling per level, exit per
                                               !state, lines within super-levels
   real*8,allocatable,public :: nxt_kcum(:,:)  !(nko,ncell)
+!-- thermal emissivity of each cell: the total rate of the k-packet outcomes
+!-- [erg/s/cm^3 of clump volume] (in_lumg_thermal: the cell's emission)
+  real*8,allocatable,public :: nxt_kemis(:)  !(ncell)
+!-- (in_lumg_thermal) a packet absorbed into the thermal pool is lost
+  logical,public :: nxt_kkill = .false.
   integer,allocatable,public :: nxt_lch(:)    !(nlin) emission channel of the line (0: within a super-level)
   integer,allocatable,public :: nxt_bch(:)    !(nlv) recombination channel of the level
   integer,allocatable,public :: nxt_2pch(:)   !(n2p) channel of the two-photon transition
@@ -598,6 +603,8 @@ subroutine nxt_init(ncell,gncell,ng,wlg,nfile,files,hnlev)
   nxt_nko = 1 + nxa_nlv + nst + nxt_nin
   allocate(nxt_kcum(nxt_nko,ncell))
   nxt_kcum = 1d0
+  allocate(nxt_kemis(ncell))
+  nxt_kemis = 0d0
 !-- bf emission sampling: running maximum of sigma u^3 along each table
   allocate(nxt_cmax(sum([(size(nxa_ion(i)%ps),i=1,nxa_nion)])),nxt_cmoff(nxa_nion))
   n = 0
@@ -682,6 +689,7 @@ subroutine nxt_dealloc
   if(allocated(nxt_2pion)) deallocate(nxt_2pion,nxt_2pk,nxt_2pnu)
   if(allocated(nxt_chst)) deallocate(nxt_chst,nxt_chk,nxt_chi,nxt_chcum)
   if(allocated(nxt_kcum)) deallocate(nxt_kcum)
+  if(allocated(nxt_kemis)) deallocate(nxt_kemis)
   if(allocated(nxt_cmax)) deallocate(nxt_cmax,nxt_cmoff)
   if(allocated(nxt_etop)) deallocate(nxt_etop)
   if(allocated(nxt_xprev)) deallocate(nxt_xprev)
@@ -1915,6 +1923,7 @@ subroutine nxt_tables(ncell,tempinv,radtemp,capemitgrey,xarr,vxarr)
         ww = ww + kw(k)
         nxt_kcum(k,ic) = ww
      enddo
+     nxt_kemis(ic) = ww
      if(ww > 0d0) then
         nxt_kcum(:,ic) = nxt_kcum(:,ic)/ww
      else

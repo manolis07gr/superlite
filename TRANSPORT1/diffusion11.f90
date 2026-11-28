@@ -13,7 +13,7 @@ pure subroutine diffusion11(ptcl,ptcl2,vx,vy,vz,cache,rndstate,&
   use transportmod
   use fluxmod
   use inputparmod
-  use nltextrmod, only:nxt_on,nxt_ntemin,nxt_kq,grd_capnbf,nxt_bfabs,nxt_kpacket, &
+  use nltextrmod, only:nxt_on,nxt_ntemin,nxt_kq,grd_capnbf,nxt_bfabs,nxt_kpacket,nxt_kkill, &
        nxt_nonthermal,nxt_emcode,nxt_emloc,em_line,em_lines
   use nxemitmod, only:nx_emitwl,nx_place,line_mu,nx_linees,nx_ilem
   implicit none
@@ -546,7 +546,12 @@ pure subroutine diffusion11(ptcl,ptcl2,vx,vy,vz,cache,rndstate,&
         elseif(r1*grd_cap(iiig,ic) < grd_capnbf(iiig,ic)) then
            call nxt_bfabs(ic,iiig,nu,rndstate,kind,idx,wlcmf,wtb)
         else
-           call nxt_kpacket(ic,rndstate,kind,idx,wlcmf,wtb)
+           if(nxt_kkill) then
+!-- (in_lumg_thermal) absorbed into the thermal pool: lost, T fixed
+           ptcl2%stat = 'dead'
+           return
+        endif
+        call nxt_kpacket(ic,rndstate,kind,idx,wlcmf,wtb)
         endif
 !-- (nxt_fbias: the weight of a biased emission)
         e = e*wtb

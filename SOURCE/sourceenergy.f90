@@ -8,7 +8,7 @@ subroutine sourceenergy
   use physconstmod
   use inputparmod
   use groupmod
-  use nltextrmod, only:nxt_on,nxt_dtinv,nxt_release,nxt_erel,nxt_prel
+  use nltextrmod, only:nxt_on,nxt_dtinv,nxt_release,nxt_erel,nxt_prel,nxt_kemis
   use xraysrcmod, only:xs_on,xs_pow,xs_px
   implicit none
 !##################################################
@@ -41,6 +41,17 @@ subroutine sourceenergy
      if(help<=0d0) stop 'sourceenergy: lumg source needs a lum column'
      grd_emit = grd_emit*in_L_bol/help
      tot_esurf = tot_esurf*in_L_bol/help
+!-- (in_lumg_thermal) T held fixed as in CMFGEN: each cell emits its thermal
+!-- emissivity at its T (all k-packet channels: the LTE opacities, NLTE
+!-- recombination, collisional cooling, lines in super-levels) times its
+!-- clump volume, not normalized; the absorbed thermal energy is lost
+!-- (nxt_kkill).  The inner boundary keeps the luminosity of the input model.
+     if(in_lumg_thermal) then
+        do i=1,grd_ncell
+           grd_emit(i) = nxt_kemis(i)*grd_vol(i)*grd_fcl(i)
+        enddo
+        tot_esurf = max(0d0, grd_lum(1))
+     endif
 !-- time-dependent NLTE statistical equilibrium: the power released by the
 !-- recombining gas (nxt_release) is emitted by macro-atom activation in the
 !-- states that empty.  It is part of the injected energy (the hydro L(r)

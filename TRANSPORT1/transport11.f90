@@ -576,7 +576,12 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
         elseif(r1*grd_cap(ig,ic) < grd_capnbf(ig,ic)) then
            call nxt_bfabs(ic,ig,pc_c*elabfact/wl,rndstate,kind,idx,wlcmf,wtb)
         else
-           call nxt_kpacket(ic,rndstate,kind,idx,wlcmf,wtb)
+           if(nxt_kkill) then
+!-- (in_lumg_thermal) absorbed into the thermal pool: lost, T fixed
+           ptcl2%stat = 'dead'
+           return
+        endif
+        call nxt_kpacket(ic,rndstate,kind,idx,wlcmf,wtb)
         endif
 !-- (nxt_fbias: the weight of a biased emission)
         e = e*wtb
@@ -747,6 +752,11 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
      if(kres>0) then
         call nxt_activate_line(ic,kres,rndstate,kind,idx,wlcmf,wtb)
      else
+        if(nxt_kkill) then
+!-- (in_lumg_thermal) absorbed into the thermal pool: lost, T fixed
+           ptcl2%stat = 'dead'
+           return
+        endif
         call nxt_kpacket(ic,rndstate,kind,idx,wlcmf,wtb)
      endif
      e = e*wtb

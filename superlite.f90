@@ -321,6 +321,7 @@ program superlite
      endif
      nxt_tau0 = in_nlteh_tau0
      nxt_ntemin = in_nt_emin*pc_ev
+     nxt_kkill = in_lumg_thermal
 !-- fast electrons: Spencer-Fano degradation with all NLTE species
      if(in_nt_sf) then
         nxn_on = .true.
