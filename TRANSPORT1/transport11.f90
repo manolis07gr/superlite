@@ -752,6 +752,10 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
      wtb = 1d0
      if(kres>0) then
         call nxt_activate_line(ic,kres,rndstate,kind,idx,wlcmf,wtb)
+        if(kind==em_kill) then
+           ptcl2%stat = 'dead'
+           return
+        endif
      elseif(nxt_kkill) then
 !-- (in_lumg_thermal) absorbed into the thermal pool: lost
         ptcl2%stat = 'dead'
@@ -819,6 +823,10 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
         else
            wtb = 1d0
            call nxt_activate_line(ic,kres,rndstate,kind,idx,wlcmf,wtb)
+        if(kind==em_kill) then
+           ptcl2%stat = 'dead'
+           return
+        endif
            e = e*wtb
            e0 = e0*wtb
         endif

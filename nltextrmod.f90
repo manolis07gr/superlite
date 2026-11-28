@@ -368,6 +368,8 @@ module nltextrmod
 !-- emission kinds returned by the macro-atom (em_lines: a line photon
 !-- scattered by an electron in the resonance zone, nxemitmod)
   integer,parameter,public :: em_line = 1, em_bf = 2, em_thermal = 3, em_2ph = 4, em_lines = 5
+!-- (in_lumg_thermal) thermal energy reached inside a macro-atom chain: lost
+  integer,parameter,public :: em_kill = 7
 !-- (macro-atom channel of overlapping lines: the photon of a line absorbed
 !-- by a partner, whose macro-atom it activates; nltexmod's nxo_*)
   integer,parameter :: em_ovl = 6
@@ -2991,6 +2993,24 @@ pure function nxt_emcode(kind,idx) result(code)
 end function nxt_emcode
 !
 !
+pure recursive subroutine kpk_chain(ic,state,kind,idx,wlc,wt)
+!-- a k-packet reached inside a macro-atom chain (collisional transitions):
+!-- with T held fixed (in_lumg_thermal) its energy is lost, as in CMFGEN, the
+!-- thermal emission of the cell being its emissivity
+  integer,intent(in) :: ic
+  type(rnd_t),intent(inout) :: state
+  integer,intent(out) :: kind,idx
+  real*8,intent(out) :: wlc
+  real*8,intent(inout),optional :: wt
+  if(nxt_kkill) then
+     kind = em_kill
+     idx = 0
+     wlc = 0d0
+  else
+     call nxt_kpacket(ic,state,kind,idx,wlc,wt)
+  endif
+end subroutine kpk_chain
+!
 pure recursive subroutine nxt_kpacket(ic,state,kind,idx,wlc,wt)
 !-- a k-packet (thermal energy) in cell ic
   use gridmod, only:grd_tempinv
@@ -3041,7 +3061,7 @@ pure recursive subroutine nxt_activate(ic,iel,s,state,kind,idx,wlc,wt)
   call rnd_r(r,state)
   call pick(nxt_ecum(j+1:j+ns+1,ic),max(r,1d-300),e)
   if(e>ns) then
-     call nxt_kpacket(ic,state,kind,idx,wlc,wt)
+     call kpk_chain(ic,state,kind,idx,wlc,wt)
   else
      call emit_state(ic,nxa_el(iel)%xoff+e,state,kind,idx,wlc,wt)
   endif
@@ -3057,7 +3077,7 @@ pure recursive subroutine nxt_activate_line(ic,k,state,kind,idx,wlc,wt)
   real*8,intent(out) :: wlc
   real*8,intent(inout),optional :: wt
   if(nxt_lch(k)==0) then
-     call nxt_kpacket(ic,state,kind,idx,wlc,wt)
+     call kpk_chain(ic,state,kind,idx,wlc,wt)
   else
      call nxt_activate(ic,nxa_lel(k),nxa_lsu(k),state,kind,idx,wlc,wt)
   endif
@@ -3081,21 +3101,21 @@ pure subroutine nxt_nonthermal(ic,state,kind,idx,wlc,wt)
      call rnd_r(r,state)
      call nxn_pick(ic,r,iel,s)
      if(iel==0) then
-        call nxt_kpacket(ic,state,kind,idx,wlc,wt)
+        call kpk_chain(ic,state,kind,idx,wlc,wt)
      else
         call nxt_activate(ic,iel,s,state,kind,idx,wlc,wt)
      endif
      return
   endif
   if(nxt_elh==0) then
-     call nxt_kpacket(ic,state,kind,idx,wlc,wt)
+     call kpk_chain(ic,state,kind,idx,wlc,wt)
      return
   endif
   xion = nxt_x(nxa_el(nxt_elh)%xoff+nxa_el(nxt_elh)%ns,ic)
   call nxt_shares(xion,nxt_yhe(nxt_nel(:,ic)),fh,fih,feh,fihe,fehe)
   call rnd_r(r,state)
   if(r < fh) then
-     call nxt_kpacket(ic,state,kind,idx,wlc,wt)
+     call kpk_chain(ic,state,kind,idx,wlc,wt)
   elseif(r < fh + fih) then
      call nxt_activate(ic,nxt_elh,nxt_shc-nxa_el(nxt_elh)%xoff,state,kind,idx,wlc,wt)
   elseif(r < fh + fih + feh .and. nxt_sh2>0) then
@@ -3105,7 +3125,7 @@ pure subroutine nxt_nonthermal(ic,state,kind,idx,wlc,wt)
   elseif(nxt_elhe>0 .and. nxt_she2>0) then
      call nxt_activate(ic,nxt_elhe,nxt_she2-nxa_el(nxt_elhe)%xoff,state,kind,idx,wlc,wt)
   else
-     call nxt_kpacket(ic,state,kind,idx,wlc,wt)
+     call kpk_chain(ic,state,kind,idx,wlc,wt)
   endif
 end subroutine nxt_nonthermal
 !
@@ -3159,14 +3179,14 @@ pure subroutine nxt_bfabs(ic,ig,nu,state,kind,idx,wlc,wt)
   integer :: lsel
   call nxt_bfpick(ic,ig,state,lsel)
   if(lsel==0) then
-     call nxt_kpacket(ic,state,kind,idx,wlc,wt)
+     call kpk_chain(ic,state,kind,idx,wlc,wt)
      return
   endif
   call rnd_r(r,state)
   if(r < nxa_lvnu0(lsel)/nu) then
      call nxt_activate(ic,nxa_lvel(lsel),nxa_lvc(lsel),state,kind,idx,wlc,wt)
   else
-     call nxt_kpacket(ic,state,kind,idx,wlc,wt)
+     call kpk_chain(ic,state,kind,idx,wlc,wt)
   endif
 end subroutine nxt_bfabs
 !
@@ -3997,7 +4017,7 @@ pure subroutine nxt_activate_rel(ic,state,kind,idx,wlc,wt)
   real*8 :: r
   integer :: g,iel
   if(nxt_rcum(nxa_nst,ic) <= 0d0) then
-     call nxt_kpacket(ic,state,kind,idx,wlc,wt)
+     call kpk_chain(ic,state,kind,idx,wlc,wt)
      return
   endif
   call rnd_r(r,state)
