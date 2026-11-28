@@ -1,4 +1,4 @@
-50              [NUM_ITS]               !Numer of iterations?
+60              [NUM_ITS]               !Numer of iterations?
 F               [DO_LAM_IT]             !Do lambda iterations?
 F               [DO_LAM_AUTO]
 T               [DO_T_AUTO]

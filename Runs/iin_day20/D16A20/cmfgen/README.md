@@ -17,3 +17,13 @@ Sc II, Ti II here). Convergence from the LTE start: full linearization at
 every iteration ([LAM_VAL] 1e30, [N_FIX_BA] 0), corrections limited to a
 factor 2 ([MAX_LIN] 2); [NUM_BNDS] 1 (with T fixed the tridiagonal block solve is singular: CMF_BLKBAND, DGETRF pivot = the T variable)
 
+
+Local change to our CMFGEN build (not in this repository): in subs/exponx.f
+the Sobolev escape functions are evaluated with the optical depth limited to
+>= -50, because a strongly negative Sobolev depth (a maser in an unconverged
+iteration) overflowed EXP(-X) (SIGFPE in SOBJBAR_SIM at iteration 18).
+
+Check of the structure against the paper: M_V at 20 d is -18.88 (SuperLite)
+and -18.85 (this CMFGEN run); Dessart et al. (2016) Fig. 7 gives -18.83 for
+model A, with the same L_bol. Their Fig. 5 spectra are "normalised and
+shifted" (unknown zero point), so the figure cannot fix the continuum colour.
