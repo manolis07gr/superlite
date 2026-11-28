@@ -541,17 +541,18 @@ pure subroutine diffusion11(ptcl,ptcl2,vx,vy,vz,cache,rndstate,&
         nu = pc_c*((1d0-r1)*grp_wlinv(iiig+1) + r1*grp_wlinv(iiig))
         call rnd_r(r1,rndstate)
         wtb = 1d0
+!-- (in_lumg_thermal) T fixed as in CMFGEN: true absorption (thermal pool
+!-- and NLTE bound-free) is lost; the emission is the cells' emissivity
+        if(nxt_kkill) then
+           ptcl2%stat = 'dead'
+           return
+        endif
         if(nxt_ntemin>0d0 .and. pc_h*nu>nxt_ntemin) then
            call nxt_nonthermal(ic,rndstate,kind,idx,wlcmf,wtb)
         elseif(r1*grd_cap(iiig,ic) < grd_capnbf(iiig,ic)) then
            call nxt_bfabs(ic,iiig,nu,rndstate,kind,idx,wlcmf,wtb)
         else
-           if(nxt_kkill) then
-!-- (in_lumg_thermal) absorbed into the thermal pool: lost, T fixed
-           ptcl2%stat = 'dead'
-           return
-        endif
-        call nxt_kpacket(ic,rndstate,kind,idx,wlcmf,wtb)
+           call nxt_kpacket(ic,rndstate,kind,idx,wlcmf,wtb)
         endif
 !-- (nxt_fbias: the weight of a biased emission)
         e = e*wtb

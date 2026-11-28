@@ -571,17 +571,18 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
 !-- pool; X-rays make fast photoelectrons (heat, H/He ionization and excitation)
         call rnd_r(r1,rndstate)
         wtb = 1d0
+!-- (in_lumg_thermal) T fixed as in CMFGEN: true absorption (thermal pool
+!-- and NLTE bound-free) is lost; the emission is the cells' emissivity
+        if(nxt_kkill) then
+           ptcl2%stat = 'dead'
+           return
+        endif
         if(nxt_ntemin>0d0 .and. pc_h*pc_c*elabfact/wl>nxt_ntemin) then
            call nxt_nonthermal(ic,rndstate,kind,idx,wlcmf,wtb)
         elseif(r1*grd_cap(ig,ic) < grd_capnbf(ig,ic)) then
            call nxt_bfabs(ic,ig,pc_c*elabfact/wl,rndstate,kind,idx,wlcmf,wtb)
         else
-           if(nxt_kkill) then
-!-- (in_lumg_thermal) absorbed into the thermal pool: lost, T fixed
-           ptcl2%stat = 'dead'
-           return
-        endif
-        call nxt_kpacket(ic,rndstate,kind,idx,wlcmf,wtb)
+           call nxt_kpacket(ic,rndstate,kind,idx,wlcmf,wtb)
         endif
 !-- (nxt_fbias: the weight of a biased emission)
         e = e*wtb
@@ -751,12 +752,11 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
      wtb = 1d0
      if(kres>0) then
         call nxt_activate_line(ic,kres,rndstate,kind,idx,wlcmf,wtb)
+     elseif(nxt_kkill) then
+!-- (in_lumg_thermal) absorbed into the thermal pool: lost
+        ptcl2%stat = 'dead'
+        return
      else
-        if(nxt_kkill) then
-!-- (in_lumg_thermal) absorbed into the thermal pool: lost, T fixed
-           ptcl2%stat = 'dead'
-           return
-        endif
         call nxt_kpacket(ic,rndstate,kind,idx,wlcmf,wtb)
      endif
      e = e*wtb
