@@ -19,7 +19,7 @@ subroutine particle_advance
   use fluxmod
   use sourcemod
   use nltexmod, only:nx_nmub,nx_mub
-  use nltextrmod, only:nxt_on,nxt_jbsum,nxt_jbcnt,nxt_jxsum,nxt_jlsum,nxt_jlosum,nxt_lgrp,nxt_static_tally, &
+  use nltextrmod, only:nxt_on,nxt_jbsum,nxt_jbcnt,nxt_jxsum,nxt_jlsum,nxt_jlosum,nxt_lgrp,nxt_static_tally,nxt_tabs, &
        nxt_jwsum,nxt_jwsq,nxt_window_tally,nxt_haem,nxt_haab,nxt_kha,nxt_efsum,nxt_efcnt,nxt_jmsum
   implicit none
 !
@@ -260,6 +260,11 @@ subroutine particle_advance
               nmethodswap = nmethodswap + 1
               if(in_io_dogrdtally) grd_methodswap(icold) = grd_methodswap(icold) + 1
            endif
+        endif
+!-- (in_lumg_thermal) the energy absorbed into the thermal pool on this step
+        if(ptcl2%eth/=0d0) then
+           nxt_tabs(icold) = nxt_tabs(icold) + ptcl2%eth
+           ptcl2%eth = 0d0
         endif
 !-- (the absorption in a line core after an electron scattering, nxt_esfar)
         if(ptcl2%kfa>0) then

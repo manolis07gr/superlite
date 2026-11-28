@@ -189,8 +189,13 @@ contains
     wtb = 1d0
     call nxt_activate_line(ic,kres,rndstate,kind,idx,wlcmf,wtb)
     if(kind==em_kill) then
-       ptcl2%stat = 'dead'
-       return
+       ptcl2%eth = ptcl2%eth + e
+       call rnd_r(r,rndstate)
+       if(r < nxt_pkill(ic)) then
+          ptcl2%stat = 'dead'
+          return
+       endif
+       call nxt_kredraw(ic,rndstate,kind,idx,wlcmf,wtb)
     endif
     e = e*wtb
     e0 = e0*wtb

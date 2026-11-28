@@ -8,7 +8,7 @@ subroutine sourceenergy
   use physconstmod
   use inputparmod
   use groupmod
-  use nltextrmod, only:nxt_on,nxt_dtinv,nxt_release,nxt_erel,nxt_prel,nxt_kemis
+  use nltextrmod, only:nxt_on,nxt_dtinv,nxt_release,nxt_erel,nxt_prel,nxt_kemis,nxt_tabs,nxt_pkill
   use xraysrcmod, only:xs_on,xs_pow,xs_px
   implicit none
 !##################################################
@@ -17,7 +17,7 @@ subroutine sourceenergy
 !to each cell based on the amount of energy emitted by the cell.
 !##################################################
   integer :: i
-  real*8 :: help
+  real*8 :: help,emis
   ! real*8,dimension(grd_ncell) :: P_adia
   ! real*8,dimension(grp_ng) :: wlm,dwl
 
@@ -47,8 +47,23 @@ subroutine sourceenergy
 !-- clump volume, not normalized; the absorbed thermal energy is lost
 !-- (nxt_kkill).  The inner boundary keeps the luminosity of the input model.
      if(in_lumg_thermal) then
+!-- net emission: the emissivity less the energy the cell absorbed into its
+!-- thermal pool in the last iteration (nxt_tabs), which transport re-emits;
+!-- where the absorption exceeds the emissivity, nothing is emitted and the
+!-- absorbed packets are lost with probability (absorbed - emitted)/absorbed.
+!-- Equivalent to emitting the emissivity and losing every absorption, with
+!-- the packets carrying only the net flow (the first iteration does that).
+        help = sum(nxt_tabs)
         do i=1,grd_ncell
-           grd_emit(i) = nxt_kemis(i)*grd_vol(i)*grd_fcl(i)
+           emis = nxt_kemis(i)*grd_vol(i)*grd_fcl(i)
+           if(help<=0d0) then
+              grd_emit(i) = emis
+              nxt_pkill(i) = 1d0
+           else
+              grd_emit(i) = max(0d0, emis - nxt_tabs(i))
+              nxt_pkill(i) = 0d0
+              if(nxt_tabs(i)>emis) nxt_pkill(i) = (nxt_tabs(i) - emis)/nxt_tabs(i)
+           endif
         enddo
         tot_esurf = max(0d0, grd_lum(1))
      endif

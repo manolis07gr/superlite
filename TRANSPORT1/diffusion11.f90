@@ -13,7 +13,7 @@ pure subroutine diffusion11(ptcl,ptcl2,vx,vy,vz,cache,rndstate,&
   use transportmod
   use fluxmod
   use inputparmod
-  use nltextrmod, only:nxt_on,nxt_ntemin,nxt_kq,grd_capnbf,nxt_bfabs,nxt_kpacket,nxt_kkill, &
+  use nltextrmod, only:nxt_on,nxt_ntemin,nxt_kq,grd_capnbf,nxt_bfabs,nxt_kpacket,nxt_kkill,nxt_pkill,nxt_kredraw,em_kill, &
        nxt_nonthermal,nxt_emcode,nxt_emloc,em_line,em_lines
   use nxemitmod, only:nx_emitwl,nx_place,line_mu,nx_linees,nx_ilem
   implicit none
@@ -38,7 +38,7 @@ pure subroutine diffusion11(ptcl,ptcl2,vx,vy,vz,cache,rndstate,&
 !
   integer :: iig, iiig
   logical :: lhelp
-  real*8 :: r1, r2
+  real*8 :: r1, r2, rk
   real*8 :: denom, denom2, denom3
   real*8 :: ddmct, tau, pa, pdop
 !-- lumped quantities -----------------------------------------
@@ -541,11 +541,16 @@ pure subroutine diffusion11(ptcl,ptcl2,vx,vy,vz,cache,rndstate,&
         nu = pc_c*((1d0-r1)*grp_wlinv(iiig+1) + r1*grp_wlinv(iiig))
         call rnd_r(r1,rndstate)
         wtb = 1d0
-!-- (in_lumg_thermal) T fixed as in CMFGEN: true absorption (thermal pool
-!-- and NLTE bound-free) is lost; the emission is the cells' emissivity
+!-- (in_lumg_thermal) T fixed as in CMFGEN, net emission: the energy given
+!-- to the thermal pool (and NLTE bound-free) is tallied and lost with the
+!-- cell's probability nxt_pkill (the absorption beyond its emissivity)
         if(nxt_kkill) then
-           ptcl2%stat = 'dead'
-           return
+           ptcl2%eth = ptcl2%eth + e
+           call rnd_r(rk,rndstate)
+           if(rk < nxt_pkill(ic)) then
+              ptcl2%stat = 'dead'
+              return
+           endif
         endif
         if(nxt_ntemin>0d0 .and. pc_h*nu>nxt_ntemin) then
            call nxt_nonthermal(ic,rndstate,kind,idx,wlcmf,wtb)
@@ -554,6 +559,7 @@ pure subroutine diffusion11(ptcl,ptcl2,vx,vy,vz,cache,rndstate,&
         else
            call nxt_kpacket(ic,rndstate,kind,idx,wlcmf,wtb)
         endif
+        if(kind==em_kill) call nxt_kredraw(ic,rndstate,kind,idx,wlcmf,wtb)
 !-- (nxt_fbias: the weight of a biased emission)
         e = e*wtb
         e0 = e0*wtb

@@ -961,6 +961,8 @@ c-- radiation from elsewhere and DDMC lumps (nxt_ldb)
       call allreduce_sum(size(nxt_jmsum),nxt_jmsum)
       call allreduce_sum(size(nxt_haem),nxt_haem)
       call allreduce_sum(size(nxt_haab),nxt_haab)
+      if(allocated(nxt_tabs))
+     &  call allreduce_sum(size(nxt_tabs),nxt_tabs)
       if(nxt_esrates) then
        call allreduce_sum(size(nxt_efsum),nxt_efsum)
        call allreduce_sum(size(nxt_efcnt),nxt_efcnt)

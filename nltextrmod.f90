@@ -183,6 +183,10 @@ module nltextrmod
   real*8,allocatable,public :: nxt_kemis(:)  !(ncell)
 !-- (in_lumg_thermal) a packet absorbed into the thermal pool is lost
   logical,public :: nxt_kkill = .false.
+!-- (in_lumg_thermal, net emission) energy absorbed into the thermal pool in
+!-- each cell this iteration [erg/s], and the probability that such an
+!-- absorption is lost (where the absorption exceeds the cell's emissivity)
+  real*8,allocatable,public :: nxt_tabs(:), nxt_pkill(:)  !(ncell)
   integer,allocatable,public :: nxt_lch(:)    !(nlin) emission channel of the line (0: within a super-level)
   integer,allocatable,public :: nxt_bch(:)    !(nlv) recombination channel of the level
   integer,allocatable,public :: nxt_2pch(:)   !(n2p) channel of the two-photon transition
@@ -377,7 +381,7 @@ module nltextrmod
 !
   public :: nxt_init,nxt_alloc_opt,nxt_jfill_cells,nxt_bpick,nxt_fstarved, &
        nxt_gas_solve,nxt_store_jg,nxt_tally_reset,nxt_tally_finish
-  public :: nxt_tables,nxt_neighbors,nxt_activate,nxt_activate_line,nxt_kpacket
+  public :: nxt_tables,nxt_neighbors,nxt_activate,nxt_activate_line,nxt_kpacket,nxt_kredraw
   public :: nxt_bfabs,nxt_bfpick,nxt_nonthermal,nxt_ntdep,nxt_ntrates,nxt_write,nxt_bffreq
   public :: nxt_shares,nxt_dealloc,nxt_emcode,nxt_emloc
   public :: nxt_write_state,nxt_write_dmp,nxt_read_prev,nxt_read_init,nxt_release,nxt_activate_rel
@@ -607,6 +611,9 @@ subroutine nxt_init(ncell,gncell,ng,wlg,nfile,files,hnlev)
   nxt_kcum = 1d0
   allocate(nxt_kemis(ncell))
   nxt_kemis = 0d0
+  allocate(nxt_tabs(ncell),nxt_pkill(ncell))
+  nxt_tabs = 0d0
+  nxt_pkill = 1d0
 !-- bf emission sampling: running maximum of sigma u^3 along each table
   allocate(nxt_cmax(sum([(size(nxa_ion(i)%ps),i=1,nxa_nion)])),nxt_cmoff(nxa_nion))
   n = 0
@@ -692,6 +699,7 @@ subroutine nxt_dealloc
   if(allocated(nxt_chst)) deallocate(nxt_chst,nxt_chk,nxt_chi,nxt_chcum)
   if(allocated(nxt_kcum)) deallocate(nxt_kcum)
   if(allocated(nxt_kemis)) deallocate(nxt_kemis)
+  if(allocated(nxt_tabs)) deallocate(nxt_tabs,nxt_pkill)
   if(allocated(nxt_cmax)) deallocate(nxt_cmax,nxt_cmoff)
   if(allocated(nxt_etop)) deallocate(nxt_etop)
   if(allocated(nxt_xprev)) deallocate(nxt_xprev)
@@ -1551,6 +1559,7 @@ subroutine nxt_tally_reset
   nxt_haab = 0d0
   nxt_efsum = 0d0
   nxt_efcnt = 0d0
+  if(allocated(nxt_tabs)) nxt_tabs = 0d0
 end subroutine nxt_tally_reset
 !
 !
@@ -2992,6 +3001,23 @@ pure function nxt_emcode(kind,idx) result(code)
   end select
 end function nxt_emcode
 !
+!
+pure subroutine nxt_kredraw(ic,state,kind,idx,wlc,wt)
+!-- (in_lumg_thermal) a k-packet that is kept: drawn again until its outcome
+!-- does not end in the thermal pool (em_kill from a macro-atom chain)
+  integer,intent(in) :: ic
+  type(rnd_t),intent(inout) :: state
+  integer,intent(inout) :: kind,idx
+  real*8,intent(inout) :: wlc
+  real*8,intent(inout),optional :: wt
+  integer :: n
+  n = 0
+  do while(kind==em_kill .and. n<1000)
+     call nxt_kpacket(ic,state,kind,idx,wlc,wt)
+     n = n + 1
+  enddo
+  if(kind==em_kill) kind = em_thermal
+end subroutine nxt_kredraw
 !
 pure recursive subroutine kpk_chain(ic,state,kind,idx,wlc,wt)
 !-- a k-packet reached inside a macro-atom chain (collisional transitions):

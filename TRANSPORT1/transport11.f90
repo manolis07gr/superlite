@@ -44,7 +44,7 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
 
   logical :: lout
   integer :: ixnext
-  real*8 :: r1, r2
+  real*8 :: r1, r2, rk
   real*8 :: db, dcol, dthm, ddop, dsc, dlin, ddrift
   real*8 :: qsl, mus
   real*8 :: darr(7)
@@ -571,11 +571,16 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
 !-- pool; X-rays make fast photoelectrons (heat, H/He ionization and excitation)
         call rnd_r(r1,rndstate)
         wtb = 1d0
-!-- (in_lumg_thermal) T fixed as in CMFGEN: true absorption (thermal pool
-!-- and NLTE bound-free) is lost; the emission is the cells' emissivity
+!-- (in_lumg_thermal) T fixed as in CMFGEN, net emission: the energy given
+!-- to the thermal pool (and NLTE bound-free) is tallied and lost with the
+!-- cell's probability nxt_pkill (the absorption beyond its emissivity)
         if(nxt_kkill) then
-           ptcl2%stat = 'dead'
-           return
+           ptcl2%eth = ptcl2%eth + e
+           call rnd_r(rk,rndstate)
+           if(rk < nxt_pkill(ic)) then
+              ptcl2%stat = 'dead'
+              return
+           endif
         endif
         if(nxt_ntemin>0d0 .and. pc_h*pc_c*elabfact/wl>nxt_ntemin) then
            call nxt_nonthermal(ic,rndstate,kind,idx,wlcmf,wtb)
@@ -584,6 +589,7 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
         else
            call nxt_kpacket(ic,rndstate,kind,idx,wlcmf,wtb)
         endif
+        if(kind==em_kill) call nxt_kredraw(ic,rndstate,kind,idx,wlcmf,wtb)
 !-- (nxt_fbias: the weight of a biased emission)
         e = e*wtb
         e0 = e0*wtb
@@ -752,16 +758,18 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
      wtb = 1d0
      if(kres>0) then
         call nxt_activate_line(ic,kres,rndstate,kind,idx,wlcmf,wtb)
-        if(kind==em_kill) then
+     else
+        call nxt_kpacket(ic,rndstate,kind,idx,wlcmf,wtb)
+        if(nxt_kkill) kind = em_kill
+     endif
+     if(kind==em_kill) then
+        ptcl2%eth = ptcl2%eth + e
+        call rnd_r(rk,rndstate)
+        if(rk < nxt_pkill(ic)) then
            ptcl2%stat = 'dead'
            return
         endif
-     elseif(nxt_kkill) then
-!-- (in_lumg_thermal) absorbed into the thermal pool: lost
-        ptcl2%stat = 'dead'
-        return
-     else
-        call nxt_kpacket(ic,rndstate,kind,idx,wlcmf,wtb)
+        call nxt_kredraw(ic,rndstate,kind,idx,wlcmf,wtb)
      endif
      e = e*wtb
      e0 = e0*wtb
@@ -824,8 +832,13 @@ pure subroutine transport11(ptcl,ptcl2,vx,vy,vz,rndstate,&
            wtb = 1d0
            call nxt_activate_line(ic,kres,rndstate,kind,idx,wlcmf,wtb)
         if(kind==em_kill) then
-           ptcl2%stat = 'dead'
-           return
+           ptcl2%eth = ptcl2%eth + e
+           call rnd_r(rk,rndstate)
+           if(rk < nxt_pkill(ic)) then
+              ptcl2%stat = 'dead'
+              return
+           endif
+           call nxt_kredraw(ic,rndstate,kind,idx,wlcmf,wtb)
         endif
            e = e*wtb
            e0 = e0*wtb

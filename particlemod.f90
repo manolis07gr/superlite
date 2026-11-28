@@ -41,6 +41,8 @@ module particlemod
 !-- energy, and a line absorbed at its resonance; nxt_lemab)
      integer :: kem = 0, cem = 0, kab = 0
      real*8 :: eem = 0d0, eab = 0d0
+!-- (in_lumg_thermal) energy absorbed into the thermal pool on this step
+     real*8 :: eth = 0d0
 !-- a line that absorbed the packet in its core after an electron
 !-- scattering on this step, and the comoving energy (nxt_esfar, nxt_efsum)
      integer :: kfa = 0
