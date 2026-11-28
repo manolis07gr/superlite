@@ -40,7 +40,7 @@ subroutine interior_source!(it)
   real*8 :: tradinv
   logical :: lrad
 !-- lumg source: emission with the local emissivity (macro-atom with NLTE H)
-  integer :: kind,idx
+  integer :: kind,idx,ntry
   real*8 :: wlc,thelp
   logical :: lxr,lrel,lnt
   type(packet),pointer :: ptcl
@@ -179,6 +179,14 @@ subroutine interior_source!(it)
               call nxt_nonthermal(l,rnd_state,kind,idx,wlc,wtb)
            else
               call nxt_kpacket(l,rnd_state,kind,idx,wlc,wtb)
+!-- (in_lumg_thermal) an outcome through a macro-atom chain that ends in the
+!-- thermal pool is drawn again: the source is the cell's emission
+              ntry = 0
+              do while(kind==em_kill .and. ntry<1000)
+                 call nxt_kpacket(l,rnd_state,kind,idx,wlc,wtb)
+                 ntry = ntry + 1
+              enddo
+              if(kind==em_kill) kind = em_thermal
            endif
 !-- (a line photon scattered by an electron in its resonance zone; the
 !-- direction is isotropic anyway)
